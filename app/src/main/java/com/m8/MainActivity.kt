@@ -122,6 +122,8 @@ private fun M8MainScreen(
     onConnectClick: () -> Unit,
     onDisconnectClick: () -> Unit,
 ) {
+    val isAudioMuted by viewModel.isAudioMuted.collectAsState()
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -138,6 +140,15 @@ private fun M8MainScreen(
             ConnectionStatusIndicator(state = connectionState)
 
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                // Audio mute toggle
+                Text(
+                    text = if (isAudioMuted) "[MUTED]" else "[AUDIO]",
+                    color = if (isAudioMuted) Color(0xFFFF4444) else Color(0xFF00FF00),
+                    fontSize = 12.sp,
+                    fontFamily = FontFamily.Monospace,
+                    modifier = Modifier.clickable { viewModel.toggleAudioMute() },
+                )
+
                 if (connectionState == ConnectionState.DISCONNECTED) {
                     Text(
                         text = "[CONNECT]",
@@ -173,7 +184,7 @@ private fun M8MainScreen(
             contentAlignment = Alignment.Center,
         ) {
             M8Screen(
-                bitmap = viewModel.connectionManager.display.bitmap,
+                bitmap = viewModel.connectionManager.display.snapshot(),
                 invalidationTick = displayTick,
             )
         }

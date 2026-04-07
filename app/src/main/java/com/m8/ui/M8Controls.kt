@@ -1,5 +1,7 @@
 package com.m8.ui
 
+import android.view.HapticFeedbackConstants
+import android.view.View
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -10,6 +12,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -26,6 +29,7 @@ fun M8Controls(
     modifier: Modifier = Modifier,
 ) {
     var currentKeys by remember { mutableIntStateOf(0) }
+    val view = LocalView.current
 
     fun pressKey(key: Int) {
         currentKeys = currentKeys or key
@@ -48,6 +52,7 @@ fun M8Controls(
         DPad(
             onPress = ::pressKey,
             onRelease = ::releaseKey,
+            view = view,
             modifier = Modifier.weight(1f),
         )
 
@@ -57,6 +62,7 @@ fun M8Controls(
         ActionButtons(
             onPress = ::pressKey,
             onRelease = ::releaseKey,
+            view = view,
             modifier = Modifier.weight(1f),
         )
     }
@@ -66,19 +72,20 @@ fun M8Controls(
 private fun DPad(
     onPress: (Int) -> Unit,
     onRelease: (Int) -> Unit,
+    view: View,
     modifier: Modifier = Modifier,
 ) {
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        M8Button("UP", M8Commands.KEY_UP, onPress, onRelease)
+        M8Button("UP", M8Commands.KEY_UP, onPress, onRelease, view)
         Row {
-            M8Button("LT", M8Commands.KEY_LEFT, onPress, onRelease)
+            M8Button("LT", M8Commands.KEY_LEFT, onPress, onRelease, view)
             Spacer(modifier = Modifier.width(48.dp))
-            M8Button("RT", M8Commands.KEY_RIGHT, onPress, onRelease)
+            M8Button("RT", M8Commands.KEY_RIGHT, onPress, onRelease, view)
         }
-        M8Button("DN", M8Commands.KEY_DOWN, onPress, onRelease)
+        M8Button("DN", M8Commands.KEY_DOWN, onPress, onRelease, view)
     }
 }
 
@@ -86,6 +93,7 @@ private fun DPad(
 private fun ActionButtons(
     onPress: (Int) -> Unit,
     onRelease: (Int) -> Unit,
+    view: View,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -93,13 +101,13 @@ private fun ActionButtons(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            M8Button("OPT", M8Commands.KEY_OPTION, onPress, onRelease)
-            M8Button("EDIT", M8Commands.KEY_EDIT, onPress, onRelease)
+            M8Button("OPT", M8Commands.KEY_OPTION, onPress, onRelease, view)
+            M8Button("EDIT", M8Commands.KEY_EDIT, onPress, onRelease, view)
         }
         Spacer(modifier = Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            M8Button("SHIFT", M8Commands.KEY_SHIFT, onPress, onRelease)
-            M8Button("PLAY", M8Commands.KEY_PLAY, onPress, onRelease)
+            M8Button("SHIFT", M8Commands.KEY_SHIFT, onPress, onRelease, view)
+            M8Button("PLAY", M8Commands.KEY_PLAY, onPress, onRelease, view)
         }
     }
 }
@@ -110,6 +118,7 @@ private fun M8Button(
     keyBit: Int,
     onPress: (Int) -> Unit,
     onRelease: (Int) -> Unit,
+    view: View,
     modifier: Modifier = Modifier,
 ) {
     var pressed by remember { mutableStateOf(false) }
@@ -125,6 +134,7 @@ private fun M8Button(
                 detectTapGestures(
                     onPress = {
                         pressed = true
+                        view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
                         onPress(keyBit)
                         tryAwaitRelease()
                         pressed = false

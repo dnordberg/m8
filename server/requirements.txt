@@ -1,3 +1,10 @@
 websockets>=12.0
 pyserial>=3.5
 pyserial-asyncio>=0.6
+
+# Audio streaming dependencies (audio_stream.py)
+# System packages also required:
+#   apt-get install alsa-utils opus-tools
+# Optional Python audio libraries:
+# pyalsaaudio>=0.10.0  # Alternative to arecord subprocess
+# opuslib>=3.0.1       # Alternative to opusenc subprocess
