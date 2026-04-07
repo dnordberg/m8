@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Comprehensive troubleshooting guide for M8 Headless running on a Linux VPS with OpenClaw.
+Troubleshooting guide for the m8 system: Teensy hardware, server bridges, network, audio, and Android app.
 
 ---
 
@@ -10,7 +10,7 @@ Comprehensive troubleshooting guide for M8 Headless running on a Linux VPS with 
 
 **Symptom:** `lsusb | grep "16c0"` returns nothing.
 
-**Cause:** Teensy not plugged in, bad USB cable, or USB passthrough not configured (if VPS is a VM).
+**Cause:** Teensy not plugged in, bad USB cable, or USB passthrough not configured (VM).
 
 **Fix:**
 ```bash
@@ -24,7 +24,6 @@ dmesg | tail -20
 # Try a different USB port
 
 # If running in a VM, ensure USB passthrough is enabled:
-# - VirtualBox: Devices > USB > Add Teensy
 # - Proxmox: qm set <vmid> -usb0 host=16c0:048a
 # - KVM/libvirt: use virt-manager USB redirection
 ```
@@ -43,17 +42,16 @@ sudo modprobe cdc_acm
 # Check if it loaded
 lsmod | grep cdc_acm
 
-# Check udev for relevant rules
+# Monitor udev events while plugging in Teensy
 udevadm monitor --property &
-# Then plug in the Teensy and watch output
 
-# If module loads but device still missing, check dmesg:
+# Check dmesg for details
 dmesg | grep -i "acm\|teensy\|16c0"
 ```
 
 ### Permission denied on serial device
 
-**Symptom:** `bridge.py` or `m8c` fails with "Permission denied: /dev/ttyACM0".
+**Symptom:** `bridge.py` fails with "Permission denied" or "Failed to open /dev/ttyACM0".
 
 **Cause:** User not in `dialout` group.
 
@@ -73,46 +71,35 @@ ls -la /dev/ttyACM0
 # Should show: crw-rw---- 1 root dialout ...
 ```
 
-### Multiple Teensy devices
+### Multiple /dev/ttyACM devices
 
 **Symptom:** Multiple `/dev/ttyACM*` devices, unsure which is M8.
 
 **Fix:**
 ```bash
-# List serial ports with details
+# List serial ports with USB metadata
 python3 -m serial.tools.list_ports -v
 
-# Or check USB device tree
+# The M8 Teensy shows vendor ID 16c0 (PJRC)
+# bridge.py auto-detection handles this automatically
+
+# Or check each device manually:
 for dev in /dev/ttyACM*; do
   echo "$dev:"
-  udevadm info -q property "$dev" | grep -E "ID_VENDOR|ID_MODEL|ID_SERIAL"
+  udevadm info -q property "$dev" | grep -E "ID_VENDOR|ID_MODEL"
   echo
 done
-
-# The M8 Teensy will show vendor ID 16c0
 ```
-
-### SD card issues
-
-**Symptom:** M8 boots but shows filesystem errors or can't save.
-
-**Cause:** SD card not formatted correctly.
-
-**Fix:**
-- Cards <= 32GB: format as FAT32
-- Cards > 32GB: format as exFAT
-- Use a quality SD card (SanDisk, Samsung EVO)
-- Format on a computer, not the Teensy
 
 ---
 
 ## Serial Bridge
 
-### Bridge can't open serial port
+### Bridge can't find serial device
 
-**Symptom:** `bridge.py` logs "Failed to open /dev/ttyACM0" repeatedly.
+**Symptom:** `bridge.py` logs "No M8 Teensy detected -- retrying in 2s" repeatedly.
 
-**Cause:** Device doesn't exist, permissions, or another process has it open.
+**Cause:** Teensy not connected, wrong device path, or permissions.
 
 **Fix:**
 ```bash
@@ -121,21 +108,24 @@ ls -la /dev/ttyACM0
 
 # Check if another process has it open
 fuser /dev/ttyACM0
-# Or:
 lsof /dev/ttyACM0
 
-# Kill conflicting process if needed
-# (e.g., if m8c is running, stop it first)
+# Force a specific device
+python3 server/bridge.py --serial /dev/ttyACM0
 
-# Check permissions
-groups | grep dialout
+# Check USB vendor ID detection
+python3 -c "
+import serial.tools.list_ports
+for p in serial.tools.list_ports.comports():
+    print(f'{p.device}: vid=0x{p.vid or 0:04x}, pid=0x{p.pid or 0:04x}')
+"
 ```
 
 ### WebSocket connection refused
 
-**Symptom:** Android app can't connect, "Connection refused" error.
+**Symptom:** Android app can't connect, "Connection refused".
 
-**Cause:** Bridge not running, wrong port, or firewall blocking.
+**Cause:** Bridge not running, wrong host binding, or firewall.
 
 **Fix:**
 ```bash
@@ -145,12 +135,12 @@ pgrep -af bridge.py
 # Check if port is listening
 ss -tulnp | grep 8765
 
-# Check firewall
-sudo ufw status
-sudo iptables -L -n | grep 8765
+# Common mistake: bridge defaults to 127.0.0.1 (localhost only)
+# For remote access, bind to 0.0.0.0:
+python3 server/bridge.py --host 0.0.0.0
 
-# If using Tailscale, check it's connected
-tailscale status
+# Or bind to Tailscale IP:
+python3 server/bridge.py --host $(tailscale ip -4)
 
 # Test locally
 python3 -c "
@@ -162,56 +152,20 @@ asyncio.run(test())
 "
 ```
 
-### Data corruption / garbled display
-
-**Symptom:** M8 display renders incorrectly on the Android app.
-
-**Cause:** Baud rate mismatch, or WebSocket binary/text mode confusion.
-
-**Fix:**
-```bash
-# Ensure bridge uses correct baud rate (9600 is default for M8)
-python3 /opt/m8/server/bridge.py --baud 9600
-
-# The Android app must send/receive WebSocket messages as binary, not text
-# Check the app's WebSocket configuration
-```
-
-### High latency
-
-**Symptom:** Noticeable delay between input and display update.
-
-**Cause:** Network latency, buffering, or CPU contention.
-
-**Fix:**
-```bash
-# Check network latency to server
-ping <server-ip>
-
-# Check CPU usage (audio encoding can be heavy)
-top -p $(pgrep -f bridge.py)
-
-# Reduce buffer sizes in bridge.py if needed
-# Check if other processes are consuming CPU
-htop
-```
-
 ### Bridge crashes on Teensy disconnect
 
 **Symptom:** Bridge process exits when Teensy is unplugged.
 
-**Cause:** Unhandled serial exception (should not happen with current bridge.py).
+**Expected behavior:** Bridge should catch the serial error, notify clients with `{"event": "serial_disconnected"}`, and retry every 2 seconds.
 
 **Fix:**
 ```bash
-# Check bridge logs
+# Check logs for traceback
 journalctl -u m8-bridge -f
-# Or: cat /opt/m8/bridge.log
+# Or run with verbose logging:
+python3 server/bridge.py --verbose
 
-# The bridge should handle disconnection gracefully and retry
-# If it crashes, check Python traceback and update bridge.py
-
-# As a workaround, systemd will auto-restart:
+# If the bridge does crash, systemd will auto-restart it
 sudo systemctl restart m8-bridge
 ```
 
@@ -221,25 +175,29 @@ sudo systemctl restart m8-bridge
 
 ### No audio device found
 
-**Symptom:** `pactl list sources short | grep -i m8` returns nothing.
+**Symptom:** `audio_stream.py` logs "No Teensy audio device detected" repeatedly.
 
-**Cause:** PulseAudio not detecting the Teensy USB audio device.
+**Cause:** Teensy audio not recognized by ALSA.
 
 **Fix:**
 ```bash
-# Check ALSA first
+# Check ALSA devices
 arecord -l
 # Look for "Teensy" or "PJRC"
 
-# If ALSA sees it but PulseAudio doesn't:
-pulseaudio --kill
-pulseaudio --start
+# Check /proc/asound
+cat /proc/asound/cards
 
-# List all PulseAudio sources
-pactl list sources short
+# Check USB audio IDs
+for card in /proc/asound/card*/usbid; do
+  echo "$card: $(cat $card 2>/dev/null)"
+done
 
-# The device name is usually like:
-# alsa_input.usb-PJRC_Teensy_Audio-00.analog-stereo
+# Manually specify device
+python3 server/audio_stream.py --device hw:1,0
+
+# Make sure user is in audio group
+sudo usermod -a -G audio $USER
 ```
 
 ### Audio crackling / dropouts
@@ -250,58 +208,58 @@ pactl list sources short
 
 **Fix:**
 ```bash
-# Increase buffer size in ffmpeg
-# Change -frame_duration from 10 to 20 (ms)
-
 # Check CPU usage
-top
+top -p $(pgrep -f audio_stream.py)
 
 # Give audio process higher priority
-sudo nice -n -10 ffmpeg ...
+sudo nice -n -10 python3 server/audio_stream.py
 
-# Check for audio thread scheduling issues
+# Try a higher bitrate or different sample rate
+python3 server/audio_stream.py --bitrate 192000
+
+# Add user to audio group for real-time scheduling
+sudo usermod -a -G audio $USER
 # Add to /etc/security/limits.d/audio.conf:
 # @audio - rtprio 95
 # @audio - memlock unlimited
-
-# Add user to audio group
-sudo usermod -a -G audio $USER
 ```
 
-### PulseAudio vs ALSA conflicts
+### Audio format mismatch (KNOWN ISSUE)
 
-**Symptom:** Audio works with ALSA tools but not PulseAudio, or vice versa.
+**Symptom:** Audio connects but no sound plays, or garbled audio.
+
+**Cause:** The server streams Opus encoded in an OGG container. The Android client's M8AudioClient expects either raw Opus frames (with a `0x02` header byte) or raw PCM data. The OGG container headers are not recognized by the client's format detection logic, so the OGG data is treated as raw PCM, producing garbage audio.
+
+**Current status:** This is a known architecture mismatch. The server's `audio_stream.py` uses `opusenc` which outputs OGG/Opus, but the Android client's `OpusDecoder` (MediaCodec) expects individual Opus frames without OGG framing.
+
+**Workaround options:**
+1. Modify `audio_stream.py` to extract raw Opus frames instead of streaming OGG
+2. Add an OGG demuxer to the Android client
+3. Replace `opusenc` with `ffmpeg` on the server to output raw Opus packets
+
+### Sample rate mismatch (KNOWN ISSUE)
+
+**Symptom:** Audio pitch is slightly off, or playback speed is wrong.
+
+**Cause:** The server captures audio at **44100 Hz** (Teensy default), but the Android `M8AudioPlayer` plays back at **48000 Hz**. This 8.8% mismatch causes audio to play too fast and at a higher pitch.
+
+**Fix options:**
+1. Change `M8AudioPlayer.SAMPLE_RATE` from 48000 to 44100 in the Android app
+2. Add sample rate conversion on the server (resample to 48000 before encoding)
+3. Read the `sample_rate` field from the server's `audio_connected` JSON message and configure AudioTrack dynamically
+
+### opusenc or arecord not found
+
+**Symptom:** `audio_stream.py` exits with "arecord not found" or "opusenc not found".
 
 **Fix:**
 ```bash
-# Check if PulseAudio is running
-ps aux | grep pulseaudio
+sudo apt install -y alsa-utils opus-tools
 
-# If you want to bypass PulseAudio and use ALSA directly:
-# Use -f alsa instead of -f pulse in ffmpeg
-
-# If PulseAudio is needed, ensure it's not blocking ALSA:
-# Edit /etc/pulse/default.pa and check module-alsa-sink/source settings
-```
-
-### Audio latency too high
-
-**Symptom:** Audio is noticeably behind the display.
-
-**Fix:**
-```bash
-# Reduce Opus frame duration
-# In ffmpeg: -frame_duration 5  (minimum for Opus)
-
-# Reduce buffer sizes on both ends:
-# Server: smaller ffmpeg output buffer
-# Android: smaller AudioTrack/Oboe buffer
-
-# Use OPUS_APPLICATION_RESTRICTED_LOWDELAY mode
-# In ffmpeg: -application restricted_lowdelay
-
-# Consider using WebRTC instead of plain WebSocket for audio
-# (WebRTC has built-in jitter buffer and adaptive bitrate)
+# Verify
+which arecord opusenc
+arecord --version
+opusenc --version
 ```
 
 ---
@@ -310,187 +268,111 @@ ps aux | grep pulseaudio
 
 ### Can't connect from Android app
 
-**Symptom:** App shows "Connection failed" or times out.
+**Symptom:** App shows "Connecting..." indefinitely or "Connection failed".
 
-**Fix:**
+**Fix (check in order):**
 ```bash
-# 1. Check bridge is running and listening
-ss -tulnp | grep 8765
+# 1. Bridge running and listening?
+ss -tulnp | grep -E '8765|8766'
 
-# 2. Check network connectivity
-# From Android (via Termux or similar):
-ping <server-ip>
+# 2. Bridge bound to reachable address?
+# If it shows 127.0.0.1, it's localhost-only. Restart with:
+python3 server/bridge.py --host 0.0.0.0
 
-# 3. Check Tailscale (if using)
+# 3. Tailscale connected on both devices?
 tailscale status
-# Both devices should show as connected
 
-# 4. Check firewall on server
+# 4. Firewall?
 sudo ufw status
-# If using ufw with Tailscale, ensure tailscale0 interface is allowed:
+# If using Tailscale, allow its interface:
 sudo ufw allow in on tailscale0
 
-# 5. Try connecting from server itself
-curl -i -N -H "Connection: Upgrade" -H "Upgrade: websocket" \
-  -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: dGVzdA==" \
-  http://127.0.0.1:8765/
+# 5. Can you reach the server?
+# From Android Termux or another device:
+ping <server-tailscale-ip>
 ```
 
 ### Tailscale not routing
 
-**Symptom:** Tailscale shows connected but can't reach M8 services.
+**Symptom:** Tailscale shows connected but M8 services unreachable.
 
 **Fix:**
 ```bash
-# Check Tailscale status on both devices
+# Check both devices are on same tailnet
 tailscale status
 
-# Check if the server's Tailscale IP is reachable
+# Ping test
 tailscale ping <server-tailscale-ip>
 
-# Check if the bridge is listening on the right interface
-# If bridge binds to 127.0.0.1, it won't be reachable via Tailscale IP
-# Either:
-# a) Bind bridge to 0.0.0.0 (if Tailscale is your only network exposure)
-python3 /opt/m8/server/bridge.py --host 0.0.0.0
-# b) Or bind to Tailscale IP specifically
-python3 /opt/m8/server/bridge.py --host $(tailscale ip -4)
+# MOST COMMON ISSUE: bridge bound to 127.0.0.1
+# Fix: bind to 0.0.0.0 or Tailscale IP
+python3 server/bridge.py --host 0.0.0.0
+python3 server/audio_stream.py --host 0.0.0.0
 
-# Check Tailscale ACLs if you have them configured
+# Check Tailscale ACLs if configured
 ```
 
 ### Firewall blocking ports
 
-**Symptom:** Connection works locally but not remotely.
+**Symptom:** Works locally but not remotely.
 
 **Fix:**
 ```bash
 # Check UFW
 sudo ufw status verbose
 
-# Allow M8 ports (only if NOT using Tailscale as sole access method)
+# If using Tailscale (recommended), allow all Tailscale traffic:
+sudo ufw allow in on tailscale0
+
+# Or allow specific ports:
 sudo ufw allow 8765/tcp comment "M8 serial bridge"
 sudo ufw allow 8766/tcp comment "M8 audio stream"
-
-# Or if using Tailscale, allow all traffic on tailscale0:
-sudo ufw allow in on tailscale0
-```
-
-### nginx WebSocket proxy not working
-
-**Symptom:** HTTP 502, timeout, or WebSocket upgrade fails through nginx.
-
-**Fix:**
-```nginx
-# Ensure these headers are set in the location block:
-location /ws {
-    proxy_pass http://127.0.0.1:8765;
-    proxy_http_version 1.1;                    # REQUIRED for WebSocket
-    proxy_set_header Upgrade $http_upgrade;     # REQUIRED
-    proxy_set_header Connection "upgrade";      # REQUIRED
-    proxy_read_timeout 86400;                   # Prevent idle timeout
-}
-```
-
-```bash
-# Test nginx config
-sudo nginx -t
-
-# Reload after changes
-sudo systemctl reload nginx
-
-# Check nginx error log
-sudo tail -f /var/log/nginx/error.log
-```
-
----
-
-## OpenClaw Coexistence
-
-### Port conflicts
-
-**Symptom:** M8 bridge fails to start with "Address already in use".
-
-**Fix:**
-```bash
-# Find what's using the port
-ss -tulnp | grep 8765
-
-# If OpenClaw or another service uses 8765, change the M8 bridge port:
-python3 /opt/m8/server/bridge.py --port 8775
-
-# Update Android app and reverse proxy config accordingly
-```
-
-### Resource contention
-
-**Symptom:** OpenClaw performance degrades after starting M8 services.
-
-**Fix:**
-```bash
-# Check resource usage
-htop
-
-# Audio encoding (ffmpeg) can be CPU-heavy
-# Set CPU affinity to limit M8 to specific cores:
-taskset -c 2,3 python3 /opt/m8/server/bridge.py
-taskset -c 2,3 ffmpeg ...
-
-# Or use cgroups to limit CPU usage:
-# Create /etc/systemd/system/m8-bridge.service.d/limits.conf:
-# [Service]
-# CPUQuota=50%
-# MemoryMax=512M
-```
-
-### Service ordering issues
-
-**Symptom:** M8 services start before USB device is ready.
-
-**Fix:**
-```bash
-# Add udev dependency to systemd service
-# Edit /etc/systemd/system/m8-bridge.service:
-# [Unit]
-# After=network.target dev-ttyACM0.device
-# BindsTo=dev-ttyACM0.device
-
-# Or rely on the bridge's built-in auto-detection retry loop
-# (it will wait for the device to appear)
 ```
 
 ---
 
 ## Android App
 
-### WebSocket connection fails
+### Control message field name mismatch (KNOWN ISSUE)
 
-**Symptom:** App shows "Connecting..." indefinitely.
+**Symptom:** App connects to bridge but never shows "M8 Connected" status. Serial connect/disconnect events are ignored.
 
-**Fix:**
-- Verify server address and port in app settings
-- Check network connectivity (WiFi, Tailscale)
-- Try opening `ws://<server>:8765` in a browser WebSocket tester
-- Check server logs: `journalctl -u m8-bridge -f`
+**Cause:** The server (`bridge.py`) sends JSON control messages with the field name `"event"`:
+```json
+{"event": "serial_connected", "device": "/dev/ttyACM0"}
+```
+
+But the Android client (`ConnectionManager.kt`) checks for the field name `"type"`:
+```kotlin
+when (json.optString("type")) {
+    "serial_connected" -> ...
+}
+```
+
+Since `optString("type")` returns empty string when the actual field is `"event"`, the control message is never matched.
+
+**Fix:** Either:
+1. Change `ConnectionManager.kt` to read `json.optString("event")` instead of `"type"`
+2. Change `bridge.py` to send `{"type": "serial_connected"}` instead of `{"event": ...}`
 
 ### Display not rendering
 
-**Symptom:** Connected but screen is blank or garbled.
+**Symptom:** Connected but screen is blank.
 
 **Fix:**
-- The app must send enable + reset command on connect: `[0x45, 0x52]`
-- Check that WebSocket messages are being received (enable app debug logging)
-- Verify firmware version matches expected protocol
+- The app must send enable + reset on connect: `[0x45, 0x52]`
+- Check that binary WebSocket messages are being received (enable verbose logging)
+- Verify the control message issue above is not preventing display enable
 
 ### Audio not playing
 
 **Symptom:** Display works but no sound.
 
 **Fix:**
-- Audio stream is separate from serial -- check audio server is running
-- Check Android volume (media volume, not ringer)
-- Verify audio stream URL in app settings
-- Check server audio capture: `pactl list sources short`
+- Check audio stream service is running: `ss -tulnp | grep 8766`
+- Check Android media volume (not ringer volume)
+- Check the audio format mismatch and sample rate mismatch issues above
+- Look for errors in logcat: `adb logcat | grep -i "m8audio\|opus\|audiotrack"`
 
 ### Input lag
 
@@ -498,18 +380,42 @@ taskset -c 2,3 ffmpeg ...
 
 **Fix:**
 - Check network latency: `ping <server>`
-- Reduce display buffer in the app
-- Ensure touch events send immediately (no debouncing on M8 key commands)
 - Use Tailscale or LAN instead of internet for lower latency
+- Ensure touch events send immediately (KeyMapper dispatches on key down/up without debouncing)
 
 ### App crashes on reconnect
 
 **Symptom:** App crashes when server restarts or network drops.
 
 **Fix:**
-- Check Android logcat for crash stack trace:
-  ```bash
-  adb logcat | grep -i "m8\|crash\|fatal"
-  ```
-- Ensure WebSocket client handles connection close gracefully
-- Connection manager should use exponential backoff, not immediate retry flood
+```bash
+# Check logcat for crash stack trace
+adb logcat | grep -i "m8\|crash\|fatal"
+```
+
+Both M8WebSocketClient and M8AudioClient use exponential backoff reconnection (2s initial, 30s max) and should handle disconnections gracefully.
+
+---
+
+## Quick Diagnostics
+
+Run these commands on the server for a quick health check:
+
+```bash
+# Hardware
+lsusb | grep "16c0"
+ls -la /dev/ttyACM*
+arecord -l | grep -i teensy
+
+# Services
+pgrep -af "bridge.py\|audio_stream.py"
+ss -tulnp | grep -E '8765|8766'
+
+# Network
+tailscale status
+sudo ufw status
+
+# Logs
+journalctl -u m8-bridge --no-pager -n 20
+journalctl -u m8-audio --no-pager -n 20
+```

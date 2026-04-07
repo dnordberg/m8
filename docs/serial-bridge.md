@@ -1,13 +1,11 @@
 # WebSocket-to-Serial Bridge
 
-The M8 Headless firmware running on a Teensy 4.1 communicates exclusively over USB serial. The Web Serial API only works when the browser runs on the same machine the Teensy is physically plugged into, and Android devices cannot host a Teensy over USB-OTG without additional drivers.
-
-The bridge solves this by exposing the serial port as a WebSocket endpoint on the local network, allowing any client -- browser, Android app, or automation script -- to send and receive M8 protocol bytes over TCP.
+The M8 Headless firmware running on a Teensy 4.1 communicates exclusively over USB serial. The bridge exposes this serial port as a WebSocket endpoint, allowing remote clients (Android app, browser, scripts) to send and receive M8 protocol bytes over TCP.
 
 ## Architecture
 
 ```
- Android / Browser                   Linux VPS
+ Android / Browser                   Linux Server
 +------------------+              +-----------------------------+
 |                  |   WebSocket  |  bridge.py                  |
 |  M8 Client App  | <==========> |  ws://host:8765             |
@@ -22,10 +20,28 @@ The bridge solves this by exposing the serial port as a WebSocket endpoint on th
 
 The bridge performs **bidirectional byte forwarding**:
 
-- **Serial to WebSocket** -- Every byte received from the Teensy is broadcast to all connected WebSocket clients.
-- **WebSocket to Serial** -- Every message received from any WebSocket client is written to the serial port.
+- **Serial to WebSocket** -- Every chunk of bytes read from the Teensy (up to 4096 bytes) is broadcast to all connected WebSocket clients.
+- **WebSocket to Serial** -- Every message received from any WebSocket client is written to the serial port via async drain.
 
-There is no protocol interpretation inside the bridge. It treats the data as an opaque byte stream, which keeps the implementation simple and avoids coupling to a specific firmware version.
+The bridge is protocol-agnostic. It treats data as an opaque byte stream and does not interpret SLIP framing or M8 commands.
+
+## Implementation Details
+
+`server/bridge.py` is a single-file Python asyncio application built on:
+
+- `websockets` (>=12.0) -- WebSocket server with ping/pong keep-alive
+- `pyserial` (>=3.5) -- Serial port enumeration and USB vendor ID detection
+- `pyserial-asyncio` (>=0.6) -- Async serial I/O via `open_serial_connection()`
+
+The bridge is implemented as the `M8Bridge` class with these responsibilities:
+
+1. **Teensy detection** -- scans serial ports for USB vendor ID `0x16C0` (PJRC)
+2. **Async serial** -- opens a `StreamReader`/`StreamWriter` pair via `serial_asyncio`
+3. **WebSocket server** -- serves on configurable host/port with 20s ping interval
+4. **Multi-client broadcast** -- maintains a set of connected clients; serial data goes to all
+5. **Control messages** -- sends JSON status events to clients
+6. **Reconnection** -- retries serial connection every 2 seconds on disconnect
+7. **Graceful shutdown** -- handles SIGINT/SIGTERM, closes all connections
 
 ## Running the Bridge
 
@@ -35,7 +51,11 @@ There is no protocol interpretation inside the bridge. It treats the data as an 
 pip install -r server/requirements.txt
 ```
 
-Dependencies: `websockets`, `pyserial`, `pyserial-asyncio`.
+Or manually:
+
+```bash
+pip install websockets pyserial pyserial-asyncio
+```
 
 ### Basic Usage
 
@@ -43,17 +63,17 @@ Dependencies: `websockets`, `pyserial`, `pyserial-asyncio`.
 python3 server/bridge.py
 ```
 
-With no arguments the bridge will auto-detect a connected Teensy by scanning `/dev/ttyACM*` devices and checking for the Teensy USB vendor ID (`0x16C0`). It binds to `127.0.0.1:8765` by default.
+With no arguments, the bridge auto-detects a connected Teensy by scanning serial ports for vendor ID `0x16C0`. Falls back to the first `/dev/ttyACM*` device if vendor ID metadata is unavailable. Binds to `127.0.0.1:8765` by default.
 
 ### Command-Line Options
 
-| Flag       | Default       | Description |
-|------------|---------------|-------------|
-| `--serial` | auto-detect   | Path to serial device (e.g. `/dev/ttyACM0`) |
-| `--baud`   | `9600`        | Baud rate for the serial connection |
-| `--host`   | `127.0.0.1`  | Address to bind the WebSocket server to |
-| `--port`   | `8765`        | Port for the WebSocket server |
-| `-v`       | off           | Enable debug logging |
+| Flag         | Default       | Description |
+|--------------|---------------|-------------|
+| `--serial`   | auto-detect   | Path to serial device (e.g. `/dev/ttyACM0`) |
+| `--baud`     | `9600`        | Baud rate (formality for USB CDC serial) |
+| `--host`     | `127.0.0.1`   | WebSocket bind address |
+| `--port`     | `8765`        | WebSocket port |
+| `--verbose` / `-v` | off     | Enable debug logging |
 
 Example with all options:
 
@@ -61,43 +81,68 @@ Example with all options:
 python3 server/bridge.py \
   --serial /dev/ttyACM0 \
   --baud 9600 \
-  --host 127.0.0.1 \
-  --port 8765
+  --host 0.0.0.0 \
+  --port 8765 \
+  --verbose
 ```
 
 ### Auto-Detection
 
-When `--serial` is not provided, the bridge scans serial ports and uses `pyserial` to query the USB vendor ID. The Teensy 4.1 reports vendor ID `0x16C0` (PJRC). The first matching device is used. If no device is found the bridge enters a retry loop, checking every two seconds until one appears. This allows the bridge to start at boot before the Teensy is plugged in.
+When `--serial` is not provided:
+
+1. Bridge scans all serial ports via `serial.tools.list_ports.comports()`
+2. Checks each port's `vid` property against `0x16C0` (PJRC/Teensy)
+3. If no vendor ID match, falls back to the first `/dev/ttyACM*` device
+4. If no device found, retries every 2 seconds until one appears
+
+This allows the bridge to start at boot before the Teensy is plugged in.
 
 ## Multiple Clients
 
-The bridge supports multiple simultaneous WebSocket connections. Serial output is broadcast to every connected client. Input from any client is written to the serial port. In practice only one client should send commands at a time to avoid interleaving protocol messages.
+The bridge supports multiple simultaneous WebSocket connections. Serial output is broadcast to every connected client. Input from any client is written to the serial port.
+
+In practice, only one client should send input commands at a time to avoid interleaving protocol messages.
+
+## Control Messages
+
+The bridge sends JSON text messages to clients on state changes:
+
+**Serial connected:**
+```json
+{"event": "serial_connected", "device": "/dev/ttyACM0"}
+```
+
+**Serial disconnected:**
+```json
+{"event": "serial_disconnected"}
+```
+
+On initial WebSocket connection, if the serial port is already open, the client receives a `serial_connected` message immediately.
 
 ## Serial Disconnection and Reconnection
 
-If the Teensy is unplugged or the serial device disappears, the bridge:
+If the Teensy is unplugged or the serial device disappears:
 
-1. Logs the disconnection event.
-2. Notifies all connected WebSocket clients with a JSON control message:
-   `{"event": "serial_disconnected"}`.
-3. Enters a reconnection loop, attempting to reopen the serial port every two seconds.
-4. On successful reconnection, notifies clients with:
-   `{"event": "serial_connected", "device": "/dev/ttyACM0"}`.
+1. Serial read returns empty or raises an OSError
+2. Bridge closes the serial connection
+3. Broadcasts `{"event": "serial_disconnected"}` to all WebSocket clients
+4. Enters reconnection loop (retries every 2 seconds)
+5. On successful reconnection, broadcasts `{"event": "serial_connected", "device": "..."}`
 
-WebSocket clients (the Android app) should handle these events and display appropriate status to the user.
+WebSocket connections remain open during serial disconnection. Clients should handle control messages and display appropriate status.
 
-## Security Considerations
+## Security
 
-The bridge binds to `127.0.0.1` by default, which means it is only reachable from the local machine. This is the safe default.
+The bridge binds to `127.0.0.1` by default -- only reachable from localhost.
 
-To expose the bridge to the network (for Android access), use one of:
+To expose for Android access:
 
-1. **Tailscale** (preferred) -- no configuration needed, encrypted tunnel
-2. **Reverse proxy with TLS** -- place behind nginx/caddy
+1. **Tailscale** (preferred) -- bind to `0.0.0.0` or the Tailscale IP; traffic is encrypted via WireGuard
+2. **Reverse proxy** -- place behind nginx/caddy with TLS termination
 
-**Do not bind to `0.0.0.0` without protection.** The bridge provides raw serial access to the Teensy. An unauthorized client could send arbitrary commands to the device.
+**Do not bind to `0.0.0.0` on a public network without protection.** The bridge provides raw serial access to the Teensy hardware.
 
-Example nginx snippet for TLS termination:
+Example nginx WebSocket proxy:
 
 ```nginx
 location /ws {
@@ -105,48 +150,23 @@ location /ws {
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "upgrade";
-    proxy_set_header Host $host;
     proxy_read_timeout 86400;
 }
 ```
 
-## Audio Streaming
-
-Serial communication carries only display and control data. Audio from the M8 is a separate concern.
-
-The Teensy 4.1 presents a USB audio device alongside the serial port. To stream audio to remote clients:
-
-1. **Capture USB audio** using ALSA or PulseAudio on the host.
-2. **Encode as Opus** using `ffmpeg` for low-latency, compressed audio.
-3. **Stream via WebSocket or HTTP** to the client.
-
-Example using ffmpeg:
-
-```bash
-ffmpeg \
-  -f pulse -i alsa_input.usb-PJRC_Teensy_Audio-00.analog-stereo \
-  -c:a libopus -b:a 128k -vbr on \
-  -application restricted_lowdelay \
-  -frame_duration 10 \
-  -f ogg pipe:1
-```
-
-Audio streaming is intentionally kept separate from the serial bridge to allow independent configuration and keep the bridge code simple.
-
-## Latency Considerations
-
-- **Serial latency** is negligible. USB CDC serial at 9600 baud on a Teensy 4.1 adds sub-millisecond delay per byte. The actual USB transport is faster than the configured baud rate.
-- **WebSocket latency** over LAN/Tailscale is typically under 5ms round trip. TLS adds a small overhead on initial handshake only.
-- **Display rendering** latency depends on the client. The M8 protocol sends screen updates at roughly 30fps. At typical LAN latencies the experience is indistinguishable from a local USB connection.
-- **Audio latency** depends on the encoding pipeline. Opus with 10ms frame size and a small jitter buffer can achieve end-to-end latency under 100ms on LAN, which is acceptable for monitoring. For tighter latency, reduce frame size to 5ms and minimize buffering.
-
-## Error Handling Summary
+## Error Handling
 
 | Scenario | Bridge Behavior |
 |----------|----------------|
 | Teensy not connected at startup | Retry auto-detection every 2s |
-| Teensy unplugged during operation | Notify clients, enter reconnect loop |
+| Teensy unplugged during operation | Notify clients, close serial, reconnect loop |
+| Serial read/write error | Close port, reconnect loop |
 | WebSocket client disconnects | Remove from client set, continue |
 | All WebSocket clients disconnect | Continue running, wait for new clients |
-| Serial read/write error | Close port, enter reconnect loop |
-| SIGINT / SIGTERM | Graceful shutdown of all connections |
+| SIGINT / SIGTERM | Close all WebSocket connections, close serial, exit |
+
+## Latency
+
+- **Serial**: USB CDC serial operates at full USB speed regardless of configured baud rate. Sub-millisecond per chunk.
+- **WebSocket**: Under 5ms round trip over LAN/Tailscale. TLS adds overhead on initial handshake only.
+- **Display**: M8 sends screen updates at ~30fps. At typical LAN latencies, the experience is indistinguishable from a local connection.

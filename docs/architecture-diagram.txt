@@ -1,0 +1,103 @@
+M8 Android Client - System Architecture
+========================================
+
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│  HARDWARE LAYER                                                          [orange]   │
+│                                                                                     │
+│  ┌───────────────────────────────────────┐                                          │
+│  │       Teensy 4.1 Microcontroller      │                                          │
+│  │      (M8 Headless Firmware v3.x)      │                                          │
+│  │                                       │                                          │
+│  │   USB Serial (/dev/ttyACM0)  ─────────┼──── Display data (SLIP-encoded frames)   │
+│  │   USB Audio  (ALSA hw:N,0)   ─────────┼──── Stereo audio (48kHz/16bit)           │
+│  └───────────────────────────────────────┘                                          │
+│              │ USB                  │ USB                                            │
+└──────────────┼──────────────────────┼───────────────────────────────────────────────┘
+               │                      │
+               ▼                      ▼
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│  SERVER LAYER (Linux VPS)                                                 [blue]    │
+│                                                                                     │
+│  ┌─────────────────────────────┐    ┌──────────────────────────────────────────┐    │
+│  │      bridge.py :8765        │    │        audio_stream.py :8766             │    │
+│  │  Serial-to-WebSocket Bridge │    │   ALSA-to-Opus-to-WebSocket Streamer     │    │
+│  │                             │    │                                          │    │
+│  │  /dev/ttyACM0 ←→ WS:8765   │    │   arecord -D hw:N,0 -f S16_LE -r 48000  │    │
+│  │                             │    │       │                                  │    │
+│  │  • Reads serial frames      │    │       ▼                                  │    │
+│  │  • Forwards to WS clients   │    │   opusenc --raw --raw-rate 48000         │    │
+│  │  • Relays WS input → serial │    │       │                                  │    │
+│  └─────────────────────────────┘    │       ▼                                  │    │
+│              │                      │   Opus frames → WS:8766 (broadcast)      │    │
+│              │                      └──────────────────────────────────────────┘    │
+│              │                                   │                                  │
+└──────────────┼───────────────────────────────────┼──────────────────────────────────┘
+               │                                   │
+               ▼                                   ▼
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│  NETWORK LAYER                                                          [purple]    │
+│                                                                                     │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐    │
+│  │                    Tailscale VPN (WireGuard Tunnel)                         │    │
+│  │                                                                             │    │
+│  │   WS:8765 ◄──────────────────► Display + Input  (bidirectional)             │    │
+│  │   WS:8766 ────────────────────► Audio stream     (server → client)          │    │
+│  └─────────────────────────────────────────────────────────────────────────────┘    │
+│                                                                                     │
+└──────────────┬───────────────────────────────────┬──────────────────────────────────┘
+               │                                   │
+               ▼                                   ▼
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│  ANDROID APP LAYER                                                      [green]     │
+│                                                                                     │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐    │
+│  │                         ConnectionManager                                   │    │
+│  │              (orchestrates connections + lifecycle)                          │    │
+│  └────────┬──────────────────────┬──────────────────────────┬──────────────────┘    │
+│           │                      │                          │                       │
+│           ▼                      ▼                          ▼                       │
+│  ┌─────────────────┐  ┌──────────────────┐  ┌──────────────────────────────┐       │
+│  │ M8WebSocketClient│  │  M8AudioClient   │  │       M8Controls             │       │
+│  │  (WS:8765)      │  │  (WS:8766)       │  │                              │       │
+│  └────────┬─────────┘  └────────┬─────────┘  │  Touch → M8KeyMapping       │       │
+│           │                     │             │  Gamepad → M8KeyMapping     │       │
+│           ▼                     ▼             │  Tilt  → M8KeyMapping       │       │
+│  ┌─────────────────┐  ┌──────────────────┐   └──────────────┬───────────────┘       │
+│  │   M8Protocol    │  │   OpusDecoder    │                  │                       │
+│  │ (SLIP decoder)  │  │                  │                  │ M8Commands             │
+│  └────────┬─────────┘  └────────┬─────────┘                  │ (key bytes)           │
+│           │                     │                            │                       │
+│           ▼                     ▼                            ▼                       │
+│  ┌─────────────────┐  ┌──────────────────┐   ┌──────────────────────────────┐       │
+│  │M8DisplayBuffer  │  │  M8AudioPlayer   │   │   M8WebSocketClient          │       │
+│  │ (320×240 RGB)   │  │  (AudioTrack)    │   │   (sends input → WS:8765)    │       │
+│  └────────┬─────────┘  └──────────────────┘   └──────────────────────────────┘       │
+│           │                                                                         │
+│           ▼                                                                         │
+│  ┌─────────────────┐   ┌──────────────────┐                                         │
+│  │   M8Screen      │   │  M8ViewModel     │                                         │
+│  │ (Compose Canvas)│◄──│  (StateFlow)     │◄── MainActivity (Jetpack Compose)       │
+│  └─────────────────┘   └──────────────────┘                                         │
+│                                                                                     │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+
+
+DATA FLOW PATHS
+===============
+
+► DISPLAY PATH (Server → Client):
+  Teensy USB Serial → /dev/ttyACM0 → bridge.py → WS:8765 → Tailscale VPN
+  → M8WebSocketClient → M8Protocol (SLIP decode) → M8DisplayBuffer → M8Screen
+
+► AUDIO PATH (Server → Client):
+  Teensy USB Audio → ALSA hw:N,0 → arecord → opusenc → audio_stream.py → WS:8766
+  → Tailscale VPN → M8AudioClient → OpusDecoder → M8AudioPlayer (AudioTrack)
+
+► INPUT PATH (Client → Server):
+  Touch/Gamepad/Tilt → M8Controls → KeyMapper → M8Commands → M8WebSocketClient
+  → WS:8765 → Tailscale VPN → bridge.py → /dev/ttyACM0 → Teensy USB Serial
+
+► LATENCY BUDGET:
+  Display: ~15-30ms (serial read + WS relay + SLIP decode + render)
+  Audio:   ~40-80ms (ALSA capture + Opus encode + WS relay + decode + playback)
+  Input:   ~10-20ms (key event + WS send + serial write)

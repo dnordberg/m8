@@ -1,6 +1,6 @@
 # m8 Architecture Overview
 
-This document describes the system architecture for the m8 Android app -- a remote client for controlling and monitoring a Dirtywave M8 Headless tracker running on a Teensy 4.1 microcontroller connected to a Linux VPS.
+System architecture for the m8 Android app -- a remote client for controlling and monitoring a Dirtywave M8 Headless tracker running on a Teensy 4.1 connected to a Linux server via USB.
 
 ## Table of Contents
 
@@ -8,24 +8,22 @@ This document describes the system architecture for the m8 Android app -- a remo
 - [System Architecture](#system-architecture)
 - [Component Details](#component-details)
 - [Protocol Reference](#protocol-reference)
-- [Network Topology and Port Allocation](#network-topology-and-port-allocation)
-- [OpenClaw Coexistence](#openclaw-coexistence)
-- [Security Considerations](#security-considerations)
+- [Network Topology](#network-topology)
 - [Data Flow](#data-flow)
+- [Security Considerations](#security-considerations)
 - [Failure Modes and Recovery](#failure-modes-and-recovery)
 
 ---
 
 ## Problem Statement
 
-The Dirtywave M8 Headless firmware communicates exclusively over USB. There is no native network protocol. The reference web client, [M8WebDisplay](https://github.com/Dirtywave/M8WebDisplay), relies on the WebSerial API, which requires the browser to run on the same physical machine as the USB device.
+The Dirtywave M8 Headless firmware communicates exclusively over USB. There is no native network protocol. The reference web client, M8WebDisplay, relies on the WebSerial API, which requires the browser to run on the same physical machine as the USB device.
 
 For remote Android access, we need a bridge architecture that:
 
 1. Exposes USB serial communication over a network transport (WebSocket).
 2. Captures USB audio from the Teensy and streams it over the network.
 3. Renders the M8 display, plays audio, and sends input from an Android device.
-4. Coexists peacefully with the existing OpenClaw system on the same VPS.
 
 ---
 
@@ -34,59 +32,52 @@ For remote Android access, we need a bridge architecture that:
 ```
 +--------------------------------------+
 |  Teensy 4.1 + M8 Headless Firmware   |
-|  (M8_V6_5_2B_HEADLESS.hex)           |
 +------------------+-------------------+
                    |
-                   |  USB Serial (display protocol + control)
-                   |  USB Audio  (24-bit, up to 24 channels)
+                   |  USB Serial (SLIP-framed display protocol + control)
+                   |  USB Audio  (16-bit stereo, 44100 Hz)
                    |
 +------------------v-------------------+
-|            Linux VPS                  |
+|            Linux Server              |
 |                                      |
 |  +-------------------------------+   |
-|  | WebSocket-to-serial bridge    |   |  Serial Bridge
-|  | (port 8765)                   |   |  /dev/ttyACM0 -> WebSocket
-|  +-------------------------------+   |
-|                                      |
-|  +-------------------------------+   |
-|  | ALSA/PulseAudio capture       |   |  Audio Bridge
-|  | -> Opus/WebRTC stream         |   |  USB audio -> network stream
-|  | (port 8766)                   |   |
+|  | bridge.py                     |   |  Serial Bridge
+|  | /dev/ttyACM0 -> WebSocket     |   |  Teensy auto-detection (0x16C0)
+|  | port 8765                     |   |  async serial via serial_asyncio
 |  +-------------------------------+   |
 |                                      |
 |  +-------------------------------+   |
-|  | OpenClaw (existing system)    |   |  Do not disturb
-|  | (own ports, unchanged)        |   |
-|  +-------------------------------+   |
-|                                      |
-|  +-------------------------------+   |
-|  | nginx / caddy reverse proxy   |   |  TLS termination, routing
-|  | (port 443)                    |   |
+|  | audio_stream.py               |   |  Audio Bridge
+|  | arecord -> opusenc pipeline   |   |  ALSA capture -> Opus/OGG encoding
+|  | port 8766                     |   |  3 auto-detection strategies
 |  +-------------------------------+   |
 |                                      |
 +------------------+-------------------+
                    |
-                   |  WebSocket + Audio Stream
-                   |  (via Tailscale or reverse proxy)
+                   |  WebSocket (display) + WebSocket (audio)
+                   |  via Tailscale VPN (default: 100.64.0.1)
                    |
 +------------------v-------------------+
 |          Android App (m8)            |
 |                                      |
 |  +-------------------------------+   |
-|  | M8 Display Renderer           |   |  Native canvas
+|  | M8 Display Renderer           |   |  320x240 bitmap, Compose Canvas
+|  | SLIP decoder + M8 protocol    |   |  sprite font rendering
 |  +-------------------------------+   |
 |                                      |
 |  +-------------------------------+   |
-|  | Audio Player                  |   |  Opus / WebRTC playback
+|  | Audio Player                  |   |  AudioTrack, 48kHz stereo
+|  | OpusDecoder (MediaCodec)      |   |  low-latency playback
 |  +-------------------------------+   |
 |                                      |
 |  +-------------------------------+   |
-|  | Touch / Gamepad Input         |   |  Maps to M8 key commands
+|  | Touch / Keyboard / Gamepad    |   |  Maps to M8 key bitmask
+|  | D-pad + action buttons        |   |  haptic feedback
 |  +-------------------------------+   |
 |                                      |
 |  +-------------------------------+   |
-|  | Connection Manager            |   |  Reconnection, latency,
-|  |                               |   |  server discovery
+|  | ConnectionManager             |   |  Coordinates display + audio
+|  | M8WebSocketClient (OkHttp)    |   |  exponential backoff reconnect
 |  +-------------------------------+   |
 |                                      |
 +--------------------------------------+
@@ -100,186 +91,145 @@ For remote Android access, we need a bridge architecture that:
 
 The Teensy 4.1 microcontroller runs the closed-source M8 Headless firmware. It presents two USB interfaces to the host:
 
-- **USB Serial** -- carries the bidirectional display protocol (screen draw commands from M8, key input commands from host).
-- **USB Audio** -- a 24-bit USB audio device with up to 24 channels of output.
-
-The firmware `.hex` file is flashed to the Teensy using the Teensy Loader application. The latest known firmware version is `M8_V6_5_2B_HEADLESS.hex`.
+- **USB Serial** -- carries the bidirectional SLIP-framed display protocol (draw commands from M8, key input commands from host).
+- **USB Audio** -- a stereo USB audio device.
 
 **USB Device Identification:**
 
 | Property       | Value    |
 |----------------|----------|
-| Vendor ID      | `0x16c0` |
-| Product ID     | `0x048a` or `0x048b` |
+| Vendor ID      | `0x16C0` (PJRC) |
 | Serial device  | `/dev/ttyACM0` (typical) |
 
-### Serial Bridge
+### Serial Bridge (`server/bridge.py`)
 
-The serial bridge converts the USB serial interface (`/dev/ttyACM0`) into a WebSocket endpoint accessible over the network. Two approaches are viable:
+A Python asyncio service that bridges the USB serial port to a WebSocket endpoint.
 
-1. **ser2net** -- a well-established serial-to-network proxy. Can be configured to expose the serial port as a raw TCP or Telnet socket. A lightweight WebSocket wrapper (e.g., `websocat`) can sit in front of it.
+**Key features:**
 
-2. **Custom WebSocket-to-serial bridge** -- a purpose-built daemon (Python) that opens the serial port directly and exposes a WebSocket server. This approach offers tighter control over buffering, reconnection, and protocol-level awareness. See `server/bridge.py`.
+- Teensy auto-detection by scanning serial ports for vendor ID `0x16C0`, with `/dev/ttyACM*` glob fallback
+- Async serial I/O via `serial_asyncio` (4096-byte read buffer)
+- WebSocket server on port 8765 (via `websockets` library, ping interval 20s)
+- Multi-client broadcast: serial output is sent to all connected WebSocket clients
+- Input from any WebSocket client is forwarded to the serial port
+- JSON control messages: `{"event": "serial_connected", "device": "..."}` and `{"event": "serial_disconnected"}`
+- Reconnection loop when Teensy is unplugged (retries every 2 seconds)
+- Graceful shutdown on SIGINT/SIGTERM
 
-The bridge must:
+The bridge is protocol-agnostic -- it forwards raw bytes without interpretation.
 
-- Open `/dev/ttyACM0` at 9600 baud, 8N1, with a 4096-byte buffer.
-- Forward bytes bidirectionally between the WebSocket client and the serial port with minimal latency.
-- Handle USB device disconnection and reconnection gracefully (the Teensy may be reflashed or power-cycled).
-- Bind to `127.0.0.1:8765` to prevent direct external access.
+### Audio Bridge (`server/audio_stream.py`)
 
-### Audio Bridge
+A Python asyncio service that captures USB audio from the Teensy and streams Opus/OGG-encoded audio over WebSocket.
 
-The Teensy presents a USB audio device to the Linux host. The audio bridge captures this audio and streams it to the Android client.
+**Key features:**
 
-**Capture pipeline:**
+- Auto-detection of Teensy USB audio device using 3 strategies:
+  1. `/proc/asound/cards` -- scan for "Teensy" by name
+  2. `/proc/asound/cardN/usbid` -- match USB vendor ID `16c0:`
+  3. `arecord -l` -- parse output for Teensy entries
+- Capture pipeline: `arecord` (raw S16_LE PCM) piped to `opusenc` (OGG/Opus output)
+- Default: 44100 Hz, 2 channels, 128 kbps Opus, 20ms frame size
+- WebSocket server on port 8766 with multi-client broadcast
+- JSON control messages: `{"event": "audio_connected", ...}` with codec/format metadata
+- Supports client commands: `ping`, `status`
+- Device reconnection on USB disconnect
 
-1. ALSA or PulseAudio captures audio from the Teensy USB audio device.
-2. The raw PCM audio is encoded to Opus (low latency, good compression) or packaged for WebRTC transport.
-3. The encoded stream is served over a WebSocket (port 8766) or via a WebRTC peer connection.
-
-**Channel layout (24-bit USB audio, up to 24 channels):**
-
-| Channels | Purpose          |
-|----------|------------------|
-| 1-2      | Main stereo mix  |
-| 3-18     | Individual tracks (8 stereo pairs) |
-| 19-20    | Mod FX send      |
-| 21-22    | Delay send       |
-| 23-24    | Reverb send      |
-
-For the initial implementation, capturing channels 1-2 (main stereo mix) is sufficient. Per-track streaming can be added later for mixing or monitoring use cases.
-
-**Latency target:** Under 50ms end-to-end (capture to playback on Android) is desirable for a responsive music-making experience. Opus in low-delay mode (`OPUS_APPLICATION_RESTRICTED_LOWDELAY`) with small frame sizes (5-10ms) helps achieve this.
+**System dependencies:** `alsa-utils` (arecord), `opus-tools` (opusenc)
 
 ### Android Client
 
-The Android app has four primary subsystems:
+The Android app (package `com.m8`) is built with Kotlin and Jetpack Compose.
 
-**M8 Display Renderer** -- Interprets the binary display protocol received over WebSocket and renders the M8 screen using a native Kotlin/Compose canvas renderer that parses the binary protocol directly.
+**M8DisplayBuffer + M8Protocol** -- Maintains a 320x240 ARGB bitmap. Decodes SLIP-framed binary data from the WebSocket and applies draw commands (rectangles, characters, waveforms) to the bitmap using a sprite font renderer.
 
-**Audio Player** -- Receives the Opus-encoded audio stream and plays it through the Android audio subsystem. Uses `AudioTrack` in low-latency mode or Oboe (AAudio) for minimal playback latency.
+**M8AudioPlayer + OpusDecoder** -- Receives audio data over a separate WebSocket. Decodes Opus frames using Android's MediaCodec API. Plays decoded PCM via AudioTrack at 48kHz stereo in low-latency mode (~40ms buffer).
 
-**Touch / Gamepad Input** -- Maps touchscreen gestures and physical gamepad buttons to M8 key commands. The M8 has 8 input keys: UP, DOWN, LEFT, RIGHT, OPTION, EDIT, PLAY, SHIFT. These are sent as single-byte key state commands over the serial WebSocket.
+**KeyMapper** -- Maps Android keyboard keys, gamepad buttons, and WASD keys to the M8 key bitmask. Touch controls (M8Controls.kt) provide an on-screen D-pad and action buttons with haptic feedback.
 
-**Connection Manager** -- Handles server discovery (manual entry or Tailscale hostname), WebSocket lifecycle, latency monitoring, and audio stream synchronization.
+**ConnectionManager** -- Coordinates the display WebSocket and audio WebSocket connections. Handles protocol initialization (enable + reset display), key state transmission, and mute control.
+
+**M8WebSocketClient + M8AudioClient** -- OkHttp-based WebSocket clients with exponential backoff reconnection (2s initial, 30s max, doubling up to 5 times).
 
 ---
 
 ## Protocol Reference
 
-### USB Serial
+### SLIP Framing
 
-| Parameter   | Value |
-|-------------|-------|
-| Baud rate   | 9600  |
-| Data bits   | 8     |
-| Parity      | None  |
-| Stop bits   | 1     |
-| Buffer size | 4096 bytes |
+All M8 serial data uses SLIP (Serial Line Internet Protocol) framing:
 
-Note: While the baud rate is set to 9600 for configuration purposes, the actual USB CDC serial transport operates at full USB speed. The baud rate setting is largely a formality for USB serial devices.
+| Byte   | Meaning              |
+|--------|----------------------|
+| `0xC0` | Frame delimiter (END)|
+| `0xDB` | Escape character     |
+| `0xDC` | Escaped END (0xC0)   |
+| `0xDD` | Escaped ESC (0xDB)   |
 
-### M8 Display Protocol
+### Display Commands (M8 -> Host)
 
-The M8 communicates using a binary protocol over serial. Key command bytes:
+| Command Byte | Name          | Payload Size | Format |
+|--------------|---------------|-------------|--------|
+| `0xFE`       | DRAW_RECT     | 12 bytes    | cmd(1) + x(2) + y(2) + w(2) + h(2) + r(1) + g(1) + b(1) |
+| `0xFD`       | DRAW_CHAR     | 12 bytes    | cmd(1) + x(2) + y(2) + char(1) + fg_r(1) + fg_g(1) + fg_b(1) + bg_r(1) + bg_g(1) + bg_b(1) |
+| `0xFC`       | DRAW_WAVEFORM | 8+ bytes    | cmd(1) + x(2) + y(2) + r(1) + g(1) + b(1) + wavedata(N) |
+| `0xFF`       | SYSTEM_INFO   | 6+ bytes    | cmd(1) + fw_major(1) + fw_minor(1) + fw_patch(1) + ... |
+| `0xFB`       | DRAW_JOYPAD   | varies      | Joypad state (currently ignored by client) |
 
-| Byte   | Command                        | Direction    |
-|--------|--------------------------------|--------------|
-| `0x43` | Key state (button input)       | Host -> M8   |
-| `0x44` | Disconnect                     | Host -> M8   |
-| `0x45` | Enable display                 | Host -> M8   |
-| `0x52` | Reset display                  | Host -> M8   |
-| `0x4B` | MIDI note on/off               | Host -> M8   |
+All multi-byte integers are little-endian unsigned 16-bit.
 
-**Key bitmask (sent after 0x43):**
+### Input Commands (Host -> M8)
 
-| Bit | Button  |
-|-----|---------|
-| 0   | UP      |
-| 1   | DOWN    |
-| 2   | LEFT    |
-| 3   | RIGHT   |
-| 4   | OPTION  |
-| 5   | EDIT    |
-| 6   | SHIFT   |
-| 7   | PLAY    |
+| Command Byte | Name           | Payload |
+|--------------|----------------|---------|
+| `0x43`       | KEY_STATE      | 1 byte key bitmask |
+| `0x44`       | DISCONNECT     | (none) |
+| `0x45`       | ENABLE_DISPLAY | (none) |
+| `0x52`       | RESET_DISPLAY  | (none) |
 
-Display data flows from the M8 to the host as a stream of draw commands (rectangles, characters, waveforms) that the client must interpret and render. For full protocol details, refer to the M8WebDisplay source code (`js/display.js`, `js/serial.js`).
+**Key bitmask:**
+
+| Bit | Button  | Value  |
+|-----|---------|--------|
+| 0   | UP      | `0x01` |
+| 1   | DOWN    | `0x02` |
+| 2   | LEFT    | `0x04` |
+| 3   | RIGHT   | `0x08` |
+| 4   | OPTION  | `0x10` |
+| 5   | EDIT    | `0x20` |
+| 6   | SHIFT   | `0x40` |
+| 7   | PLAY    | `0x80` |
+
+Multiple buttons are combined by ORing their values into a single bitmask byte.
+
+### Connection Sequence
+
+1. Open WebSocket to bridge at `ws://server:8765`
+2. Send enable + reset commands: `[0x45, 0x52]`
+3. Begin receiving SLIP-framed display data
+4. Send key state commands (`[0x43, bitmask]`) on user input
+5. On disconnect, send `[0x44]`
 
 ### USB Audio
 
-| Property     | Value                    |
-|--------------|--------------------------|
-| Bit depth    | 24-bit                   |
-| Sample rate  | 44100 Hz (typical)       |
-| Channels     | Up to 24                 |
-| USB class    | USB Audio Class 1 or 2   |
+| Property     | Value              |
+|--------------|--------------------|
+| Capture rate | 44100 Hz           |
+| Bit depth    | 16-bit (S16_LE)    |
+| Channels     | 2 (stereo)         |
+| Encoding     | Opus in OGG container |
+| Transport    | WebSocket (port 8766) |
 
 ---
 
-## Network Topology and Port Allocation
+## Network Topology
 
-All M8 services bind to `127.0.0.1` by default. External access is provided exclusively through a reverse proxy with TLS termination, or through a Tailscale tunnel.
+| Service                    | Port | Default Binding | Protocol  |
+|----------------------------|------|-----------------|-----------|
+| M8 Serial WebSocket Bridge | 8765 | `127.0.0.1`    | WebSocket |
+| M8 Audio Stream            | 8766 | `127.0.0.1`    | WebSocket |
 
-| Service                          | Port | Binding       | Protocol  |
-|----------------------------------|------|---------------|-----------|
-| OpenClaw (existing)              | varies | keep as-is  | --        |
-| M8 Serial WebSocket Bridge       | 8765 | `127.0.0.1`  | WebSocket |
-| M8 Audio Stream                  | 8766 | `127.0.0.1`  | WebSocket / WebRTC |
-| M8 Web Display (optional)        | 8000 | `127.0.0.1`  | HTTP      |
-| Reverse Proxy (nginx or caddy)   | 443  | `0.0.0.0` or Tailscale | HTTPS / WSS |
-
-The reverse proxy routes requests to the appropriate backend based on path:
-
-```
-wss://m8.example.com/serial   ->  127.0.0.1:8765  (serial bridge)
-wss://m8.example.com/audio    ->  127.0.0.1:8766  (audio stream)
-https://m8.example.com/        ->  127.0.0.1:8000  (web display, optional)
-```
-
----
-
-## OpenClaw Coexistence
-
-The Linux VPS runs an existing OpenClaw system. All M8 services must coexist without interference:
-
-- M8 services use dedicated, non-conflicting ports (8765, 8766, 8000).
-- M8 services bind to `127.0.0.1` only, never to `0.0.0.0` directly.
-- M8 services run under a separate systemd unit or user account.
-- Reverse proxy configuration for M8 routes is additive -- it must not modify or displace existing OpenClaw proxy rules.
-- Resource consumption (CPU, memory, bandwidth) should be monitored to ensure M8 audio encoding does not starve OpenClaw processes.
-
----
-
-## Security Considerations
-
-### No Public Exposure
-
-The serial bridge and audio stream must never be directly exposed to the public internet. An unauthenticated serial bridge would give anyone full control over the M8 hardware. All services bind to `127.0.0.1` by default.
-
-### Tailscale (Preferred)
-
-The recommended access method is Tailscale, a WireGuard-based mesh VPN:
-
-- Install Tailscale on both the VPS and the Android device.
-- Access M8 services via the Tailscale IP or MagicDNS hostname.
-- No reverse proxy needed -- the Android app connects directly over the encrypted Tailscale tunnel.
-- Tailscale ACLs can restrict which devices are allowed to reach the M8 ports.
-
-### TLS via Reverse Proxy
-
-If Tailscale is not used, a reverse proxy (nginx or caddy) must terminate TLS:
-
-- Use Let's Encrypt certificates (caddy handles this automatically).
-- Require client authentication (mutual TLS, API key, or HTTP basic auth at minimum).
-- Rate-limit WebSocket connections to prevent abuse.
-
-### Additional Measures
-
-- **Firewall rules** -- Use `ufw` or `iptables` to restrict inbound traffic to only the reverse proxy port (443) and SSH.
-- **Principle of least privilege** -- Run M8 bridge services as a dedicated non-root user with access only to `/dev/ttyACM0` and the USB audio device (via `udev` rules or group membership in `dialout` and `audio`).
-- **No secrets in the app** -- The Android app should not embed API keys or certificates. Use Tailscale device identity or prompt the user for credentials.
+The recommended access method is Tailscale (default host: `100.64.0.1`). When using Tailscale, bind the servers to `0.0.0.0` or the Tailscale IP so the Android client can reach them directly over the encrypted WireGuard tunnel.
 
 ---
 
@@ -290,21 +240,23 @@ If Tailscale is not used, a reverse proxy (nginx or caddy) must terminate TLS:
 ```
 M8 Firmware
   -> USB Serial (/dev/ttyACM0)
-  -> Serial Bridge (localhost:8765)
-  -> WebSocket (WSS via proxy or Tailscale)
-  -> Android Connection Manager
-  -> M8 Display Renderer
-  -> Screen
+  -> bridge.py (SLIP frames, raw forwarding)
+  -> WebSocket (port 8765, via Tailscale)
+  -> M8WebSocketClient (OkHttp)
+  -> M8Protocol (SLIP decode + command parse)
+  -> M8DisplayBuffer (320x240 bitmap)
+  -> M8Screen (Compose Canvas render)
 ```
 
 ### User Input (Android -> M8)
 
 ```
-Touchscreen / Gamepad
-  -> Android Input Handler
-  -> Key command byte (0x43 + key bitmask)
-  -> WebSocket
-  -> Serial Bridge
+Touch / Keyboard / Gamepad
+  -> KeyMapper (key -> bitmask)
+  -> ConnectionManager.sendKeyState()
+  -> M8WebSocketClient.send([0x43, bitmask])
+  -> WebSocket (port 8765)
+  -> bridge.py
   -> USB Serial (/dev/ttyACM0)
   -> M8 Firmware
 ```
@@ -313,34 +265,48 @@ Touchscreen / Gamepad
 
 ```
 M8 Firmware
-  -> USB Audio (24-bit, 24ch)
-  -> ALSA/PulseAudio capture
-  -> Opus encoder (low-delay mode)
-  -> Audio Stream (localhost:8766)
-  -> WebSocket or WebRTC (via proxy or Tailscale)
-  -> Android Audio Player
+  -> USB Audio (stereo, 44100 Hz)
+  -> arecord (ALSA capture, raw S16_LE)
+  -> opusenc (Opus/OGG encoding, 128 kbps)
+  -> audio_stream.py
+  -> WebSocket (port 8766, via Tailscale)
+  -> M8AudioClient (OkHttp)
+  -> OpusDecoder (MediaCodec)
+  -> M8AudioPlayer (AudioTrack, 48kHz stereo)
   -> Speaker / Headphones
 ```
 
 ---
 
-## Failure Modes and Recovery
+## Security Considerations
 
-| Failure                        | Detection                                      | Recovery                                                  |
-|--------------------------------|------------------------------------------------|-----------------------------------------------------------|
-| Teensy USB disconnect          | Serial bridge loses `/dev/ttyACM0`             | Bridge watches for device re-appearance; auto-reconnects   |
-| Serial bridge crash            | Android WebSocket connection drops              | systemd restarts the bridge; Android reconnects with backoff |
-| Audio bridge crash             | Android audio stream stops                      | systemd restarts; Android reconnects audio independently   |
-| Network interruption           | WebSocket ping/pong timeout                     | Android reconnects with exponential backoff                |
-| M8 firmware hang               | No serial data received for extended period     | User power-cycles Teensy; bridge reconnects automatically  |
-| VPS reboot                     | All connections drop                            | systemd starts all services on boot; Android reconnects    |
+Both bridge services bind to `127.0.0.1` by default. The serial bridge provides raw access to the Teensy -- never expose it directly to the internet.
+
+**Recommended: Tailscale**
+- Install Tailscale on both server and Android device
+- Access via Tailscale IP (e.g., `100.64.0.1`)
+- All traffic encrypted end-to-end via WireGuard
+- No reverse proxy needed
+
+**Alternative: TLS reverse proxy**
+- Place nginx or caddy in front of both WebSocket ports
+- Use Let's Encrypt for certificates
+- Require authentication
+
+**Best practices:**
+- Run bridge services as a dedicated non-root user in `dialout` and `audio` groups
+- Use `ufw` firewall rules to restrict inbound traffic
+- Do not embed secrets in the Android app
 
 ---
 
-## Future Considerations
+## Failure Modes and Recovery
 
-- **MIDI forwarding** -- Allow the Android device to send MIDI notes to the M8 via the `0x4B` command.
-- **Per-track audio streaming** -- Stream individual track channels (3-24) for remote mixing or recording.
-- **Multi-client support** -- Allow multiple viewers to observe the M8 display (read-only) while one client has input control.
-- **Recording** -- Capture audio and/or display state on the VPS for later retrieval.
-- **Latency optimization** -- Investigate kernel tuning (`CONFIG_PREEMPT_RT`), CPU pinning, and buffer size optimization for sub-20ms audio latency.
+| Failure                      | Detection                                    | Recovery                                               |
+|------------------------------|----------------------------------------------|--------------------------------------------------------|
+| Teensy USB disconnect        | Serial read returns empty / OSError          | Bridge notifies clients, retries every 2s              |
+| Serial bridge crash          | Android WebSocket drops                      | systemd restarts; Android reconnects with backoff      |
+| Audio pipeline crash         | opusenc process exits                        | audio_stream.py restarts pipeline, retries device      |
+| Network interruption         | WebSocket connection failure                 | Android reconnects with exponential backoff (2s-30s)   |
+| M8 firmware hang             | No serial data for extended period           | User power-cycles Teensy; bridge reconnects            |
+| VPS reboot                   | All connections drop                         | systemd starts services on boot; Android reconnects    |
