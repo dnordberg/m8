@@ -29,7 +29,7 @@ from websockets.server import WebSocketServerProtocol
 # ---------------------------------------------------------------------------
 
 TEENSY_VENDOR_ID = 0x16C0  # PJRC vendor ID used by Teensy boards
-DEFAULT_WS_HOST = "127.0.0.1"
+DEFAULT_WS_HOST = "0.0.0.0"
 DEFAULT_WS_PORT = 8766
 DEFAULT_SAMPLE_RATE = 44100
 DEFAULT_CHANNELS = 2

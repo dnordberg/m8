@@ -23,6 +23,7 @@ import com.m8.data.ServerSettings
 import com.m8.input.KeyMapper
 import com.m8.network.ConnectionState
 import com.m8.ui.*
+import kotlinx.coroutines.flow.first
 
 class MainActivity : ComponentActivity() {
 
@@ -84,13 +85,13 @@ private fun M8App(viewModel: M8ViewModel) {
     val connectionState by viewModel.connectionState.collectAsState()
     val displayTick by viewModel.displayTick.collectAsState()
     val settings by viewModel.settings.collectAsState(initial = ServerSettings())
-    var hasAutoConnected by remember { mutableStateOf(false) }
-
     // Auto-connect once on first launch
-    LaunchedEffect(settings.host) {
-        if (!hasAutoConnected && settings.autoConnect && connectionState == ConnectionState.DISCONNECTED) {
-            hasAutoConnected = true
-            viewModel.connect(settings)
+    LaunchedEffect(Unit) {
+        // Wait for settings to load from DataStore, then connect
+        kotlinx.coroutines.delay(500)
+        val currentSettings = viewModel.settings.first()
+        if (currentSettings.autoConnect) {
+            viewModel.connect(currentSettings)
         }
     }
 

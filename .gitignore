@@ -19,3 +19,8 @@ venv/
 
 # Local config
 local.properties
+app/build/
+build/
+.gradle/
+*.DS_Store
+local.properties

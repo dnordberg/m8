@@ -31,7 +31,7 @@ from websockets.server import WebSocketServerProtocol
 
 TEENSY_VENDOR_ID = 0x16C0  # PJRC vendor ID used by Teensy boards
 DEFAULT_BAUD_RATE = 9600
-DEFAULT_WS_HOST = "127.0.0.1"
+DEFAULT_WS_HOST = "0.0.0.0"
 DEFAULT_WS_PORT = 8765
 RECONNECT_INTERVAL = 2.0  # Seconds between serial reconnection attempts
 SERIAL_READ_SIZE = 4096  # Bytes per serial read

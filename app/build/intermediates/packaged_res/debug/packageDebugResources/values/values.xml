@@ -2,9 +2,16 @@
 <resources>
     <color name="ic_launcher_background">#FF000000</color>
     <string name="app_name">M8</string>
-    <style name="Theme.M8" parent="android:Theme.Material.NoActionBar">
+    <style name="Theme.M8" parent="Theme.Material3.Light.NoActionBar">
         <item name="android:statusBarColor">#FF000000</item>
         <item name="android:navigationBarColor">#FF000000</item>
+        <item name="android:windowBackground">@android:color/black</item>
         <item name="android:windowFullscreen">true</item>
+        <item name="android:colorBackground">@android:color/black</item>
+        <item name="colorPrimary">#FF00FF41</item>
+        <item name="colorOnPrimary">#FF000000</item>
+        <item name="colorPrimaryContainer">#FF003300</item>
+        <item name="colorSurface">#FF000000</item>
+        <item name="colorOnSurface">#FF00FF41</item>
     </style>
 </resources>

@@ -19,6 +19,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.m8.protocol.M8Commands
 
+private val BUTTON_SIZE = 52.dp
+private val BUTTON_GAP = 6.dp
+
 /**
  * On-screen touch controls for M8 buttons.
  * Sends key state changes via the callback.
@@ -45,25 +48,21 @@ fun M8Controls(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // D-Pad (left side)
+        // D-Pad (left side) — fixed size, not weighted
         DPad(
             onPress = ::pressKey,
             onRelease = ::releaseKey,
             view = view,
-            modifier = Modifier.weight(1f),
         )
 
-        Spacer(modifier = Modifier.width(24.dp))
-
-        // Action buttons (right side)
+        // Action buttons (right side) — fixed size, not weighted
         ActionButtons(
             onPress = ::pressKey,
             onRelease = ::releaseKey,
             view = view,
-            modifier = Modifier.weight(1f),
         )
     }
 }
@@ -75,17 +74,31 @@ private fun DPad(
     view: View,
     modifier: Modifier = Modifier,
 ) {
-    Column(
-        modifier = modifier,
-        horizontalAlignment = Alignment.CenterHorizontally,
+    // Use a Box with explicit positioning for a perfect symmetric cross
+    val totalSize = BUTTON_SIZE * 3 + BUTTON_GAP * 2
+    Box(
+        modifier = modifier.size(totalSize),
     ) {
-        M8Button("UP", M8Commands.KEY_UP, onPress, onRelease, view)
-        Row {
-            M8Button("LT", M8Commands.KEY_LEFT, onPress, onRelease, view)
-            Spacer(modifier = Modifier.width(64.dp))
-            M8Button("RT", M8Commands.KEY_RIGHT, onPress, onRelease, view)
-        }
-        M8Button("DN", M8Commands.KEY_DOWN, onPress, onRelease, view)
+        // UP — top center
+        M8Button(
+            "UP", M8Commands.KEY_UP, onPress, onRelease, view,
+            modifier = Modifier.align(Alignment.TopCenter),
+        )
+        // LEFT — center left
+        M8Button(
+            "LT", M8Commands.KEY_LEFT, onPress, onRelease, view,
+            modifier = Modifier.align(Alignment.CenterStart),
+        )
+        // RIGHT — center right
+        M8Button(
+            "RT", M8Commands.KEY_RIGHT, onPress, onRelease, view,
+            modifier = Modifier.align(Alignment.CenterEnd),
+        )
+        // DOWN — bottom center
+        M8Button(
+            "DN", M8Commands.KEY_DOWN, onPress, onRelease, view,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
     }
 }
 
@@ -99,13 +112,13 @@ private fun ActionButtons(
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(BUTTON_GAP),
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(BUTTON_GAP)) {
             M8Button("OPT", M8Commands.KEY_OPTION, onPress, onRelease, view)
             M8Button("EDIT", M8Commands.KEY_EDIT, onPress, onRelease, view)
         }
-        Spacer(modifier = Modifier.height(8.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(BUTTON_GAP)) {
             M8Button("SHIFT", M8Commands.KEY_SHIFT, onPress, onRelease, view)
             M8Button("PLAY", M8Commands.KEY_PLAY, onPress, onRelease, view)
         }
@@ -125,7 +138,7 @@ private fun M8Button(
 
     Box(
         modifier = modifier
-            .size(64.dp)
+            .size(BUTTON_SIZE)
             .background(
                 color = if (pressed) Color(0xFF00FF00) else Color(0xFF333333),
                 shape = RoundedCornerShape(8.dp),
