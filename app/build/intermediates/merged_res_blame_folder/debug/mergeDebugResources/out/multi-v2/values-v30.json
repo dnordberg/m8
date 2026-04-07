@@ -1,0 +1,19 @@
+{
+    "logs": [
+        {
+            "outputFile": "com.m8.app-mergeDebugResources-52:/values-v30/values-v30.xml",
+            "map": [
+                {
+                    "source": "/Users/danielnordberg/.gradle/caches/8.12/transforms/98f3e9f074d120e4535486532d463f90/transformed/material3-release/res/values-v30/values-v30.xml",
+                    "from": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endColumns": "72",
+                        "endOffsets": "123"
+                    }
+                }
+            ]
+        }
+    ]
+}

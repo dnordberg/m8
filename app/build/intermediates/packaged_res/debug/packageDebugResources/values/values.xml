@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_background">#FF000000</color>
+    <string name="app_name">M8</string>
+    <style name="Theme.M8" parent="android:Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">#FF000000</item>
+        <item name="android:navigationBarColor">#FF000000</item>
+        <item name="android:windowFullscreen">true</item>
+    </style>
+</resources>
