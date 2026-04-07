@@ -9,6 +9,8 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -82,10 +84,12 @@ private fun M8App(viewModel: M8ViewModel) {
     val connectionState by viewModel.connectionState.collectAsState()
     val displayTick by viewModel.displayTick.collectAsState()
     val settings by viewModel.settings.collectAsState(initial = ServerSettings())
+    var hasAutoConnected by remember { mutableStateOf(false) }
 
-    // Auto-connect on first launch
-    LaunchedEffect(settings) {
-        if (settings.autoConnect && connectionState == ConnectionState.DISCONNECTED) {
+    // Auto-connect once on first launch
+    LaunchedEffect(settings.host) {
+        if (!hasAutoConnected && settings.autoConnect && connectionState == ConnectionState.DISCONNECTED) {
+            hasAutoConnected = true
             viewModel.connect(settings)
         }
     }
@@ -127,24 +131,24 @@ private fun M8MainScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black),
+            .background(Color.Black)
+            .systemBarsPadding(),
     ) {
-        // Top bar
+        // Top bar — compact status row
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp),
+                .padding(horizontal = 12.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
             ConnectionStatusIndicator(state = connectionState)
 
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                // Audio mute toggle
                 Text(
                     text = if (isAudioMuted) "[MUTED]" else "[AUDIO]",
                     color = if (isAudioMuted) Color(0xFFFF4444) else Color(0xFF00FF00),
-                    fontSize = 12.sp,
+                    fontSize = 11.sp,
                     fontFamily = FontFamily.Monospace,
                     modifier = Modifier.clickable { viewModel.toggleAudioMute() },
                 )
@@ -153,7 +157,7 @@ private fun M8MainScreen(
                     Text(
                         text = "[CONNECT]",
                         color = Color(0xFF00FF00),
-                        fontSize = 12.sp,
+                        fontSize = 11.sp,
                         fontFamily = FontFamily.Monospace,
                         modifier = Modifier.clickable { onConnectClick() },
                     )
@@ -161,22 +165,22 @@ private fun M8MainScreen(
                     Text(
                         text = "[DISCONNECT]",
                         color = Color(0xFFFF4444),
-                        fontSize = 12.sp,
+                        fontSize = 11.sp,
                         fontFamily = FontFamily.Monospace,
                         modifier = Modifier.clickable { onDisconnectClick() },
                     )
                 }
                 Text(
-                    text = "[SETTINGS]",
+                    text = "[SET]",
                     color = Color(0xFF888888),
-                    fontSize = 12.sp,
+                    fontSize = 11.sp,
                     fontFamily = FontFamily.Monospace,
                     modifier = Modifier.clickable { onSettingsClick() },
                 )
             }
         }
 
-        // M8 Display
+        // M8 Display — fills available space, centered
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -189,9 +193,10 @@ private fun M8MainScreen(
             )
         }
 
-        // Touch controls
+        // Touch controls — pinned to bottom
         M8Controls(
             onKeyStateChanged = { keys -> viewModel.sendKeyState(keys) },
+            modifier = Modifier.padding(bottom = 8.dp),
         )
     }
 }

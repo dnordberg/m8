@@ -44,7 +44,7 @@ fun M8Controls(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(8.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -56,7 +56,7 @@ fun M8Controls(
             modifier = Modifier.weight(1f),
         )
 
-        Spacer(modifier = Modifier.width(16.dp))
+        Spacer(modifier = Modifier.width(24.dp))
 
         // Action buttons (right side)
         ActionButtons(
@@ -82,7 +82,7 @@ private fun DPad(
         M8Button("UP", M8Commands.KEY_UP, onPress, onRelease, view)
         Row {
             M8Button("LT", M8Commands.KEY_LEFT, onPress, onRelease, view)
-            Spacer(modifier = Modifier.width(48.dp))
+            Spacer(modifier = Modifier.width(64.dp))
             M8Button("RT", M8Commands.KEY_RIGHT, onPress, onRelease, view)
         }
         M8Button("DN", M8Commands.KEY_DOWN, onPress, onRelease, view)
@@ -125,7 +125,7 @@ private fun M8Button(
 
     Box(
         modifier = modifier
-            .size(56.dp)
+            .size(64.dp)
             .background(
                 color = if (pressed) Color(0xFF00FF00) else Color(0xFF333333),
                 shape = RoundedCornerShape(8.dp),
@@ -147,7 +147,7 @@ private fun M8Button(
         Text(
             text = label,
             color = if (pressed) Color.Black else Color(0xFF00FF00),
-            fontSize = 10.sp,
+            fontSize = 12.sp,
             fontWeight = FontWeight.Bold,
             textAlign = TextAlign.Center,
         )

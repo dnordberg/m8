@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.map
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "m8_settings")
 
 data class ServerSettings(
-    val host: String = "100.64.0.1",
+    val host: String = "100.65.234.75",
     val port: Int = 8765,
     val autoConnect: Boolean = true,
 )
@@ -25,7 +25,7 @@ class ServerConfig(private val context: Context) {
 
     val settings: Flow<ServerSettings> = context.dataStore.data.map { prefs ->
         ServerSettings(
-            host = prefs[HOST] ?: "100.64.0.1",
+            host = prefs[HOST] ?: "100.65.234.75",
             port = prefs[PORT] ?: 8765,
             autoConnect = prefs[AUTO_CONNECT] ?: true,
         )
