@@ -14,7 +14,7 @@ class M8AudioPlayer {
 
     companion object {
         private const val TAG = "M8AudioPlayer"
-        const val SAMPLE_RATE = 48000
+        const val SAMPLE_RATE = 44100
         const val CHANNEL_CONFIG = AudioFormat.CHANNEL_OUT_STEREO
         const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
         const val CHANNELS = 2

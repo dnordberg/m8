@@ -84,13 +84,13 @@ class ConnectionManager(
     /**
      * Parses JSON control messages from bridge.py and updates state.
      * Expected messages:
-     *   {"type": "serial_connected"}
-     *   {"type": "serial_disconnected"}
+     *   {"event": "serial_connected"}
+     *   {"event": "serial_disconnected"}
      */
     private fun handleControlMessage(message: String) {
         try {
             val json = JSONObject(message)
-            when (json.optString("type")) {
+            when (json.optString("event")) {
                 "serial_connected" -> {
                     Log.i(TAG, "M8 serial device connected")
                     _serialConnected.value = true

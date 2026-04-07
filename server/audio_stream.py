@@ -158,10 +158,11 @@ def check_device_available(device: str) -> bool:
 
 
 class M8AudioStreamer:
-    """Captures audio from Teensy USB, encodes to Opus, streams via WebSocket.
+    """Captures audio from Teensy USB and streams raw PCM via WebSocket.
 
-    Audio is captured using arecord (ALSA) piped into opusenc for Opus
-    encoding, then broadcast to all connected WebSocket clients.
+    Audio is captured using arecord (ALSA) as raw S16_LE PCM and streamed
+    directly to WebSocket clients with a 1-byte format header (0x01 = PCM).
+    Opus encoding is skipped since bandwidth over Tailscale LAN is sufficient.
     """
 
     def __init__(
@@ -259,21 +260,13 @@ class M8AudioStreamer:
         raise asyncio.CancelledError("Shutdown during device wait")
 
     async def _start_capture(self, device: str) -> None:
-        """Start the arecord | opusenc capture pipeline."""
-        self._active_device = device
+        """Start the arecord raw PCM capture process.
 
-        # We use arecord to capture raw PCM and pipe it to opusenc for Opus encoding.
-        # opusenc reads from stdin (--raw) and writes Opus OGG to stdout.
-        # However, for WebSocket streaming we want raw Opus packets, not OGG containers.
-        # So instead, we'll capture raw PCM with arecord and encode with ffmpeg to
-        # Opus in WebM (lightweight container) for streamable output.
-        #
-        # Actually, the cleanest approach for real-time streaming is to capture PCM
-        # with arecord and encode to Opus in OGG, then stream the OGG data directly.
-        # The client can decode OGG/Opus natively (MediaSource API or Web Audio + libopus).
-        #
-        # For maximum compatibility, we output raw Opus in OGG format which browsers
-        # handle natively via <audio> or MediaSource Extensions.
+        Streams raw S16_LE PCM directly from arecord — no Opus encoding.
+        Each WebSocket message is prepended with a 1-byte format header
+        (0x01 = raw PCM) so the client can identify the format.
+        """
+        self._active_device = device
 
         arecord_cmd = [
             "arecord",
@@ -285,49 +278,25 @@ class M8AudioStreamer:
             "--buffer-size", "4096",
         ]
 
-        opusenc_cmd = [
-            "opusenc",
-            "--raw",
-            "--raw-rate", str(self.sample_rate),
-            "--raw-chan", str(self.channels),
-            "--raw-bits", "16",
-            "--raw-endianness", "0",  # Little-endian
-            "--bitrate", str(self.bitrate // 1000),  # opusenc takes kbps
-            "--framesize", str(FRAME_DURATION_MS),
-            "--max-delay", "0",
-            "-",  # stdin
-            "-",  # stdout (OGG/Opus stream)
-        ]
+        logger.info("Starting capture: %s", " ".join(arecord_cmd))
 
-        logger.info("Starting capture: %s | %s", " ".join(arecord_cmd), " ".join(opusenc_cmd))
-
-        # Create arecord process.
+        # Create arecord process — its stdout gives us raw PCM.
         arecord_proc = await asyncio.create_subprocess_exec(
             *arecord_cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
 
-        # Create opusenc process, reading from arecord's stdout.
-        opusenc_proc = await asyncio.create_subprocess_exec(
-            *opusenc_cmd,
-            stdin=arecord_proc.stdout,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-
-        # Allow arecord_proc.stdout to be consumed by opusenc.
-        arecord_proc.stdout = None  # type: ignore[assignment]
-
         self._arecord_process = arecord_proc
-        self._capture_process = opusenc_proc
+        self._capture_process = arecord_proc  # same process for raw PCM
         self.audio_connected.set()
 
         await self._broadcast_control(
             "audio_connected", device=device
         )
 
-        logger.info("Audio capture pipeline started on %s", device)
+        logger.info("Audio capture started on %s (raw PCM, %d Hz, %d ch)",
+                     device, self.sample_rate, self.channels)
 
     async def _stop_capture(self) -> None:
         """Stop the capture pipeline."""
@@ -371,13 +340,14 @@ class M8AudioStreamer:
                 device = await self._wait_for_device()
                 await self._start_capture(device)
 
-                # Read encoded Opus/OGG data and broadcast to clients.
+                # Read raw PCM data and broadcast to clients.
                 assert self._capture_process is not None
                 assert self._capture_process.stdout is not None
 
-                # Send OGG/Opus data in reasonably-sized chunks.
-                # OGG pages are typically a few KB; we read in 4KB chunks
-                # which aligns well with OGG page boundaries.
+                # PCM format header byte (0x01 = raw PCM).
+                FORMAT_RAW_PCM = b"\x01"
+
+                # Read raw PCM in 4KB chunks (~23ms at 44100Hz stereo 16-bit).
                 chunk_size = 4096
 
                 while not self._shutdown.is_set():
@@ -408,7 +378,9 @@ class M8AudioStreamer:
                         await self._reconnect_capture()
                         break
 
-                    await self._broadcast_bytes(data)
+                    # Prepend format header (0x01 = raw PCM) so client
+                    # can distinguish PCM from Opus frames.
+                    await self._broadcast_bytes(FORMAT_RAW_PCM + data)
 
             except asyncio.CancelledError:
                 raise
@@ -434,9 +406,8 @@ class M8AudioStreamer:
                         "device": self._active_device,
                         "sample_rate": self.sample_rate,
                         "channels": self.channels,
-                        "bitrate": self.bitrate,
-                        "codec": "opus",
-                        "container": "ogg",
+                        "format": "s16le",
+                        "codec": "pcm",
                     })
                 )
             except websockets.ConnectionClosed:
@@ -567,29 +538,23 @@ def main(argv: Optional[list[str]] = None) -> None:
     logger.info("  Device : %s", args.device or "(auto-detect)")
     logger.info("  WS     : ws://%s:%d", args.host, args.port)
     logger.info(
-        "  Audio  : %d Hz, %d ch, %d kbps Opus",
+        "  Audio  : %d Hz, %d ch, raw PCM (S16_LE)",
         args.sample_rate,
         args.channels,
-        args.bitrate // 1000,
     )
 
-    # Verify that arecord and opusenc are available.
-    for tool in ("arecord", "opusenc"):
-        try:
-            subprocess.run(
-                [tool, "--version"],
-                capture_output=True,
-                timeout=5,
-            )
-        except FileNotFoundError:
-            logger.error(
-                "%s not found. Install: apt-get install %s",
-                tool,
-                "alsa-utils" if tool == "arecord" else "opus-tools",
-            )
-            sys.exit(1)
-        except subprocess.SubprocessError:
-            pass  # --version may return non-zero; that's OK, binary exists.
+    # Verify that arecord is available.
+    try:
+        subprocess.run(
+            ["arecord", "--version"],
+            capture_output=True,
+            timeout=5,
+        )
+    except FileNotFoundError:
+        logger.error("arecord not found. Install: apt-get install alsa-utils")
+        sys.exit(1)
+    except subprocess.SubprocessError:
+        pass  # --version may return non-zero; that's OK, binary exists.
 
     streamer = M8AudioStreamer(
         device=args.device,
