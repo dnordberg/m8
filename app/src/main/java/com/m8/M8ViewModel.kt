@@ -7,9 +7,12 @@ import androidx.lifecycle.viewModelScope
 import com.m8.audio.AudioState
 import com.m8.data.ServerConfig
 import com.m8.data.ServerSettings
+import com.m8.audio.M8AudioPlayer
 import com.m8.emulator.M8Emulator
+import com.m8.emulator.M8Synth
 import com.m8.network.ConnectionManager
 import com.m8.network.ConnectionState
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
@@ -48,8 +51,12 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     val isLocalMode: StateFlow<Boolean> = _isLocalMode
 
     private val emulator = M8Emulator()
+    private val synth = M8Synth()
+    private val localAudioPlayer = M8AudioPlayer()
     private var displayRefreshJob: Job? = null
     private var emulatorRenderJob: Job? = null
+    private var audioRenderJob: Job? = null
+    private var lastPlayRow = -1
 
     // --- Remote mode ---
 
@@ -78,15 +85,36 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         _isLocalMode.value = true
         stopDisplayRefresh()
 
+        // Display render loop
         emulatorRenderJob?.cancel()
         emulatorRenderJob = viewModelScope.launch {
-            // Feed system info first so the protocol knows we're "connected"
             while (true) {
                 val frameData = emulator.renderFrame()
-                // Feed directly into the protocol parser
                 connectionManager.protocol.processBytes(frameData)
+
+                // Trigger synth on new row when playing
+                if (emulator.playing && emulator.playRow != lastPlayRow) {
+                    lastPlayRow = emulator.playRow
+                    synth.triggerRow(emulator.phraseData[emulator.playRow])
+                } else if (!emulator.playing && lastPlayRow != -1) {
+                    lastPlayRow = -1
+                    synth.allNotesOff()
+                }
+
                 _displayTick.value++
                 delay(33) // ~30fps
+            }
+        }
+
+        // Audio render loop — runs on IO thread for smooth playback
+        audioRenderJob?.cancel()
+        localAudioPlayer.start()
+        audioRenderJob = viewModelScope.launch(Dispatchers.IO) {
+            while (true) {
+                val pcm = if (emulator.playing) synth.generateChunk() else synth.generateSilence()
+                localAudioPlayer.write(pcm)
+                // Chunk duration in ms: 735 samples / 44100 = ~16.7ms
+                // AudioTrack.write() blocks when buffer is full, so this paces itself
             }
         }
     }
@@ -94,6 +122,11 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     fun stopEmulator() {
         emulatorRenderJob?.cancel()
         emulatorRenderJob = null
+        audioRenderJob?.cancel()
+        audioRenderJob = null
+        localAudioPlayer.stop()
+        synth.allNotesOff()
+        lastPlayRow = -1
     }
 
     // --- Shared ---
