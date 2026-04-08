@@ -7,12 +7,19 @@ import androidx.lifecycle.viewModelScope
 import com.m8.audio.AudioState
 import com.m8.data.ServerConfig
 import com.m8.data.ServerSettings
+import com.m8.emulator.M8Emulator
 import com.m8.network.ConnectionManager
 import com.m8.network.ConnectionState
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
+/**
+ * Supports two modes:
+ * - Remote: connects to bridge.py/m8_emulator.py over WebSocket
+ * - Local: runs M8Emulator in-process, zero network needed
+ */
 class M8ViewModel(application: Application) : AndroidViewModel(application) {
 
     private val serverConfig = ServerConfig(application)
@@ -36,15 +43,24 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     private val _isAudioMuted = MutableStateFlow(false)
     val isAudioMuted: StateFlow<Boolean> = _isAudioMuted
 
-    private var displayRefreshJob: kotlinx.coroutines.Job? = null
+    // Local emulator mode
+    private val _isLocalMode = MutableStateFlow(true) // Default to local
+    val isLocalMode: StateFlow<Boolean> = _isLocalMode
+
+    private val emulator = M8Emulator()
+    private var displayRefreshJob: Job? = null
+    private var emulatorRenderJob: Job? = null
+
+    // --- Remote mode ---
 
     fun connect(settings: ServerSettings) {
+        _isLocalMode.value = false
+        stopEmulator()
         connectionManager.connect(settings.host, settings.port, viewModelScope)
 
-        // Wait for connection, then enable display
         viewModelScope.launch {
             connectionManager.connectionState.first { it == ConnectionState.CONNECTED }
-            delay(100) // Brief delay for connection to stabilize
+            delay(100)
             connectionManager.enableDisplay()
             startDisplayRefresh()
         }
@@ -52,11 +68,57 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
 
     fun disconnect() {
         stopDisplayRefresh()
+        stopEmulator()
         connectionManager.disconnect()
     }
 
+    // --- Local emulator mode ---
+
+    fun startLocalEmulator() {
+        _isLocalMode.value = true
+        stopDisplayRefresh()
+
+        emulatorRenderJob?.cancel()
+        emulatorRenderJob = viewModelScope.launch {
+            // Feed system info first so the protocol knows we're "connected"
+            while (true) {
+                val frameData = emulator.renderFrame()
+                // Feed directly into the protocol parser
+                connectionManager.protocol.processBytes(frameData)
+                _displayTick.value++
+                delay(33) // ~30fps
+            }
+        }
+    }
+
+    fun stopEmulator() {
+        emulatorRenderJob?.cancel()
+        emulatorRenderJob = null
+    }
+
+    // --- Shared ---
+
     fun sendKeyState(keys: Int) {
-        connectionManager.sendKeyState(keys)
+        if (_isLocalMode.value) {
+            emulator.handleKeyState(keys)
+        } else {
+            connectionManager.sendKeyState(keys)
+        }
+    }
+
+    fun toggleLocalMode() {
+        if (_isLocalMode.value) {
+            // Switch to remote — stop emulator, try connecting
+            stopEmulator()
+            viewModelScope.launch {
+                val s = settings.first()
+                connect(s)
+            }
+        } else {
+            // Switch to local — disconnect remote, start emulator
+            disconnect()
+            startLocalEmulator()
+        }
     }
 
     fun toggleAudioMute() {
@@ -88,6 +150,7 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
 
     override fun onCleared() {
         super.onCleared()
+        stopEmulator()
         disconnect()
     }
 }

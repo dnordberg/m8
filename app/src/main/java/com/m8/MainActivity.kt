@@ -9,7 +9,6 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -23,7 +22,6 @@ import com.m8.data.ServerSettings
 import com.m8.input.KeyMapper
 import com.m8.network.ConnectionState
 import com.m8.ui.*
-import kotlinx.coroutines.flow.first
 
 class MainActivity : ComponentActivity() {
 
@@ -32,8 +30,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        // Keep screen on while using M8
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         setContent {
@@ -85,14 +81,11 @@ private fun M8App(viewModel: M8ViewModel) {
     val connectionState by viewModel.connectionState.collectAsState()
     val displayTick by viewModel.displayTick.collectAsState()
     val settings by viewModel.settings.collectAsState(initial = ServerSettings())
-    // Auto-connect once on first launch
+    val isLocalMode by viewModel.isLocalMode.collectAsState()
+
+    // Start local emulator immediately on first launch
     LaunchedEffect(Unit) {
-        // Wait for settings to load from DataStore, then connect
-        kotlinx.coroutines.delay(500)
-        val currentSettings = viewModel.settings.first()
-        if (currentSettings.autoConnect) {
-            viewModel.connect(currentSettings)
-        }
+        viewModel.startLocalEmulator()
     }
 
     if (showSettings) {
@@ -111,9 +104,9 @@ private fun M8App(viewModel: M8ViewModel) {
             viewModel = viewModel,
             connectionState = connectionState,
             displayTick = displayTick,
+            isLocalMode = isLocalMode,
             onSettingsClick = { showSettings = true },
-            onConnectClick = { viewModel.connect(settings) },
-            onDisconnectClick = { viewModel.disconnect() },
+            onToggleMode = { viewModel.toggleLocalMode() },
         )
     }
 }
@@ -123,9 +116,9 @@ private fun M8MainScreen(
     viewModel: M8ViewModel,
     connectionState: ConnectionState,
     displayTick: Int,
+    isLocalMode: Boolean,
     onSettingsClick: () -> Unit,
-    onConnectClick: () -> Unit,
-    onDisconnectClick: () -> Unit,
+    onToggleMode: () -> Unit,
 ) {
     val isAudioMuted by viewModel.isAudioMuted.collectAsState()
 
@@ -143,34 +136,39 @@ private fun M8MainScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            ConnectionStatusIndicator(state = connectionState)
-
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            // Left: mode indicator
+            if (isLocalMode) {
                 Text(
-                    text = if (isAudioMuted) "[MUTED]" else "[AUDIO]",
-                    color = if (isAudioMuted) Color(0xFFFF4444) else Color(0xFF00FF00),
+                    text = "● LOCAL",
+                    color = Color(0xFF00FF00),
                     fontSize = 11.sp,
                     fontFamily = FontFamily.Monospace,
-                    modifier = Modifier.clickable { viewModel.toggleAudioMute() },
+                )
+            } else {
+                ConnectionStatusIndicator(state = connectionState)
+            }
+
+            // Right: action buttons
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                // Mode toggle
+                Text(
+                    text = if (isLocalMode) "[REMOTE]" else "[LOCAL]",
+                    color = Color(0xFF888888),
+                    fontSize = 11.sp,
+                    fontFamily = FontFamily.Monospace,
+                    modifier = Modifier.clickable { onToggleMode() },
                 )
 
-                if (connectionState == ConnectionState.DISCONNECTED) {
+                if (!isLocalMode) {
                     Text(
-                        text = "[CONNECT]",
-                        color = Color(0xFF00FF00),
+                        text = if (isAudioMuted) "[MUTED]" else "[AUDIO]",
+                        color = if (isAudioMuted) Color(0xFFFF4444) else Color(0xFF00FF00),
                         fontSize = 11.sp,
                         fontFamily = FontFamily.Monospace,
-                        modifier = Modifier.clickable { onConnectClick() },
-                    )
-                } else if (connectionState == ConnectionState.CONNECTED) {
-                    Text(
-                        text = "[DISCONNECT]",
-                        color = Color(0xFFFF4444),
-                        fontSize = 11.sp,
-                        fontFamily = FontFamily.Monospace,
-                        modifier = Modifier.clickable { onDisconnectClick() },
+                        modifier = Modifier.clickable { viewModel.toggleAudioMute() },
                     )
                 }
+
                 Text(
                     text = "[SET]",
                     color = Color(0xFF888888),
