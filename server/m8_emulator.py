@@ -23,6 +23,13 @@ import time
 from dataclasses import dataclass, field
 from typing import Optional, Set
 
+try:
+    import numpy as np
+    HAS_NUMPY = True
+except ImportError:
+    np = None
+    HAS_NUMPY = False
+
 import websockets
 from websockets.server import WebSocketServerProtocol
 
@@ -110,7 +117,7 @@ def cmd_draw_rect(x: int, y: int, w: int, h: int, r: int, g: int, b: int) -> byt
 def cmd_draw_char(x: int, y: int, char: int, fg: tuple, bg: tuple) -> bytes:
     """Build a DRAW_CHAR command. fg/bg are (r, g, b) tuples."""
     return struct.pack(
-        "<BHHBBBBBB",
+        "<BHHBBBBBBB",
         DRAW_CHAR, x, y, char,
         fg[0], fg[1], fg[2],
         bg[0], bg[1], bg[2],
@@ -139,6 +146,745 @@ def draw_text(text: str, x: int, y: int, fg: tuple, bg: tuple) -> list[bytes]:
     for i, ch in enumerate(text):
         cmds.append(cmd_draw_char(x + i * FONT_W, y, ord(ch), fg, bg))
     return cmds
+
+
+# ---------------------------------------------------------------------------
+# M8 Synthesizer — ported from Kotlin M8Synth
+# ---------------------------------------------------------------------------
+
+SAMPLE_RATE = 44100
+AUDIO_CHANNELS = 2
+CHUNK_SAMPLES = 735  # ~16.7ms per chunk
+TWO_PI = 2.0 * math.pi
+
+# Waveform types
+WAVE_SINE = 0
+WAVE_SAW = 1
+WAVE_PULSE = 2
+WAVE_TRIANGLE = 3
+WAVE_NOISE = 4
+WAVE_FM = 5
+
+# Filter types
+FILTER_LP = 0
+FILTER_HP = 1
+FILTER_BP = 2
+
+
+def note_to_freq(midi_note: int) -> float:
+    """Convert M8 note number to frequency (matches Kotlin noteToFreq)."""
+    midi = midi_note + 23
+    return 440.0 * (2.0 ** ((midi - 69) / 12.0))
+
+
+def _poly_blep(t: float, dt: float) -> float:
+    """PolyBLEP anti-aliasing correction."""
+    p = t % 1.0
+    dtn = max(dt, 1e-10)
+    if p < dtn:
+        x = p / dtn
+        return 2.0 * x - x * x - 1.0
+    elif p > 1.0 - dtn:
+        x = (p - 1.0) / dtn
+        return x * x + 2.0 * x + 1.0
+    return 0.0
+
+
+def _tanh_clip(x: float) -> float:
+    """Fast tanh approximation for soft clipping."""
+    if x > 3.0:
+        return 1.0
+    if x < -3.0:
+        return -1.0
+    x2 = x * x
+    return x * (27.0 + x2) / (27.0 + 9.0 * x2)
+
+
+@dataclass
+class ADSR:
+    attack: float   # seconds
+    decay: float    # seconds
+    sustain: float  # 0.0-1.0 level
+    release: float  # seconds
+
+
+@dataclass
+class VoicePreset:
+    waveform: int
+    pulse_width: float = 0.5
+    filter_type: int = FILTER_LP
+    filter_cutoff: float = 0.7
+    filter_resonance: float = 0.0
+    adsr: ADSR = None
+    pwm_depth: float = 0.0
+    pwm_rate: float = 0.0
+    filter_lfo_depth: float = 0.0
+    filter_lfo_rate: float = 0.0
+    filter_env_depth: float = 0.0
+    filter_env_decay: float = 0.3
+    fm_ratio: float = 2.0
+    fm_index: float = 1.0
+    chorus_send: float = 0.0
+    reverb_send: float = 0.2
+    delay_send: float = 0.0
+    pan: float = 0.5
+
+    def __post_init__(self):
+        if self.adsr is None:
+            self.adsr = ADSR(0.01, 0.1, 0.7, 0.3)
+
+
+# Track instrument presets — matches Kotlin TRACK_PRESETS exactly
+TRACK_PRESETS = [
+    # Track 0: Lead — pulse with PWM, medium attack, filter sweep
+    VoicePreset(WAVE_PULSE, 0.45, FILTER_LP, 0.7, 0.3,
+                adsr=ADSR(0.005, 0.1, 0.7, 0.3),
+                pwm_depth=0.2, pwm_rate=3.5, filter_lfo_depth=0.15, filter_lfo_rate=2.0),
+    # Track 1: Bass — sawtooth, fast attack, low filter
+    VoicePreset(WAVE_SAW, 0.0, FILTER_LP, 0.35, 0.45,
+                adsr=ADSR(0.002, 0.15, 0.6, 0.15),
+                filter_env_depth=0.5, filter_env_decay=0.2),
+    # Track 2: Pad — triangle + slow attack, high cutoff, chorus
+    VoicePreset(WAVE_TRIANGLE, 0.0, FILTER_LP, 0.85, 0.1,
+                adsr=ADSR(0.3, 0.4, 0.8, 1.0),
+                chorus_send=0.6, reverb_send=0.5),
+    # Track 3: Hi-hat / percussion — noise, very short
+    VoicePreset(WAVE_NOISE, 0.0, FILTER_HP, 0.6, 0.2,
+                adsr=ADSR(0.001, 0.05, 0.0, 0.03)),
+    # Track 4: FM bell
+    VoicePreset(WAVE_FM, 0.0, FILTER_LP, 0.9, 0.0,
+                adsr=ADSR(0.001, 0.8, 0.2, 0.5),
+                fm_ratio=3.0, fm_index=2.5, reverb_send=0.4),
+    # Track 5: Pluck — pulse, fast decay
+    VoicePreset(WAVE_PULSE, 0.5, FILTER_LP, 0.55, 0.35,
+                adsr=ADSR(0.001, 0.2, 0.1, 0.15),
+                filter_env_depth=0.6, filter_env_decay=0.15),
+    # Track 6: Sub bass — sine, clean
+    VoicePreset(WAVE_SINE, 0.0, FILTER_LP, 0.95, 0.0,
+                adsr=ADSR(0.01, 0.05, 0.9, 0.2)),
+    # Track 7: SFX — FM, short, noisy
+    VoicePreset(WAVE_FM, 0.0, FILTER_BP, 0.5, 0.6,
+                adsr=ADSR(0.001, 0.3, 0.0, 0.1),
+                fm_ratio=7.0, fm_index=5.0),
+]
+
+
+class Voice:
+    """Single synth voice with oscillator, envelope, and filter."""
+
+    def __init__(self, track_index: int):
+        self.track_index = track_index
+        self.frequency = 0.0
+        self.phase = 0.0
+        self.volume = 0.0
+        self.active = False
+        self.note_on = False
+        self.preset: VoicePreset = TRACK_PRESETS[track_index % len(TRACK_PRESETS)]
+
+        # ADSR envelope: 0=idle, 1=attack, 2=decay, 3=sustain, 4=release
+        self.env_stage = 0
+        self.env_level = 0.0
+        self.env_time = 0.0
+
+        # Filter envelope
+        self.filter_env_level = 0.0
+        self.filter_env_time = 0.0
+
+        # LFO phases
+        self.pwm_lfo_phase = 0.0
+        self.filter_lfo_phase = 0.0
+
+        # FM operator phase
+        self.fm_phase = 0.0
+
+        # State-variable filter state
+        self.svf_low = 0.0
+        self.svf_band = 0.0
+        self.svf_high = 0.0
+
+        # Noise LFSR
+        self.noise_lfsr = 0x7FFF
+        self.noise_value = 0.0
+        self.noise_sample_count = 0
+
+    def trigger_note(self, freq: float, vol: float):
+        self.frequency = freq
+        self.volume = vol
+        self.env_stage = 1  # attack
+        self.env_time = 0.0
+        self.filter_env_level = 1.0
+        self.filter_env_time = 0.0
+        self.note_on = True
+        self.active = True
+
+    def release_note(self):
+        if self.env_stage != 0 and self.env_stage != 4:
+            self.env_stage = 4  # release
+            self.env_time = 0.0
+        self.note_on = False
+
+    def process_envelope(self, dt: float):
+        adsr = self.preset.adsr
+        stage = self.env_stage
+
+        if stage == 1:  # Attack
+            self.env_time += dt
+            if adsr.attack <= 0.0:
+                self.env_level = 1.0
+            else:
+                self.env_level = min(1.0, max(0.0, self.env_time / adsr.attack))
+            if self.env_level >= 1.0:
+                self.env_stage = 2
+                self.env_time = 0.0
+        elif stage == 2:  # Decay
+            self.env_time += dt
+            if adsr.decay <= 0.0:
+                decay_progress = 1.0
+            else:
+                decay_progress = min(1.0, max(0.0, self.env_time / adsr.decay))
+            self.env_level = 1.0 - (1.0 - adsr.sustain) * decay_progress
+            if decay_progress >= 1.0:
+                self.env_stage = 3
+        elif stage == 3:  # Sustain
+            self.env_level = adsr.sustain
+        elif stage == 4:  # Release
+            self.env_time += dt
+            if adsr.release <= 0.0:
+                release_progress = 1.0
+            else:
+                release_progress = min(1.0, max(0.0, self.env_time / adsr.release))
+            self.env_level *= (1.0 - release_progress)
+            if release_progress >= 1.0 or self.env_level < 0.0001:
+                self.env_stage = 0
+                self.env_level = 0.0
+                self.active = False
+
+        # Filter envelope (independent decay)
+        if self.preset.filter_env_depth > 0.0:
+            self.filter_env_time += dt
+            if self.preset.filter_env_decay <= 0.0:
+                f_decay = 1.0
+            else:
+                f_decay = min(1.0, max(0.0, self.filter_env_time / self.preset.filter_env_decay))
+            self.filter_env_level = 1.0 - f_decay
+
+    def generate_sample(self) -> float:
+        if not self.active or self.env_stage == 0:
+            return 0.0
+
+        _sin = math.sin
+        phase = self.phase
+        phase_inc = self.frequency / SAMPLE_RATE
+        preset = self.preset
+        env_level = self.env_level
+        wf = preset.waveform
+
+        # PWM modulation
+        if preset.pwm_depth > 0.0:
+            self.pwm_lfo_phase += preset.pwm_rate * (1.0 / SAMPLE_RATE)
+            mod = _sin(self.pwm_lfo_phase * TWO_PI) * preset.pwm_depth
+            current_pw = preset.pulse_width + mod
+            if current_pw < 0.1: current_pw = 0.1
+            elif current_pw > 0.9: current_pw = 0.9
+        else:
+            current_pw = preset.pulse_width
+
+        # Generate raw waveform (inlined for speed)
+        if wf == WAVE_SINE:
+            raw = _sin(phase * TWO_PI)
+        elif wf == WAVE_SAW:
+            naive = 2.0 * (phase - math.floor(phase + 0.5))
+            # Inline polyBLEP
+            p = phase % 1.0
+            blep = 0.0
+            if phase_inc > 1e-10:
+                if p < phase_inc:
+                    x = p / phase_inc
+                    blep = 2.0 * x - x * x - 1.0
+                elif p > 1.0 - phase_inc:
+                    x = (p - 1.0) / phase_inc
+                    blep = x * x + 2.0 * x + 1.0
+            raw = naive - blep
+        elif wf == WAVE_PULSE:
+            p = phase % 1.0
+            naive = 1.0 if p < current_pw else -1.0
+            blep1 = 0.0
+            blep2 = 0.0
+            if phase_inc > 1e-10:
+                if p < phase_inc:
+                    x = p / phase_inc
+                    blep1 = 2.0 * x - x * x - 1.0
+                elif p > 1.0 - phase_inc:
+                    x = (p - 1.0) / phase_inc
+                    blep1 = x * x + 2.0 * x + 1.0
+                p2 = (phase - current_pw) % 1.0
+                if p2 < phase_inc:
+                    x = p2 / phase_inc
+                    blep2 = 2.0 * x - x * x - 1.0
+                elif p2 > 1.0 - phase_inc:
+                    x = (p2 - 1.0) / phase_inc
+                    blep2 = x * x + 2.0 * x + 1.0
+            raw = naive + blep1 - blep2
+        elif wf == WAVE_TRIANGLE:
+            p = phase % 1.0
+            raw = 4.0 * (p - 0.5 if p >= 0.5 else 0.5 - p) - 1.0
+        elif wf == WAVE_NOISE:
+            self.noise_sample_count += 1
+            period = int(SAMPLE_RATE / max(20.0, self.frequency))
+            if period < 1: period = 1
+            if self.noise_sample_count >= period:
+                self.noise_sample_count = 0
+                lfsr = self.noise_lfsr
+                bit = (lfsr ^ (lfsr >> 1)) & 1
+                lfsr = (lfsr >> 1) | (bit << 14)
+                self.noise_lfsr = lfsr
+                self.noise_value = (lfsr / 0x7FFF) * 2.0 - 1.0
+            raw = self.noise_value
+        elif wf == WAVE_FM:
+            fm_phase = self.fm_phase + (self.frequency * preset.fm_ratio) / SAMPLE_RATE
+            if fm_phase > 1e6: fm_phase -= 1e6
+            self.fm_phase = fm_phase
+            modulator = _sin(fm_phase * TWO_PI) * preset.fm_index * env_level
+            raw = _sin((phase + modulator) * TWO_PI)
+        else:
+            raw = 0.0
+
+        # Advance oscillator phase
+        phase += phase_inc
+        if phase > 1e6: phase -= 1e6
+        self.phase = phase
+
+        # Apply amplitude envelope
+        enveloped = raw * env_level * self.volume
+
+        # State-variable filter
+        filter_type = preset.filter_type
+        filter_res = preset.filter_resonance
+
+        # Filter LFO
+        if preset.filter_lfo_depth > 0.0:
+            self.filter_lfo_phase += preset.filter_lfo_rate * (1.0 / SAMPLE_RATE)
+            lfo_mod = _sin(self.filter_lfo_phase * TWO_PI) * preset.filter_lfo_depth
+        else:
+            lfo_mod = 0.0
+
+        cutoff_norm = preset.filter_cutoff + preset.filter_env_depth * self.filter_env_level + lfo_mod
+        if cutoff_norm < 0.0: cutoff_norm = 0.0
+        elif cutoff_norm > 1.0: cutoff_norm = 1.0
+
+        # For very high cutoffs on LP with low resonance, bypass filter
+        if cutoff_norm >= 0.85 and filter_type == FILTER_LP and filter_res < 0.1:
+            return enveloped
+
+        # Map 0-1 to 20Hz-~15500Hz
+        cutoff_hz = 20.0 * (2.0 ** (cutoff_norm * 9.6))
+        fn = cutoff_hz / SAMPLE_RATE
+        if fn > 0.35: fn = 0.35
+        f = 2.0 * _sin(math.pi * fn)
+        q = 1.0 - (filter_res if filter_res < 0.95 else 0.95)
+
+        # SVF stability: f must be < 2*q
+        max_f = 1.9 * q
+        if f > max_f: f = max_f
+
+        svf_low = self.svf_low
+        svf_band = self.svf_band
+
+        svf_high = enveloped - svf_low - q * svf_band
+        svf_band += f * svf_high
+        svf_low += f * svf_band
+
+        # Safety clamp
+        if svf_low > 4.0: svf_low = 4.0
+        elif svf_low < -4.0: svf_low = -4.0
+        if svf_band > 4.0: svf_band = 4.0
+        elif svf_band < -4.0: svf_band = -4.0
+
+        self.svf_low = svf_low
+        self.svf_band = svf_band
+        self.svf_high = svf_high
+
+        if filter_type == FILTER_LP:
+            return svf_low
+        elif filter_type == FILTER_HP:
+            return svf_high
+        elif filter_type == FILTER_BP:
+            return svf_band
+        return svf_low
+
+
+class StereoDelay:
+    """Stereo ping-pong delay effect."""
+
+    def __init__(self, time_l: float = 0.375, time_r: float = 0.25,
+                 feedback: float = 0.45, mix: float = 0.3, damping: float = 0.3):
+        self.time_l = time_l
+        self.time_r = time_r
+        self.feedback = feedback
+        self.mix = mix
+        self.damping = damping
+        self.max_samples = int(SAMPLE_RATE * 2.0)
+        self.buf_l = [0.0] * self.max_samples
+        self.buf_r = [0.0] * self.max_samples
+        self.pos_l = 0
+        self.pos_r = 0
+        self.lp_l = 0.0
+        self.lp_r = 0.0
+
+    def process(self, in_l: float, in_r: float):
+        delay_l = max(1, min(self.max_samples - 1, int(self.time_l * SAMPLE_RATE)))
+        delay_r = max(1, min(self.max_samples - 1, int(self.time_r * SAMPLE_RATE)))
+
+        read_l = (self.pos_l - delay_l + self.max_samples) % self.max_samples
+        read_r = (self.pos_r - delay_r + self.max_samples) % self.max_samples
+
+        tap_l = self.buf_l[read_l]
+        tap_r = self.buf_r[read_r]
+
+        # One-pole damping filter on feedback
+        self.lp_l += self.damping * (tap_l - self.lp_l)
+        self.lp_r += self.damping * (tap_r - self.lp_r)
+
+        # Ping-pong: left feeds right, right feeds left
+        self.buf_l[self.pos_l] = in_l + self.lp_r * self.feedback
+        self.buf_r[self.pos_r] = in_r + self.lp_l * self.feedback
+
+        self.pos_l = (self.pos_l + 1) % self.max_samples
+        self.pos_r = (self.pos_r + 1) % self.max_samples
+
+        return (in_l + tap_l * self.mix, in_r + tap_r * self.mix)
+
+    def clear(self):
+        for i in range(self.max_samples):
+            self.buf_l[i] = 0.0
+            self.buf_r[i] = 0.0
+        self.lp_l = 0.0
+        self.lp_r = 0.0
+
+
+class Chorus:
+    """Stereo chorus with dual modulated delay lines."""
+
+    def __init__(self, rate: float = 0.8, depth: float = 0.003,
+                 mix: float = 0.4, base_delay: float = 0.012):
+        self.rate = rate
+        self.depth = depth
+        self.mix = mix
+        self.base_delay = base_delay
+        self.max_samples = int(SAMPLE_RATE * 0.1)  # 100ms max
+        self.buf_l = [0.0] * self.max_samples
+        self.buf_r = [0.0] * self.max_samples
+        self.write_pos = 0
+        self.lfo_phase1 = 0.0
+        self.lfo_phase2 = 0.33
+
+    def _read_interp(self, buf: list, pos: float) -> float:
+        size = len(buf)
+        p = ((pos % size) + size) % size
+        i0 = int(p)
+        frac = p - i0
+        i1 = (i0 + 1) % size
+        return buf[i0] * (1.0 - frac) + buf[i1] * frac
+
+    def process(self, in_l: float, in_r: float):
+        self.buf_l[self.write_pos] = in_l
+        self.buf_r[self.write_pos] = in_r
+
+        self.lfo_phase1 += self.rate / SAMPLE_RATE
+        self.lfo_phase2 += self.rate / SAMPLE_RATE
+        if self.lfo_phase1 > 1.0:
+            self.lfo_phase1 -= 1.0
+        if self.lfo_phase2 > 1.0:
+            self.lfo_phase2 -= 1.0
+
+        mod1 = math.sin(self.lfo_phase1 * TWO_PI) * self.depth
+        mod2 = math.sin(self.lfo_phase2 * TWO_PI) * self.depth
+
+        delay_l = max(1.0, min(self.max_samples - 2.0, (self.base_delay + mod1) * SAMPLE_RATE))
+        delay_r = max(1.0, min(self.max_samples - 2.0, (self.base_delay + mod2) * SAMPLE_RATE))
+
+        tap_l = self._read_interp(self.buf_l, self.write_pos - delay_l)
+        tap_r = self._read_interp(self.buf_r, self.write_pos - delay_r)
+
+        self.write_pos = (self.write_pos + 1) % self.max_samples
+
+        return (in_l + (tap_l - in_l) * self.mix, in_r + (tap_r - in_r) * self.mix)
+
+    def clear(self):
+        for i in range(self.max_samples):
+            self.buf_l[i] = 0.0
+            self.buf_r[i] = 0.0
+
+
+class PlateReverb:
+    """Schroeder plate reverb: 8 comb filters + 4 allpass."""
+
+    def __init__(self, mix: float = 0.25, decay: float = 0.7, damping: float = 0.4):
+        self.mix = mix
+        self.decay = decay
+        self.damping = damping
+
+        # Comb filter delay lengths (prime-ish for diffusion)
+        self.comb_lengths = [1557, 1617, 1491, 1422, 1277, 1356, 1188, 1116]
+        self.comb_bufs = [[0.0] * length for length in self.comb_lengths]
+        self.comb_pos = [0] * len(self.comb_lengths)
+        self.comb_lp = [0.0] * len(self.comb_lengths)
+
+        # Allpass delay lengths
+        self.ap_lengths = [225, 556, 441, 341]
+        self.ap_bufs = [[0.0] * length for length in self.ap_lengths]
+        self.ap_pos = [0] * len(self.ap_lengths)
+
+    def _allpass(self, idx: int, inp: float) -> float:
+        buf = self.ap_bufs[idx]
+        pos = self.ap_pos[idx]
+        tap = buf[pos]
+        g = 0.5
+        output = -inp + tap
+        buf[pos] = inp + tap * g
+        self.ap_pos[idx] = (pos + 1) % self.ap_lengths[idx]
+        return output
+
+    def process(self, in_l: float, in_r: float):
+        inp = (in_l + in_r) * 0.5
+
+        out_l = 0.0
+        out_r = 0.0
+
+        for i in range(len(self.comb_bufs)):
+            buf = self.comb_bufs[i]
+            pos = self.comb_pos[i]
+            tap = buf[pos]
+
+            # Damped feedback
+            self.comb_lp[i] += self.damping * (tap - self.comb_lp[i])
+            buf[pos] = inp + self.comb_lp[i] * self.decay
+
+            self.comb_pos[i] = (pos + 1) % self.comb_lengths[i]
+
+            # Split to L/R (alternating)
+            if i % 2 == 0:
+                out_l += tap
+            else:
+                out_r += tap
+
+        half = len(self.comb_bufs) // 2
+        if half > 0:
+            out_l /= half
+            out_r /= half
+
+        # Series allpass filters for diffusion
+        out_l = self._allpass(0, out_l)
+        out_l = self._allpass(1, out_l)
+        out_r = self._allpass(2, out_r)
+        out_r = self._allpass(3, out_r)
+
+        return (in_l + out_l * self.mix, in_r + out_r * self.mix)
+
+    def clear(self):
+        for buf in self.comb_bufs:
+            for i in range(len(buf)):
+                buf[i] = 0.0
+        for i in range(len(self.comb_pos)):
+            self.comb_pos[i] = 0
+            self.comb_lp[i] = 0.0
+        for buf in self.ap_bufs:
+            for i in range(len(buf)):
+                buf[i] = 0.0
+        for i in range(len(self.ap_pos)):
+            self.ap_pos[i] = 0
+
+
+class M8Synth:
+    """
+    Advanced polyphonic synthesizer for the M8 emulator.
+
+    Features: ADSR envelopes, PolyBLEP waveforms, PWM, 2-op FM,
+    state-variable filter per voice, noise LFSR, stereo ping-pong delay,
+    chorus, plate reverb, soft clipping, DC offset removal.
+
+    Generates 16-bit stereo PCM at 44100Hz.
+    """
+
+    def __init__(self):
+        self.voices = [Voice(i) for i in range(8)]
+        self.delay = StereoDelay()
+        self.chorus = Chorus()
+        self.reverb = PlateReverb()
+
+        # DC offset removal (high-pass at ~5Hz)
+        self.dc_l = 0.0
+        self.dc_r = 0.0
+        self.dc_coeff = 1.0 - (TWO_PI * 5.0 / SAMPLE_RATE)
+
+        # BPM-synced row advance tracking
+        self._samples_since_row = 0
+
+    def trigger_row(self, row_data):
+        """
+        Trigger notes from the current tracker row.
+        row_data: list of 8 tracks, each (note, instrument, volume, fx, fx2).
+        """
+        for track in range(min(len(row_data), len(self.voices))):
+            data = row_data[track]
+            note = data[0]
+            vol = data[2]
+            voice = self.voices[track]
+
+            if note > 0:
+                freq = note_to_freq(note)
+                v = (vol & 0xFF) / 255.0
+                voice.trigger_note(freq, v)
+            # note == 0 means continue — existing note keeps playing
+
+    def generate_chunk(self) -> bytes:
+        """Generate one chunk of stereo PCM audio.
+
+        Hot path is heavily optimized to minimize Python overhead:
+        - Local variable caching for attribute lookups
+        - Precomputed pan gains
+        - Inlined tanh clip
+        """
+        buf = bytearray(CHUNK_SAMPLES * AUDIO_CHANNELS * 2)
+        dt = 1.0 / SAMPLE_RATE
+
+        # Cache frequently accessed attributes as locals
+        voices = self.voices
+        chorus_process = self.chorus.process
+        delay_process = self.delay.process
+        reverb_process = self.reverb.process
+        dc_coeff = self.dc_coeff
+        dc_l = self.dc_l
+        dc_r = self.dc_r
+        _sin = math.sin
+        _cos = math.cos
+        _pi = math.pi
+        _floor = math.floor
+        _abs = abs
+        _pack = struct.pack_into
+
+        # Pre-compute per-voice constants (pan gains, send levels)
+        active_voices = []
+        for v in voices:
+            if v.active:
+                pan = (v.track_index / 7.0) * 0.6 + 0.2
+                pan_l = _cos(pan * _pi * 0.5) * 0.15  # gain * pan_l
+                pan_r = _sin(pan * _pi * 0.5) * 0.15  # gain * pan_r
+                p = v.preset
+                active_voices.append((v, pan_l, pan_r,
+                                      p.chorus_send, p.reverb_send, p.delay_send))
+
+        for i in range(CHUNK_SAMPLES):
+            mix_l = 0.0
+            mix_r = 0.0
+            chorus_in_l = 0.0
+            chorus_in_r = 0.0
+            reverb_in_l = 0.0
+            reverb_in_r = 0.0
+            delay_in_l = 0.0
+            delay_in_r = 0.0
+
+            # Update active voices list when voices deactivate
+            j = 0
+            while j < len(active_voices):
+                v, pan_l, pan_r, ch_send, rv_send, dl_send = active_voices[j]
+                if not v.active:
+                    active_voices.pop(j)
+                    continue
+
+                v.process_envelope(dt)
+                if not v.active:
+                    active_voices.pop(j)
+                    continue
+
+                sample = v.generate_sample()
+
+                out_l = sample * pan_l
+                out_r = sample * pan_r
+
+                mix_l += out_l
+                mix_r += out_r
+
+                if ch_send > 0.0:
+                    chorus_in_l += out_l * ch_send
+                    chorus_in_r += out_r * ch_send
+                if rv_send > 0.0:
+                    reverb_in_l += out_l * rv_send
+                    reverb_in_r += out_r * rv_send
+                if dl_send > 0.0:
+                    delay_in_l += out_l * dl_send
+                    delay_in_r += out_r * dl_send
+
+                j += 1
+
+            # Process effects
+            ch_l, ch_r = chorus_process(chorus_in_l, chorus_in_r)
+            dl_l, dl_r = delay_process(delay_in_l, delay_in_r)
+            rv_l, rv_r = reverb_process(reverb_in_l, reverb_in_r)
+
+            # Mix effects into output
+            out_l = mix_l + ch_l + dl_l + rv_l
+            out_r = mix_r + ch_r + dl_r + rv_r
+
+            # DC offset removal
+            prev_dc_l = dc_l
+            prev_dc_r = dc_r
+            dc_l = out_l - prev_dc_l * dc_coeff
+            dc_r = out_r - prev_dc_r * dc_coeff
+            out_l = out_l - dc_l
+            out_r = out_r - dc_r
+
+            # Inline soft clip (tanh approximation)
+            if out_l > 3.0:
+                out_l = 1.0
+            elif out_l < -3.0:
+                out_l = -1.0
+            else:
+                x2 = out_l * out_l
+                out_l = out_l * (27.0 + x2) / (27.0 + 9.0 * x2)
+
+            if out_r > 3.0:
+                out_r = 1.0
+            elif out_r < -3.0:
+                out_r = -1.0
+            else:
+                x2 = out_r * out_r
+                out_r = out_r * (27.0 + x2) / (27.0 + 9.0 * x2)
+
+            # Convert to 16-bit LE
+            s_l = int(out_l * 32767.0)
+            s_r = int(out_r * 32767.0)
+            if s_l > 32767: s_l = 32767
+            elif s_l < -32768: s_l = -32768
+            if s_r > 32767: s_r = 32767
+            elif s_r < -32768: s_r = -32768
+
+            _pack("<hh", buf, i * 4, s_l, s_r)
+
+        # Store back DC state
+        self.dc_l = dc_l
+        self.dc_r = dc_r
+
+        return bytes(buf)
+
+    def generate_silence(self) -> bytes:
+        """Generate silence (when tracker is stopped)."""
+        return bytes(CHUNK_SAMPLES * AUDIO_CHANNELS * 2)
+
+    def all_notes_off(self):
+        """Kill all voices and clear effects."""
+        for v in self.voices:
+            v.active = False
+            v.env_stage = 0
+            v.env_level = 0.0
+            v.svf_low = 0.0
+            v.svf_band = 0.0
+            v.svf_high = 0.0
+        self.delay.clear()
+        self.chorus.clear()
+        self.reverb.clear()
+        self.dc_l = 0.0
+        self.dc_r = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -216,27 +962,71 @@ class TrackerState:
                                for _ in range(8)] for _ in range(256)]
 
     def _generate_demo_phrase(self):
-        """Generate a demo phrase with some notes."""
-        self.phrase_data = []
-        # A simple melodic pattern
-        pattern_notes = [
-            37, 0, 0, 0, 41, 0, 0, 0,
-            44, 0, 0, 0, 48, 0, 44, 0,
+        """Generate a demo phrase — C minor pattern matching Kotlin M8Emulator."""
+        # Key of C minor: C=25, Eb=28, G=32, Bb=35
+        # Track 0: Lead melody — expressive phrase (pulse w/ PWM)
+        lead_notes = [
+            60, 0, 63, 0,  67, 0, 70, 63,   # C5 . Eb5 . G5 . Bb5 Eb5
+            72, 0, 70, 67,  63, 0, 60, 0     # C6 . Bb5 G5 Eb5 . C5 .
         ]
+        # Track 1: Bass — driving eighth-note root pattern (saw)
+        bass_notes = [
+            36, 0, 36, 0,  36, 0, 36, 48,   # C3 . C3 . C3 . C3 C4
+            39, 0, 39, 0,  43, 0, 43, 0     # Eb3 . Eb3 . G3 . G3 .
+        ]
+        # Track 2: Pad chords — sustained (triangle)
+        pad_notes = [
+            60, 0, 0, 0,  0, 0, 0, 0,       # C5 (hold)
+            63, 0, 0, 0,  67, 0, 0, 0        # Eb5 (hold) G5 (hold)
+        ]
+        # Track 3: Hi-hat pattern (noise)
+        hat_notes = [
+            80, 0, 80, 0,  80, 0, 80, 0,    # steady eighths
+            80, 0, 80, 80, 80, 0, 80, 0     # variation with ghost note
+        ]
+        hat_vols = [
+            0xCC, 0, 0x88, 0,  0xCC, 0, 0x88, 0,
+            0xCC, 0, 0x88, 0x55, 0xCC, 0, 0x88, 0
+        ]
+        # Track 4: FM bell — sparse accents on beat
+        bell_notes = [
+            72, 0, 0, 0,  0, 0, 0, 0,
+            0, 0, 0, 0,   79, 0, 0, 0        # C6 . . . . . . . . . . . G6 . . .
+        ]
+        # Track 5: Pluck arpeggios
+        pluck_notes = [
+            0, 60, 0, 63,  0, 67, 0, 63,
+            0, 60, 0, 67,  0, 72, 0, 67
+        ]
+        # Track 6: Sub bass — octave below bass, only on downbeats (sine)
+        sub_notes = [
+            24, 0, 0, 0,  0, 0, 0, 0,
+            27, 0, 0, 0,  31, 0, 0, 0
+        ]
+        # Track 7: FX hits (FM)
+        fx_notes = [
+            0, 0, 0, 0,  0, 0, 0, 96,
+            0, 0, 0, 0,  0, 0, 0, 0
+        ]
+
+        all_tracks = [lead_notes, bass_notes, pad_notes, hat_notes,
+                      bell_notes, pluck_notes, sub_notes, fx_notes]
+
+        self.phrase_data = []
         for row in range(16):
             track_row = []
             for track in range(8):
-                if track == 0:
-                    note = pattern_notes[row]
-                elif track == 1 and row % 4 == 0:
-                    note = random.choice([25, 37, 49])
-                elif track == 2 and row % 2 == 0:
-                    note = random.randint(60, 80)
+                note = all_tracks[track][row]
+
+                if track == 3:
+                    vol = hat_vols[row]  # per-step hat volume
+                elif note > 0:
+                    vol = 0xCC  # default volume
                 else:
-                    note = 0
-                inst = random.randint(0, 7) if note > 0 else 0
-                vol = random.randint(0x80, 0xFF) if note > 0 else 0
-                fx = random.randint(0, 0x20) if note > 0 and random.random() > 0.7 else 0
+                    vol = 0
+
+                inst = track  # instrument matches track
+                fx = 0
                 track_row.append((note, inst, vol, fx, 0))
             self.phrase_data.append(track_row)
 
@@ -301,9 +1091,7 @@ class M8Renderer:
         state.frame_count += 1
         state.waveform_phase += 0.15
 
-        # Advance play position
-        if state.playing and state.frame_count % (FPS // 4) == 0:
-            state.play_row = (state.play_row + 1) % 16
+        # Note: play_row advance is handled by the audio loop (BPM-synced)
 
         # SLIP-encode all commands
         return [slip_encode(cmd) for cmd in cmds]
@@ -555,8 +1343,11 @@ class M8EmulatorServer:
         self.audio_clients: Set[WebSocketServerProtocol] = set()
         self.state = TrackerState()
         self.renderer = M8Renderer()
+        self.synth = M8Synth()
         self._shutdown = asyncio.Event()
         self._last_keys = 0
+        self._was_playing = False
+        self._audio_samples_since_row = 0
 
     async def start(self) -> None:
         loop = asyncio.get_running_loop()
@@ -686,35 +1477,50 @@ class M8EmulatorServer:
             await asyncio.sleep(sleep_time)
 
     async def _audio_loop(self) -> None:
-        """Generate and broadcast audio data to connected audio clients."""
-        sample_rate = 44100
-        chunk_samples = 1024
-        chunk_duration = chunk_samples / sample_rate
-        phase = 0.0
+        """Generate and broadcast audio data to connected audio clients.
+
+        Uses the M8Synth for full synthesis (ADSR, PolyBLEP waveforms, filters,
+        delay, chorus, reverb). Row advance is BPM-synced: rows_per_beat = 4,
+        so row_duration_samples = SAMPLE_RATE * 60 / (bpm * 4).
+        """
+        chunk_duration = CHUNK_SAMPLES / SAMPLE_RATE
 
         while not self._shutdown.is_set():
-            if self.audio_clients and self.state.playing:
-                # Generate a simple sine wave as raw PCM with 0x01 header
-                freq = 440.0 * (2 ** ((self.state.octave - 4) / 1.0))
-                samples = bytearray(chunk_samples * 2 * 2)  # 16-bit stereo
+            start_time = time.monotonic()
 
-                for i in range(chunk_samples):
-                    t = phase + i / sample_rate
-                    # Mix a few harmonics for a richer sound
-                    v = math.sin(2 * math.pi * freq * t) * 0.3
-                    v += math.sin(2 * math.pi * freq * 2 * t) * 0.15
-                    v += math.sin(2 * math.pi * freq * 0.5 * t) * 0.1
-                    sample = max(-32768, min(32767, int(v * 32767)))
-                    offset = i * 4
-                    struct.pack_into("<hh", samples, offset, sample, sample)
+            if self.audio_clients:
+                if self.state.playing:
+                    # Detect play state transitions
+                    if not self._was_playing:
+                        self._was_playing = True
+                        self._audio_samples_since_row = 0
+                        # Trigger the first row immediately
+                        if self.state.phrase_data:
+                            row_data = self.state.phrase_data[self.state.play_row % 16]
+                            self.synth.trigger_row(row_data)
 
-                phase += chunk_samples / sample_rate
-                # Keep phase from growing unbounded
-                if phase > 1.0:
-                    phase -= 1.0
+                    # BPM-synced row advance: rows_per_beat = 4
+                    row_duration_samples = int(SAMPLE_RATE * 60.0 / (self.state.bpm * 4))
+                    self._audio_samples_since_row += CHUNK_SAMPLES
+
+                    if self._audio_samples_since_row >= row_duration_samples:
+                        self._audio_samples_since_row -= row_duration_samples
+                        self.state.play_row = (self.state.play_row + 1) % 16
+                        if self.state.phrase_data:
+                            row_data = self.state.phrase_data[self.state.play_row % 16]
+                            self.synth.trigger_row(row_data)
+
+                    # Generate audio chunk via synth
+                    pcm = self.synth.generate_chunk()
+                else:
+                    # Stopped — silence and clean up
+                    if self._was_playing:
+                        self._was_playing = False
+                        self.synth.all_notes_off()
+                    pcm = self.synth.generate_silence()
 
                 # Send with 0x01 header (raw PCM marker)
-                payload = b"\x01" + bytes(samples)
+                payload = b"\x01" + pcm
 
                 stale = []
                 results = await asyncio.gather(
@@ -727,7 +1533,9 @@ class M8EmulatorServer:
                 for ws in stale:
                     self.audio_clients.discard(ws)
 
-            await asyncio.sleep(chunk_duration)
+            elapsed = time.monotonic() - start_time
+            sleep_time = max(0, chunk_duration - elapsed)
+            await asyncio.sleep(sleep_time)
 
 
 # ---------------------------------------------------------------------------

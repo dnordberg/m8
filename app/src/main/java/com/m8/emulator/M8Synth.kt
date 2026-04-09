@@ -21,66 +21,6 @@ import kotlin.math.*
  */
 class M8Synth {
 
-    companion object {
-        const val SAMPLE_RATE = M8AudioPlayer.SAMPLE_RATE // 44100
-        const val CHANNELS = 2
-        const val CHUNK_SAMPLES = 735 // ~16.7ms per chunk
-
-        // Waveform types
-        const val WAVE_SINE = 0
-        const val WAVE_SAW = 1
-        const val WAVE_PULSE = 2
-        const val WAVE_TRIANGLE = 3
-        const val WAVE_NOISE = 4
-        const val WAVE_FM = 5        // 2-op FM synthesis
-
-        // Filter types
-        const val FILTER_LP = 0
-        const val FILTER_HP = 1
-        const val FILTER_BP = 2
-
-        // Track instrument presets
-        private val TRACK_PRESETS = arrayOf(
-            // Track 0: Lead — pulse with PWM, medium attack, filter sweep
-            VoicePreset(WAVE_PULSE, 0.45, FILTER_LP, 0.7, 0.3,
-                adsr = ADSR(0.005, 0.1, 0.7, 0.3),
-                pwmDepth = 0.2, pwmRate = 3.5, filterLfoDepth = 0.15, filterLfoRate = 2.0),
-            // Track 1: Bass — sawtooth, fast attack, low filter
-            VoicePreset(WAVE_SAW, 0.0, FILTER_LP, 0.35, 0.45,
-                adsr = ADSR(0.002, 0.15, 0.6, 0.15),
-                filterEnvDepth = 0.5, filterEnvDecay = 0.2),
-            // Track 2: Pad — triangle + slow attack, high cutoff, chorus
-            VoicePreset(WAVE_TRIANGLE, 0.0, FILTER_LP, 0.85, 0.1,
-                adsr = ADSR(0.3, 0.4, 0.8, 1.0),
-                chorusSend = 0.6, reverbSend = 0.5),
-            // Track 3: Hi-hat / percussion — noise, very short
-            VoicePreset(WAVE_NOISE, 0.0, FILTER_HP, 0.6, 0.2,
-                adsr = ADSR(0.001, 0.05, 0.0, 0.03)),
-            // Track 4: FM bell
-            VoicePreset(WAVE_FM, 0.0, FILTER_LP, 0.9, 0.0,
-                adsr = ADSR(0.001, 0.8, 0.2, 0.5),
-                fmRatio = 3.0, fmIndex = 2.5, reverbSend = 0.4),
-            // Track 5: Pluck — pulse, fast decay
-            VoicePreset(WAVE_PULSE, 0.5, FILTER_LP, 0.55, 0.35,
-                adsr = ADSR(0.001, 0.2, 0.1, 0.15),
-                filterEnvDepth = 0.6, filterEnvDecay = 0.15),
-            // Track 6: Sub bass — sine, clean
-            VoicePreset(WAVE_SINE, 0.0, FILTER_LP, 0.95, 0.0,
-                adsr = ADSR(0.01, 0.05, 0.9, 0.2)),
-            // Track 7: SFX — FM, short, noisy
-            VoicePreset(WAVE_FM, 0.0, FILTER_BP, 0.5, 0.6,
-                adsr = ADSR(0.001, 0.3, 0.0, 0.1),
-                fmRatio = 7.0, fmIndex = 5.0),
-        )
-
-        fun noteToFreq(midiNote: Int): Double {
-            val midi = midiNote + 23
-            return 440.0 * 2.0.pow((midi - 69) / 12.0)
-        }
-
-        private const val TWO_PI = 2.0 * PI
-    }
-
     // ===================== DATA CLASSES =====================
 
     data class ADSR(
@@ -527,6 +467,71 @@ class M8Synth {
     private var dcR = 0.0
     private val dcCoeff = 1.0 - (TWO_PI * 5.0 / SAMPLE_RATE)
 
+    // --- Waveform capture for visualization ---
+    // Circular buffer of recent output samples (mono mix)
+    private val waveformBuffer = DoubleArray(WAVEFORM_CAPTURE_SIZE)
+    private var waveformWritePos = 0
+
+    // --- Per-track level meters ---
+    val trackLevels = DoubleArray(8)  // RMS level per track (0.0-1.0)
+    var masterLevelL = 0.0; private set
+    var masterLevelR = 0.0; private set
+
+    // --- Swing/groove ---
+    var swingAmount = 0.15  // 0.0 = straight, 0.5 = full swing (delays odd rows by 50%)
+
+    companion object {
+        const val SAMPLE_RATE = M8AudioPlayer.SAMPLE_RATE
+        const val CHANNELS = 2
+        const val CHUNK_SAMPLES = 735
+        const val WAVEFORM_CAPTURE_SIZE = 320 // matches display width
+
+        const val WAVE_SINE = 0
+        const val WAVE_SAW = 1
+        const val WAVE_PULSE = 2
+        const val WAVE_TRIANGLE = 3
+        const val WAVE_NOISE = 4
+        const val WAVE_FM = 5
+
+        const val FILTER_LP = 0
+        const val FILTER_HP = 1
+        const val FILTER_BP = 2
+
+        const val NOTE_OFF = 0xFF  // Special note value to release a voice
+
+        private val TRACK_PRESETS = arrayOf(
+            VoicePreset(WAVE_PULSE, 0.45, FILTER_LP, 0.7, 0.3,
+                adsr = ADSR(0.005, 0.1, 0.7, 0.3),
+                pwmDepth = 0.2, pwmRate = 3.5, filterLfoDepth = 0.15, filterLfoRate = 2.0),
+            VoicePreset(WAVE_SAW, 0.0, FILTER_LP, 0.35, 0.45,
+                adsr = ADSR(0.002, 0.15, 0.6, 0.15),
+                filterEnvDepth = 0.5, filterEnvDecay = 0.2),
+            VoicePreset(WAVE_TRIANGLE, 0.0, FILTER_LP, 0.85, 0.1,
+                adsr = ADSR(0.3, 0.4, 0.8, 1.0),
+                chorusSend = 0.6, reverbSend = 0.5),
+            VoicePreset(WAVE_NOISE, 0.0, FILTER_HP, 0.6, 0.2,
+                adsr = ADSR(0.001, 0.05, 0.0, 0.03)),
+            VoicePreset(WAVE_FM, 0.0, FILTER_LP, 0.9, 0.0,
+                adsr = ADSR(0.001, 0.8, 0.2, 0.5),
+                fmRatio = 3.0, fmIndex = 2.5, reverbSend = 0.4),
+            VoicePreset(WAVE_PULSE, 0.5, FILTER_LP, 0.55, 0.35,
+                adsr = ADSR(0.001, 0.2, 0.1, 0.15),
+                filterEnvDepth = 0.6, filterEnvDecay = 0.15),
+            VoicePreset(WAVE_SINE, 0.0, FILTER_LP, 0.95, 0.0,
+                adsr = ADSR(0.01, 0.05, 0.9, 0.2)),
+            VoicePreset(WAVE_FM, 0.0, FILTER_BP, 0.5, 0.6,
+                adsr = ADSR(0.001, 0.3, 0.0, 0.1),
+                fmRatio = 7.0, fmIndex = 5.0),
+        )
+
+        fun noteToFreq(midiNote: Int): Double {
+            val midi = midiNote + 23
+            return 440.0 * 2.0.pow((midi - 69) / 12.0)
+        }
+
+        private const val TWO_PI = 2.0 * PI
+    }
+
     /**
      * Trigger notes from the current tracker row.
      * @param rowData Array of 8 tracks, each IntArray(note, instrument, volume, fx, fx2)
@@ -539,13 +544,40 @@ class M8Synth {
             val vol = data[2]
             val voice = voices[track]
 
-            if (note > 0) {
-                val freq = noteToFreq(note)
-                val v = (vol and 0xFF) / 255.0
-                voice.triggerNote(freq, v)
+            when {
+                note == NOTE_OFF -> voice.releaseNote()
+                note > 0 -> {
+                    val freq = noteToFreq(note)
+                    val v = (vol and 0xFF) / 255.0
+                    voice.triggerNote(freq, v)
+                }
+                // note == 0 means continue — existing note keeps playing
             }
-            // note == 0 means continue — existing note keeps playing with envelope
         }
+    }
+
+    /**
+     * Calculate the swing-adjusted delay in samples for a given row.
+     * Odd rows are delayed by swingAmount * row_duration.
+     */
+    fun getSwingDelaySamples(row: Int, bpm: Int): Int {
+        if (row % 2 == 0 || swingAmount <= 0.0) return 0
+        val rowDuration = 60.0 / (bpm * 4.0) // seconds per row at 4 rows/beat
+        return (rowDuration * swingAmount * SAMPLE_RATE).toInt()
+    }
+
+    /**
+     * Get the waveform buffer for visualization (most recent 320 samples).
+     * Returns values normalized to 0-255 range for display.
+     */
+    fun getWaveformData(): ByteArray {
+        val data = ByteArray(WAVEFORM_CAPTURE_SIZE)
+        for (i in 0 until WAVEFORM_CAPTURE_SIZE) {
+            val idx = (waveformWritePos + i) % WAVEFORM_CAPTURE_SIZE
+            val v = waveformBuffer[idx].coerceIn(-1.0, 1.0)
+            data[i] = (128 + v * 80).toInt().coerceIn(0, 255).toByte()
+        }
+        return data
     }
 
     /**
@@ -554,6 +586,11 @@ class M8Synth {
     fun generateChunk(): ByteArray {
         val buffer = ByteArray(CHUNK_SAMPLES * CHANNELS * 2)
         val dt = 1.0 / SAMPLE_RATE
+
+        // Per-track level accumulators
+        val trackSumSq = DoubleArray(8)
+        var masterSumSqL = 0.0
+        var masterSumSqR = 0.0
 
         for (i in 0 until CHUNK_SAMPLES) {
             var mixL = 0.0
@@ -572,11 +609,10 @@ class M8Synth {
                 if (!v.active) continue
 
                 val sample = v.generateSample()
-                val gain = 0.15 // Per-voice master gain
+                val gain = 0.15
 
-                // Stereo pan (spread tracks across stereo field)
                 val pan = (v.trackIndex.toDouble() / 7.0) * 0.6 + 0.2
-                val panL = cos(pan * PI * 0.5) // Equal-power pan law
+                val panL = cos(pan * PI * 0.5)
                 val panR = sin(pan * PI * 0.5)
 
                 val outL = sample * gain * panL
@@ -585,7 +621,9 @@ class M8Synth {
                 mixL += outL
                 mixR += outR
 
-                // Effect sends
+                // Track level metering
+                trackSumSq[v.trackIndex] += sample * sample * gain * gain
+
                 val preset = v.preset
                 if (preset.chorusSend > 0.0) {
                     chorusInL += outL * preset.chorusSend
@@ -601,12 +639,10 @@ class M8Synth {
                 }
             }
 
-            // Process effects
             val (chL, chR) = chorus.process(chorusInL, chorusInR)
             val (dlL, dlR) = delay.process(delayInL, delayInR)
             val (rvL, rvR) = reverb.process(reverbInL, reverbInR)
 
-            // Mix effects into output
             var outL = mixL + chL + dlL + rvL
             var outR = mixR + chR + dlR + rvR
 
@@ -615,15 +651,20 @@ class M8Synth {
             val prevDcR = dcR
             dcL = outL - prevDcL * dcCoeff
             dcR = outR - prevDcR * dcCoeff
-            // Actually apply the DC filter (high-pass)
-            val filtL = outL - dcL
-            val filtR = outR - dcR
-            outL = filtL
-            outR = filtR
+            outL -= dcL
+            outR -= dcR
 
-            // Soft clip (tanh-style)
+            // Soft clip
             outL = tanhClip(outL)
             outR = tanhClip(outR)
+
+            // Master level metering
+            masterSumSqL += outL * outL
+            masterSumSqR += outR * outR
+
+            // Capture mono mix for waveform visualization
+            waveformBuffer[waveformWritePos] = (outL + outR) * 0.5
+            waveformWritePos = (waveformWritePos + 1) % WAVEFORM_CAPTURE_SIZE
 
             // Convert to 16-bit LE
             val sL = (outL * 32767.0).toInt().coerceIn(-32768, 32767)
@@ -636,11 +677,26 @@ class M8Synth {
             buffer[offset + 3] = (sR shr 8 and 0xFF).toByte()
         }
 
+        // Update level meters (RMS)
+        val invN = 1.0 / CHUNK_SAMPLES
+        for (t in 0 until 8) {
+            trackLevels[t] = sqrt(trackSumSq[t] * invN).coerceIn(0.0, 1.0)
+        }
+        masterLevelL = sqrt(masterSumSqL * invN).coerceIn(0.0, 1.0)
+        masterLevelR = sqrt(masterSumSqR * invN).coerceIn(0.0, 1.0)
+
         return buffer
     }
 
     /** Generate silence (when tracker is stopped). */
     fun generateSilence(): ByteArray {
+        trackLevels.fill(0.0)
+        masterLevelL = 0.0
+        masterLevelR = 0.0
+        // Fade waveform to center
+        for (i in 0 until WAVEFORM_CAPTURE_SIZE) {
+            waveformBuffer[i] *= 0.95
+        }
         return ByteArray(CHUNK_SAMPLES * CHANNELS * 2)
     }
 
@@ -659,11 +715,13 @@ class M8Synth {
         reverb.clear()
         dcL = 0.0
         dcR = 0.0
+        trackLevels.fill(0.0)
+        masterLevelL = 0.0
+        masterLevelR = 0.0
     }
 
-    /** Tanh-style soft clipper — warmer than hard clip */
+    /** Tanh-style soft clipper */
     private fun tanhClip(x: Double): Double {
-        // Fast tanh approximation
         if (x > 3.0) return 1.0
         if (x < -3.0) return -1.0
         val x2 = x * x

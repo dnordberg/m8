@@ -81,40 +81,75 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
 
     // --- Local emulator mode ---
 
+    // BPM-synced row timing
+    private var samplesUntilNextRow = 0
+    private var swingDelaySamples = 0
+
     fun startLocalEmulator() {
         _isLocalMode.value = true
         stopDisplayRefresh()
+
+        // Reset timing
+        samplesUntilNextRow = 0
 
         // Display render loop
         emulatorRenderJob?.cancel()
         emulatorRenderJob = viewModelScope.launch {
             while (true) {
+                // Pipe live synth data into emulator for visualization
+                emulator.liveWaveformData = synth.getWaveformData()
+                emulator.liveTrackLevels = synth.trackLevels.clone()
+                emulator.liveMasterLevelL = synth.masterLevelL
+                emulator.liveMasterLevelR = synth.masterLevelR
+
                 val frameData = emulator.renderFrame()
                 connectionManager.protocol.processBytes(frameData)
-
-                // Trigger synth on new row when playing
-                if (emulator.playing && emulator.playRow != lastPlayRow) {
-                    lastPlayRow = emulator.playRow
-                    synth.triggerRow(emulator.phraseData[emulator.playRow])
-                } else if (!emulator.playing && lastPlayRow != -1) {
-                    lastPlayRow = -1
-                    synth.allNotesOff()
-                }
 
                 _displayTick.value++
                 delay(33) // ~30fps
             }
         }
 
-        // Audio render loop — runs on IO thread for smooth playback
+        // Audio render loop — owns BPM timing, row advance, and song progression
         audioRenderJob?.cancel()
         localAudioPlayer.start()
         audioRenderJob = viewModelScope.launch(Dispatchers.IO) {
             while (true) {
-                val pcm = if (emulator.playing) synth.generateChunk() else synth.generateSilence()
-                localAudioPlayer.write(pcm)
-                // Chunk duration in ms: 735 samples / 44100 = ~16.7ms
-                // AudioTrack.write() blocks when buffer is full, so this paces itself
+                if (emulator.playing) {
+                    // BPM-synced row advance: 4 rows per beat
+                    val rowDurationSamples = (M8Synth.SAMPLE_RATE * 60.0 / (emulator.bpm * 4.0)).toInt()
+
+                    if (samplesUntilNextRow <= 0) {
+                        // Advance row
+                        val activePhrase = emulator.getActivePhrase()
+                        synth.triggerRow(activePhrase[emulator.playRow])
+                        lastPlayRow = emulator.playRow
+
+                        // Calculate swing delay for next row
+                        val nextRow = (emulator.playRow + 1) % 16
+                        swingDelaySamples = synth.getSwingDelaySamples(nextRow, emulator.bpm)
+                        samplesUntilNextRow = rowDurationSamples + swingDelaySamples
+
+                        // Advance play position
+                        emulator.playRow = nextRow
+                        if (emulator.playRow == 0) {
+                            // Pattern complete — advance song
+                            emulator.advancePattern()
+                        }
+                    }
+
+                    val pcm = synth.generateChunk()
+                    localAudioPlayer.write(pcm)
+                    samplesUntilNextRow -= M8Synth.CHUNK_SAMPLES
+                } else {
+                    if (lastPlayRow != -1) {
+                        lastPlayRow = -1
+                        synth.allNotesOff()
+                        samplesUntilNextRow = 0
+                    }
+                    val pcm = synth.generateSilence()
+                    localAudioPlayer.write(pcm)
+                }
             }
         }
     }
