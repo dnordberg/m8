@@ -4,7 +4,6 @@ import com.m8.protocol.M8Commands
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
-import kotlin.random.Random
 
 /**
  * Virtual M8 tracker emulator — generates SLIP-encoded draw commands
@@ -58,19 +57,83 @@ class M8Emulator {
     var frameCount = 0
     var waveformPhase = 0.0
 
-    // Phrase data: 16 rows, each row = array of (note, instrument, volume, fx, fx2) per track (8 tracks)
+    // Phrase data: 16 rows x 8 tracks
+    // Track 0: Lead melody (pulse w/ PWM)
+    // Track 1: Bass line (saw)
+    // Track 2: Pad / chord (triangle)
+    // Track 3: Hi-hat / percussion (noise)
+    // Track 4: FM bell accents
+    // Track 5: Pluck arpeggio
+    // Track 6: Sub bass (sine)
+    // Track 7: FX hits (FM)
     val phraseData = Array(16) { row ->
         Array(8) { track ->
-            val patternNotes = intArrayOf(37, 0, 0, 0, 41, 0, 0, 0, 44, 0, 0, 0, 48, 0, 44, 0)
-            val note = when {
-                track == 0 -> patternNotes[row]
-                track == 1 && row % 4 == 0 -> listOf(25, 37, 49).random()
-                track == 2 && row % 2 == 0 -> Random.nextInt(60, 80)
+            // Key of C minor: C=25, Eb=28, G=32, Bb=35
+            // Lead melody — expressive phrase
+            val leadNotes = intArrayOf(
+                60, 0, 63, 0,  67, 0, 70, 63,  // C5 . Eb5 . G5 . Bb5 Eb5
+                72, 0, 70, 67,  63, 0, 60, 0   // C6 . Bb5 G5 Eb5 . C5 .
+            )
+            // Bass — driving eighth-note root pattern
+            val bassNotes = intArrayOf(
+                36, 0, 36, 0,  36, 0, 36, 48,  // C3 . C3 . C3 . C3 C4
+                39, 0, 39, 0,  43, 0, 43, 0    // Eb3 . Eb3 . G3 . G3 .
+            )
+            // Pad chords (sustained)
+            val padNotes = intArrayOf(
+                60, 0, 0, 0,  0, 0, 0, 0,      // C5 (hold)
+                63, 0, 0, 0,  67, 0, 0, 0      // Eb5 (hold) G5 (hold)
+            )
+            // Hi-hat pattern
+            val hatNotes = intArrayOf(
+                80, 0, 80, 0,  80, 0, 80, 0,   // steady eighths
+                80, 0, 80, 80, 80, 0, 80, 0    // variation with ghost note
+            )
+            val hatVols = intArrayOf(
+                0xCC, 0, 0x88, 0,  0xCC, 0, 0x88, 0,
+                0xCC, 0, 0x88, 0x55, 0xCC, 0, 0x88, 0
+            )
+            // FM bell — sparse accents on beat
+            val bellNotes = intArrayOf(
+                72, 0, 0, 0,  0, 0, 0, 0,
+                0, 0, 0, 0,   79, 0, 0, 0      // C6 . . . . . . . . . . . G6 . . .
+            )
+            // Pluck arpeggios
+            val pluckNotes = intArrayOf(
+                0, 60, 0, 63,  0, 67, 0, 63,
+                0, 60, 0, 67,  0, 72, 0, 67
+            )
+            // Sub bass (octave below bass, only on downbeats)
+            val subNotes = intArrayOf(
+                24, 0, 0, 0,  0, 0, 0, 0,
+                27, 0, 0, 0,  31, 0, 0, 0
+            )
+            // FX hits
+            val fxNotes = intArrayOf(
+                0, 0, 0, 0,  0, 0, 0, 96,
+                0, 0, 0, 0,  0, 0, 0, 0
+            )
+
+            val note = when (track) {
+                0 -> leadNotes[row]
+                1 -> bassNotes[row]
+                2 -> padNotes[row]
+                3 -> hatNotes[row]
+                4 -> bellNotes[row]
+                5 -> pluckNotes[row]
+                6 -> subNotes[row]
+                7 -> fxNotes[row]
                 else -> 0
             }
-            val inst = if (note > 0) Random.nextInt(0, 8) else 0
-            val vol = if (note > 0) Random.nextInt(0x80, 0xFF) else 0
-            val fx = if (note > 0 && Random.nextFloat() > 0.7f) Random.nextInt(0, 0x20) else 0
+
+            val vol = when {
+                track == 3 -> hatVols[row] // per-step hat volume
+                note > 0 -> 0xCC          // default volume
+                else -> 0
+            }
+
+            val inst = track // instrument matches track
+            val fx = 0
             intArrayOf(note, inst, vol, fx, 0)
         }
     }
