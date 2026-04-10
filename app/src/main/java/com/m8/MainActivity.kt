@@ -121,6 +121,7 @@ private fun M8MainScreen(
     onToggleMode: () -> Unit,
 ) {
     val isAudioMuted by viewModel.isAudioMuted.collectAsState()
+    val debugInfo by viewModel.debugInfo.collectAsState()
 
     Column(
         modifier = Modifier
@@ -189,6 +190,18 @@ private fun M8MainScreen(
             M8Screen(
                 bitmap = viewModel.connectionManager.display.snapshot(),
                 invalidationTick = displayTick,
+            )
+        }
+
+        // Debug info bar
+        if (debugInfo.isNotEmpty()) {
+            Text(
+                text = debugInfo,
+                color = Color(0xFFFFFF00),
+                fontSize = 9.sp,
+                fontFamily = FontFamily.Monospace,
+                maxLines = 2,
+                modifier = Modifier.padding(horizontal = 12.dp),
             )
         }
 

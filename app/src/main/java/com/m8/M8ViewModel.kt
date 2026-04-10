@@ -42,6 +42,10 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     private val _displayTick = MutableStateFlow(0)
     val displayTick: StateFlow<Int> = _displayTick
 
+    // Debug info visible in the app
+    private val _debugInfo = MutableStateFlow("")
+    val debugInfo: StateFlow<String> = _debugInfo
+
     // Audio mute state
     private val _isAudioMuted = MutableStateFlow(false)
     val isAudioMuted: StateFlow<Boolean> = _isAudioMuted
@@ -127,6 +131,7 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
                             wasPlaying = true
                             samplesUntilNextRow = 0
                             emulator.playRow = 0
+                            _debugInfo.value = "PLAY started"
                         }
 
                         // BPM-synced row advance: 4 rows per beat
@@ -139,6 +144,7 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
                             val activePhrase = emulator.getActivePhrase()
                             synth.triggerRow(activePhrase[row])
                             lastPlayRow = row
+                            _debugInfo.value = "ROW:$row PAT:${emulator.currentPattern} BPM:${bpm}"
 
                             // Calculate next row timing with swing
                             val nextRow = (row + 1) % 16
@@ -166,8 +172,10 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
                         localAudioPlayer.write(pcm)
                     }
                 } catch (e: Exception) {
-                    // Don't let the audio loop crash — log and continue
-                    android.util.Log.e("M8Audio", "Audio loop error: ${e.message}", e)
+                    // Don't let the audio loop crash — show in UI and continue
+                    val msg = "Audio error: ${e.message}\n${e.stackTraceToString().take(200)}"
+                    android.util.Log.e("M8Audio", msg, e)
+                    _debugInfo.value = msg
                     delay(16)
                 }
             }
