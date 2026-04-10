@@ -266,16 +266,22 @@ class M8Emulator {
 
     private var lastKeys = 0
 
-    // --- Colors ---
-    private val cBg = intArrayOf(0, 0, 0)
-    private val cText = intArrayOf(0, 255, 0)
-    private val cTextDim = intArrayOf(0, 128, 0)
-    private val cCursor = intArrayOf(255, 255, 255)
-    private val cCursorBg = intArrayOf(60, 60, 180)
-    private val cHeader = intArrayOf(255, 100, 0)
-    private val cValue = intArrayOf(200, 200, 255)
-    private val cPlayOn = intArrayOf(255, 50, 50)
-    private val cWaveform = intArrayOf(0, 200, 255)
+    // --- Colors (matching real M8 palette) ---
+    private val cBg = intArrayOf(10, 14, 39)           // Dark navy
+    private val cText = intArrayOf(0, 255, 255)         // Cyan
+    private val cTextDim = intArrayOf(0, 100, 120)      // Dim cyan
+    private val cCursor = intArrayOf(255, 255, 255)     // White cursor text
+    private val cCursorBg = intArrayOf(255, 0, 255)     // Magenta cursor highlight
+    private val cHeader = intArrayOf(0, 200, 255)       // Bright cyan headers
+    private val cValue = intArrayOf(80, 160, 255)       // Blue values
+    private val cPlayOn = intArrayOf(255, 60, 80)       // Red-pink play indicator
+    private val cWaveform = intArrayOf(0, 200, 255)     // Cyan waveform
+    private val cNote = intArrayOf(0, 255, 255)         // Cyan notes
+    private val cInst = intArrayOf(80, 160, 255)        // Blue instrument
+    private val cVol = intArrayOf(80, 255, 80)          // Green volume
+    private val cFx = intArrayOf(200, 100, 255)         // Purple FX
+    private val cRowNum = intArrayOf(60, 80, 100)       // Dim row numbers
+    private val cEmpty = intArrayOf(40, 50, 70)         // Dim dashes
 
     // --- Key handling ---
 
@@ -340,17 +346,21 @@ class M8Emulator {
     // --- Renderers ---
 
     private fun renderHeader(): List<ByteArray> {
+        // Phrase view has its own title bar, others use screen tabs
+        if (screen == SCREEN_PHRASE) return emptyList()
+
         val cmds = mutableListOf<ByteArray>()
-        cmds.add(drawRect(0, 0, WIDTH, 12, intArrayOf(20, 20, 40)))
+        val headerBg = intArrayOf(15, 20, 50)
+        cmds.add(drawRect(0, 0, WIDTH, 12, headerBg))
 
         for (i in SCREEN_NAMES.indices) {
             val x = i * 40
             if (i == screen) {
-                cmds.add(drawRect(x, 0, 39, 12, intArrayOf(60, 60, 120)))
-                cmds.addAll(drawText(SCREEN_NAMES[i], x + 2, 1, cCursor, intArrayOf(60, 60, 120)))
+                cmds.add(drawRect(x, 0, 39, 12, cCursorBg))
+                cmds.addAll(drawText(SCREEN_NAMES[i], x + 2, 1, cCursor, cCursorBg))
             } else {
                 val short = SCREEN_NAMES[i].take(3)
-                cmds.addAll(drawText(short, x + 6, 1, cTextDim, intArrayOf(20, 20, 40)))
+                cmds.addAll(drawText(short, x + 6, 1, cTextDim, headerBg))
             }
         }
         return cmds
@@ -358,43 +368,91 @@ class M8Emulator {
 
     private fun renderPhrase(): List<ByteArray> {
         val cmds = mutableListOf<ByteArray>()
-        val yStart = 16
-        val rowH = FONT_H + 2
+        val yStart = 14
+        val rowH = FONT_H + 3
 
-        val headers = arrayOf("ROW", "NT1", "I1", "NT2", "I2", "NT3", "I3", "VOL")
-        for (i in headers.indices) {
-            cmds.addAll(drawText(headers[i], 4 + i * 38, yStart, cHeader, cBg))
+        // Title bar
+        cmds.add(drawRect(0, 0, WIDTH, 12, intArrayOf(15, 20, 50)))
+        cmds.addAll(drawText("PHRASE ${hex2(currentPattern)}", 4, 1, cText, intArrayOf(15, 20, 50)))
+        cmds.addAll(drawText("T>${String.format("%03d", bpm)}", WIDTH - 40, 1, cText, intArrayOf(15, 20, 50)))
+
+        // Column headers: N  I  V  FX1 FX2 FX3 (for tracks 1-8 on right)
+        val colN = 20    // Note
+        val colI = 52    // Instrument
+        val colV = 72    // Volume
+        val colFx1 = 92  // FX1
+        val colFx2 = 120 // FX2
+        val colFx3 = 148 // FX3
+        // Track indicators on right
+        val colTracks = 180
+
+        cmds.addAll(drawText("N", colN, yStart, cHeader, cBg))
+        cmds.addAll(drawText("I", colI, yStart, cHeader, cBg))
+        cmds.addAll(drawText("V", colV, yStart, cHeader, cBg))
+        cmds.addAll(drawText("FX1", colFx1, yStart, cHeader, cBg))
+        cmds.addAll(drawText("FX2", colFx2, yStart, cHeader, cBg))
+        cmds.addAll(drawText("FX3", colFx3, yStart, cHeader, cBg))
+
+        // Track number indicators: 1-8
+        for (t in 0 until 8) {
+            val tx = colTracks + t * 16
+            val tColor = if (t == cursorX) cCursorBg else cTextDim
+            cmds.addAll(drawText("${t + 1}", tx, yStart, tColor, cBg))
         }
+
+        val activePhrase = getActivePhrase()
 
         for (row in 0 until 16) {
             val y = yStart + (row + 1) * rowH
             val isPlayRow = playing && row == playRow
-            val rowBg = if (isPlayRow) intArrayOf(40, 0, 0) else cBg
-            val rowFg = if (isPlayRow) cPlayOn else cTextDim
+            val isCursorRow = row == cursorY
+            val rowBg = if (isPlayRow) intArrayOf(30, 10, 20) else cBg
 
-            cmds.addAll(drawText(hex2(row), 4, y, rowFg, rowBg))
+            // Row number (hex)
+            val rowColor = if (isPlayRow) cPlayOn else cRowNum
+            cmds.addAll(drawText(hex2(row), 2, y, rowColor, rowBg))
 
-            val trackData = phraseData[row]
-            var col = 0
-            for (track in 0 until min(3, trackData.size)) {
-                val (note, inst, vol, _, _) = trackData[track]
-                val nx = 4 + (col + 1) * 38
-                val isCursor = row == cursorY && cursorX == track
-                val cellBg = if (isCursor) cCursorBg else rowBg
-                val cellFg = if (isCursor) cCursor else cValue
+            // Get data for current track at cursor
+            val trackData = activePhrase[row]
+            val track = cursorX.coerceIn(0, 7)
+            val data = trackData[track]
+            val note = data[0]
+            val inst = data[1]
+            val vol = data[2]
+            val fx = data[3]
 
-                cmds.addAll(drawText(noteName(note), nx, y, cellFg, cellBg))
-                val ix = 4 + (col + 2) * 38
-                val iStr = if (note > 0) hex2(inst) else "--"
-                cmds.addAll(drawText(iStr, ix, y, if (note == 0) cTextDim else cText, rowBg))
-                col += 2
+            // Note column
+            val noteStr = noteName(note)
+            val isCursorNote = isCursorRow && cursorX == track
+            val noteBg = if (isCursorNote) cCursorBg else rowBg
+            val noteFg = if (isCursorNote) cCursor else if (note > 0) cNote else cEmpty
+            cmds.addAll(drawText(noteStr, colN, y, noteFg, noteBg))
+
+            // Instrument column
+            val iStr = if (note > 0) hex2(inst) else "--"
+            val iFg = if (note > 0) cInst else cEmpty
+            cmds.addAll(drawText(iStr, colI, y, iFg, rowBg))
+
+            // Volume column
+            val vStr = if (note > 0) hex2(vol) else "--"
+            val vFg = if (note > 0) cVol else cEmpty
+            cmds.addAll(drawText(vStr, colV, y, vFg, rowBg))
+
+            // FX columns (show dashes for empty)
+            val fxStr = if (fx > 0) hex2(fx) else "--"
+            val fxFg = if (fx > 0) cFx else cEmpty
+            cmds.addAll(drawText(fxStr, colFx1, y, fxFg, rowBg))
+            cmds.addAll(drawText("--", colFx2, y, cEmpty, rowBg))
+            cmds.addAll(drawText("--", colFx3, y, cEmpty, rowBg))
+
+            // Track mini-indicators on right (show which tracks have notes on this row)
+            for (t in 0 until 8) {
+                val tx = colTracks + t * 16
+                val tNote = trackData[t][0]
+                val tChar = if (tNote > 0) "." else "-"
+                val tColor = if (t == cursorX) cText else if (tNote > 0) cValue else intArrayOf(25, 30, 50)
+                cmds.addAll(drawText(tChar, tx, y, tColor, rowBg))
             }
-
-            val note0 = trackData[0][0]
-            val vol0 = trackData[0][2]
-            val vx = 4 + 7 * 38
-            val vStr = if (note0 > 0) hex2(vol0) else "--"
-            cmds.addAll(drawText(vStr, vx, y, if (note0 == 0) cTextDim else intArrayOf(200, 100, 255), rowBg))
         }
         return cmds
     }
@@ -537,19 +595,29 @@ class M8Emulator {
     private fun renderFooter(): List<ByteArray> {
         val cmds = mutableListOf<ByteArray>()
         val y = HEIGHT - 12
-        cmds.add(drawRect(0, y, WIDTH, 12, intArrayOf(20, 20, 40)))
+        val footerBg = intArrayOf(15, 20, 50)
+        cmds.add(drawRect(0, y, WIDTH, 12, footerBg))
 
-        val footerBg = intArrayOf(20, 20, 40)
-        cmds.addAll(drawText("BPM:$bpm", 4, y + 1, cText, footerBg))
+        // Screen name
+        cmds.addAll(drawText(SCREEN_NAMES[screen], 4, y + 1, cTextDim, footerBg))
 
-        val playText = if (playing) "PLAY" else "STOP"
+        // Play indicator
+        val playText = if (playing) "\u25BA" else "\u25A0"  // ► or ■
         val playColor = if (playing) cPlayOn else cTextDim
-        cmds.addAll(drawText(playText, 80, y + 1, playColor, footerBg))
+        cmds.addAll(drawText(if (playing) "PLAY" else "STOP", 60, y + 1, playColor, footerBg))
 
-        cmds.addAll(drawText("OCT:$octave", 140, y + 1, cText, footerBg))
-        cmds.addAll(drawText("P:${hex2(currentPattern)}", 200, y + 1, cValue, footerBg))
-        cmds.addAll(drawText("R:${hex2(playRow)}", 240, y + 1, cValue, footerBg))
-        cmds.addAll(drawText("X:$cursorX Y:${hex2(cursorY)}", 280, y + 1, cTextDim, footerBg))
+        // OCT
+        cmds.addAll(drawText("O$octave", 110, y + 1, cText, footerBg))
+
+        // Tempo
+        cmds.addAll(drawText("T$bpm", 140, y + 1, cText, footerBg))
+
+        // Pattern + row
+        cmds.addAll(drawText("P${hex2(currentPattern)}", 190, y + 1, cValue, footerBg))
+        cmds.addAll(drawText("R${hex2(playRow)}", 230, y + 1, cValue, footerBg))
+
+        // Track
+        cmds.addAll(drawText("TR${cursorX + 1}", 270, y + 1, cText, footerBg))
         return cmds
     }
 
