@@ -24,7 +24,7 @@ class M8AudioPlayer {
         const val BYTES_PER_SAMPLE = 2
         const val FRAME_SIZE = CHANNELS * BYTES_PER_SAMPLE
 
-        private const val QUEUE_CAPACITY = 64
+        private const val QUEUE_CAPACITY = 8  // Small queue: synth thread blocks when full, keeping it paced to real-time
         private const val POLL_TIMEOUT_MS = 100L
     }
 
@@ -105,6 +105,12 @@ class M8AudioPlayer {
         }
     }
 
+    /**
+     * Write a PCM chunk for playback. BLOCKS if the queue is full,
+     * which naturally paces the synth thread to real-time playback rate.
+     * This is critical for timing accuracy — without backpressure the
+     * synth runs faster than real-time and the sequencer drifts.
+     */
     fun write(pcmData: ByteArray, offset: Int = 0, size: Int = pcmData.size) {
         if (!isPlaying) return
 
@@ -114,9 +120,10 @@ class M8AudioPlayer {
             pcmData.copyOfRange(offset, offset + size)
         }
 
-        if (!audioQueue.offer(chunk)) {
-            audioQueue.poll()
-            audioQueue.offer(chunk)
+        try {
+            audioQueue.put(chunk) // Blocks when queue is full — this is the timing mechanism
+        } catch (_: InterruptedException) {
+            // Thread is shutting down
         }
     }
 

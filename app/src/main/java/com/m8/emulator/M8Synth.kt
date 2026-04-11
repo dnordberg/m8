@@ -313,22 +313,20 @@ class M8Synth {
                     } else 0.0
 
             val cutoffHz = 20.0 * 2.0.pow(cutoffNorm.coerceIn(0.0, 1.0) * 11.0) // 20Hz - 40960Hz
-            val f = 2.0 * sin(PI * (cutoffHz / SAMPLE_RATE).coerceIn(0.0, 0.49))
             val q = max(0.5, 1.0 - preset.filterResonance.coerceIn(0.0, 1.0) * 0.98)
+            // Clamp f to Chamberlin SVF stability bound: f < 2*q
+            val fRaw = 2.0 * sin(PI * (cutoffHz / SAMPLE_RATE).coerceIn(0.0, 0.49))
+            val f = fRaw.coerceAtMost(2.0 * q - 0.01)
 
             svfHigh = shaped - svfLow - q * svfBand
             svfBand += f * svfHigh
             svfLow += f * svfBand
 
-            // Prevent filter state blowup
-            if (svfBand.isNaN() || svfBand.isInfinite()) { svfBand = 0.0; svfLow = 0.0; svfHigh = 0.0 }
-            svfBand = svfBand.coerceIn(-10.0, 10.0)
-            svfLow = svfLow.coerceIn(-10.0, 10.0)
+            // Soft-clip band state to allow resonance character without blowup
+            svfBand = tanh(svfBand)
 
-            // Soft-clip band state at high resonance to allow near-self-oscillation without instability
-            if (preset.filterResonance > 0.7) {
-                svfBand = tanh(svfBand * 1.2) / 1.2
-            }
+            // NaN safety net
+            if (svfBand.isNaN() || svfLow.isNaN()) { svfBand = 0.0; svfLow = 0.0; svfHigh = 0.0 }
 
             return when (preset.filterType) {
                 FILTER_LP -> svfLow
@@ -342,10 +340,8 @@ class M8Synth {
                     svf2Band += f * svf2High
                     svf2Low += f * svf2Band
 
-                    // Prevent filter state blowup
-                    if (svf2Band.isNaN() || svf2Band.isInfinite()) { svf2Band = 0.0; svf2Low = 0.0; svf2High = 0.0 }
-                    svf2Band = svf2Band.coerceIn(-10.0, 10.0)
-                    svf2Low = svf2Low.coerceIn(-10.0, 10.0)
+                    svf2Band = tanh(svf2Band)
+                    if (svf2Band.isNaN() || svf2Low.isNaN()) { svf2Band = 0.0; svf2Low = 0.0; svf2High = 0.0 }
                     svf2High
                 }
                 else -> svfLow
