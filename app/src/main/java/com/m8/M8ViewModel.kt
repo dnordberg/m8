@@ -1,13 +1,14 @@
+// app/src/main/java/com/m8/M8ViewModel.kt
 package com.m8
 
 import android.app.Application
 import android.graphics.BitmapFactory
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.m8.audio.M8AudioPlayer
 import com.m8.emulator.*
 import com.m8.network.ConnectionManager
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
@@ -17,8 +18,16 @@ import kotlinx.coroutines.launch
  * Local-only M8 emulator ViewModel.
  * Drives the M8Song sequencer (song grid -> chains -> phrases -> steps)
  * and feeds the M8Synth for audio, while keeping the M8Emulator for display rendering.
+ *
+ * Audio generation runs on a dedicated high-priority thread to prevent
+ * coroutine preemption and scheduling gaps that cause audio cutoff.
+ * Display rendering stays on a coroutine at ~30fps for UI updates.
  */
 class M8ViewModel(application: Application) : AndroidViewModel(application) {
+
+    companion object {
+        private const val TAG = "M8ViewModel"
+    }
 
     private val fontBitmap = try {
         application.assets.open("m8_font.png").use { BitmapFactory.decodeStream(it) }
@@ -36,7 +45,7 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     private val localAudioPlayer = M8AudioPlayer()
     private val fxEngine = M8FxEngine()
     private var emulatorRenderJob: Job? = null
-    private var audioRenderJob: Job? = null
+    private var audioThread: Thread? = null
 
     // Use the emulator's song data model (shared state for display + audio)
     private val song get() = emulator.song
@@ -60,17 +69,21 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         samplesUntilNextRow = 0
         wasPlaying = false
 
-        // Display render loop
+        // Display render loop — runs on default dispatcher for UI updates
         emulatorRenderJob?.cancel()
         emulatorRenderJob = viewModelScope.launch {
             while (true) {
-                // Pipe live synth data into emulator for visualization
+                // Pipe live synth data into emulator for visualization.
+                // Reads from synth fields written by the audio thread; wrapped
+                // in try/catch since these are best-effort visualization values.
                 try {
                     emulator.liveWaveformData = synth.getWaveformData()
                     emulator.liveTrackLevels = synth.trackLevels.clone()
                     emulator.liveMasterLevelL = synth.masterLevelL
                     emulator.liveMasterLevelR = synth.masterLevelR
-                } catch (_: Exception) {}
+                } catch (_: Exception) {
+                    // Non-critical: visualization data may be briefly inconsistent
+                }
 
                 val frameData = emulator.renderFrame()
                 connectionManager.protocol.processBytes(frameData)
@@ -80,11 +93,25 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // Audio render loop — owns BPM timing, row advance, and song sequencing
-        audioRenderJob?.cancel()
+        // Start audio player and pre-fill with silence so the AudioTrack
+        // internal buffer is primed before any notes trigger.
         localAudioPlayer.start()
-        audioRenderJob = viewModelScope.launch(Dispatchers.IO) {
-            while (true) {
+        val silenceChunk = synth.generateSilence()
+        localAudioPlayer.write(silenceChunk)
+        localAudioPlayer.write(silenceChunk)
+
+        // Audio render loop — dedicated thread at urgent-audio priority.
+        // Owns BPM timing, row advance, song sequencing, and synth output.
+        // Runs independently of the coroutine scheduler to avoid preemption.
+        audioThread?.interrupt()
+        audioThread?.join(500)
+        audioThread = Thread({
+            android.os.Process.setThreadPriority(
+                android.os.Process.THREAD_PRIORITY_URGENT_AUDIO
+            )
+            Log.i(TAG, "Audio render thread started")
+
+            while (!Thread.currentThread().isInterrupted) {
                 try {
                     val isPlaying = emulator.playing
 
@@ -100,18 +127,17 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
                         }
 
                         val bpm = song.tempo.coerceIn(60, 300)
-                        val rowDurationSamples = (M8Synth.SAMPLE_RATE * 60.0 / (bpm * 4.0)).toInt()
+                        val rowDurationSamples =
+                            (M8Synth.SAMPLE_RATE * 60.0 / (bpm * 4.0)).toInt()
 
                         if (samplesUntilNextRow <= 0) {
-                            // Trigger current phrase row across all 8 tracks
                             triggerCurrentRow()
 
-                            // Compute swing delay for next row
                             val nextPhraseRow = (phraseRow + 1) % 16
-                            val swingDelay = synth.getSwingDelaySamples(nextPhraseRow, bpm)
+                            val swingDelay =
+                                synth.getSwingDelaySamples(nextPhraseRow, bpm)
                             samplesUntilNextRow = rowDurationSamples + swingDelay
 
-                            // Advance sequencer position
                             advanceSequencer()
                         }
 
@@ -129,10 +155,16 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
                         localAudioPlayer.write(pcm)
                     }
                 } catch (e: Exception) {
-                    android.util.Log.e("M8Audio", "Audio error: ${e.message}", e)
-                    delay(16)
+                    if (e is InterruptedException) break
+                    Log.e(TAG, "Audio render error: ${e.message}", e)
+                    // Do not sleep — continue generating to avoid audio gaps
                 }
             }
+
+            Log.i(TAG, "Audio render thread exiting")
+        }, "M8SynthThread").apply {
+            priority = Thread.MAX_PRIORITY
+            start()
         }
     }
 
@@ -142,6 +174,11 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
      * Converts PhraseStep to the IntArray format M8Synth.triggerRow expects.
      */
     private fun triggerCurrentRow() {
+        // Periodic logging for audio debugging
+        if (phraseRow == 0) {
+            Log.d(TAG, "triggerCurrentRow: songRow=$songRow chainRow=$chainRow phraseRow=$phraseRow tempo=${song.tempo}")
+        }
+
         val rowData = Array(8) { track ->
             val chainIdx = song.songGrid[songRow][track]
             if (chainIdx == M8Song.EMPTY || chainIdx > 254) {
@@ -195,6 +232,21 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         synth.triggerRow(rowData)
+
+        // Log first row's notes for debugging
+        if (phraseRow == 0) {
+            val notes = rowData.map { it[0] }.joinToString(",")
+            Log.d(TAG, "Notes triggered: [$notes]")
+        }
+
+        // Apply instrument presets to synth voices for correct sound
+        for (track in 0 until 8) {
+            val data = rowData[track]
+            val instIdx = data[1]
+            if (instIdx in instruments.indices) {
+                synth.applyInstrument(track, instruments[instIdx])
+            }
+        }
     }
 
     /**
@@ -275,10 +327,16 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun stopEmulator() {
+        // Stop the audio thread first — interrupt and wait for clean exit
+        audioThread?.interrupt()
+        try { audioThread?.join(1000) } catch (_: InterruptedException) { }
+        audioThread = null
+
+        // Cancel the display render coroutine
         emulatorRenderJob?.cancel()
         emulatorRenderJob = null
-        audioRenderJob?.cancel()
-        audioRenderJob = null
+
+        // Stop audio playback and silence all voices
         localAudioPlayer.stop()
         synth.allNotesOff()
     }

@@ -1,14 +1,17 @@
+// app/src/main/java/com/m8/audio/M8AudioPlayer.kt
 package com.m8.audio
 
 import android.media.AudioAttributes
 import android.media.AudioFormat
-import android.media.AudioManager
 import android.media.AudioTrack
+import android.os.Process
 import android.util.Log
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.TimeUnit
 
 /**
- * Low-latency audio playback using Android AudioTrack.
- * Configured for 44100Hz, 16-bit, stereo PCM.
+ * Audio playback engine using a dedicated high-priority drain thread
+ * and a lock-free producer-consumer queue.
  */
 class M8AudioPlayer {
 
@@ -18,32 +21,41 @@ class M8AudioPlayer {
         const val CHANNEL_CONFIG = AudioFormat.CHANNEL_OUT_STEREO
         const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
         const val CHANNELS = 2
-        const val BYTES_PER_SAMPLE = 2 // 16-bit
-        const val FRAME_SIZE = CHANNELS * BYTES_PER_SAMPLE // 4 bytes per stereo frame
+        const val BYTES_PER_SAMPLE = 2
+        const val FRAME_SIZE = CHANNELS * BYTES_PER_SAMPLE
+
+        private const val QUEUE_CAPACITY = 64
+        private const val POLL_TIMEOUT_MS = 100L
     }
 
     private var audioTrack: AudioTrack? = null
+    private var drainThread: Thread? = null
+    private val audioQueue = LinkedBlockingQueue<ByteArray>(QUEUE_CAPACITY)
+
     @Volatile
     var isPlaying = false
         private set
 
-    /**
-     * Initialize and start the AudioTrack for playback.
-     */
     fun start() {
         if (isPlaying) return
 
         try {
-            val minBufferSize = AudioTrack.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
-            // Use a small buffer for low latency but at least the minimum
-            // Aim for ~40ms of buffer: 48000 * 4 bytes * 0.040 = 7680 bytes
-            val desiredBuffer = (SAMPLE_RATE * FRAME_SIZE * 0.040).toInt()
+            val minBufferSize = AudioTrack.getMinBufferSize(
+                SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT
+            )
+            if (minBufferSize <= 0) {
+                Log.e(TAG, "Invalid min buffer size: $minBufferSize")
+                return
+            }
+
+            // Use ~200ms buffer for scheduling jitter tolerance
+            val desiredBuffer = SAMPLE_RATE * FRAME_SIZE * 200 / 1000
             val bufferSize = maxOf(minBufferSize, desiredBuffer)
 
             Log.i(TAG, "Creating AudioTrack: rate=$SAMPLE_RATE, minBuf=$minBufferSize, buf=$bufferSize")
 
             val attributes = AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_GAME)
+                .setUsage(AudioAttributes.USAGE_MEDIA)
                 .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
                 .build()
 
@@ -53,7 +65,7 @@ class M8AudioPlayer {
                 .setEncoding(AUDIO_FORMAT)
                 .build()
 
-            audioTrack = AudioTrack.Builder()
+            val track = AudioTrack.Builder()
                 .setAudioAttributes(attributes)
                 .setAudioFormat(format)
                 .setBufferSizeInBytes(bufferSize)
@@ -61,73 +73,132 @@ class M8AudioPlayer {
                 .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
                 .build()
 
-            audioTrack?.play()
+            if (track.state != AudioTrack.STATE_INITIALIZED) {
+                Log.e(TAG, "AudioTrack failed to initialize! State: ${track.state}")
+                track.release()
+                return
+            }
+
+            // Pre-fill with silence so the track has data before play()
+            val silenceSize = minOf(bufferSize / 2, SAMPLE_RATE * FRAME_SIZE * 50 / 1000)
+            val silence = ByteArray(silenceSize)
+            track.write(silence, 0, silence.size)
+
+            track.play()
+
+            if (track.playState != AudioTrack.PLAYSTATE_PLAYING) {
+                Log.e(TAG, "AudioTrack failed to enter PLAYING state: ${track.playState}")
+                track.release()
+                return
+            }
+
+            audioTrack = track
             isPlaying = true
-            Log.i(TAG, "AudioTrack started")
+            audioQueue.clear()
+
+            startDrainThread()
+
+            Log.i(TAG, "AudioTrack started successfully (buffer=${bufferSize}B)")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start AudioTrack: ${e.message}", e)
             release()
         }
     }
 
-    /**
-     * Write PCM audio data to the AudioTrack.
-     * @param pcmData Raw PCM 16-bit stereo samples
-     * @param offset Start offset in the array
-     * @param size Number of bytes to write
-     */
     fun write(pcmData: ByteArray, offset: Int = 0, size: Int = pcmData.size) {
-        val track = audioTrack ?: return
         if (!isPlaying) return
 
-        try {
-            val written = track.write(pcmData, offset, size)
-            if (written < 0) {
-                Log.w(TAG, "AudioTrack write error: $written")
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error writing to AudioTrack: ${e.message}")
+        val chunk = if (offset == 0 && size == pcmData.size) {
+            pcmData
+        } else {
+            pcmData.copyOfRange(offset, offset + size)
+        }
+
+        if (!audioQueue.offer(chunk)) {
+            audioQueue.poll()
+            audioQueue.offer(chunk)
         }
     }
 
-    /**
-     * Pause audio playback.
-     */
+    fun stop() {
+        isPlaying = false
+        stopDrainThread()
+
+        try {
+            audioTrack?.stop()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping AudioTrack: ${e.message}")
+        }
+
+        release()
+        Log.i(TAG, "AudioTrack stopped")
+    }
+
     fun pause() {
         try {
             audioTrack?.pause()
             isPlaying = false
-            Log.i(TAG, "AudioTrack paused")
         } catch (e: Exception) {
             Log.e(TAG, "Error pausing AudioTrack: ${e.message}")
         }
     }
 
-    /**
-     * Resume audio playback after pause.
-     */
     fun resume() {
         try {
             audioTrack?.play()
             isPlaying = true
-            Log.i(TAG, "AudioTrack resumed")
         } catch (e: Exception) {
             Log.e(TAG, "Error resuming AudioTrack: ${e.message}")
         }
     }
 
-    /**
-     * Stop and release the AudioTrack.
-     */
-    fun stop() {
-        isPlaying = false
-        try {
-            audioTrack?.stop()
-            Log.i(TAG, "AudioTrack stopped")
-        } catch (e: Exception) {
-            Log.e(TAG, "Error stopping AudioTrack: ${e.message}")
+    private fun startDrainThread() {
+        drainThread = Thread({
+            Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
+            Log.i(TAG, "Audio drain thread started")
+
+            val track = audioTrack ?: return@Thread
+            var chunksWritten = 0L
+
+            while (isPlaying) {
+                try {
+                    val chunk = audioQueue.poll(POLL_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+                    if (chunk != null) {
+                        val written = track.write(chunk, 0, chunk.size)
+                        if (written < 0) {
+                            Log.e(TAG, "AudioTrack.write error: $written (DEAD_OBJECT=-6, INVALID=-3)")
+                            if (written == AudioTrack.ERROR_DEAD_OBJECT) {
+                                Log.e(TAG, "AudioTrack died, stopping")
+                                break
+                            }
+                        } else {
+                            chunksWritten++
+                            if (chunksWritten % 500 == 0L) {
+                                Log.d(TAG, "Drain: $chunksWritten chunks written, queue=${audioQueue.size}")
+                            }
+                        }
+                    }
+                } catch (_: InterruptedException) {
+                    break
+                } catch (e: Exception) {
+                    Log.e(TAG, "Drain thread error: ${e.message}")
+                }
+            }
+
+            Log.i(TAG, "Audio drain thread exiting after $chunksWritten chunks")
+        }, "M8AudioDrain").apply {
+            priority = Thread.MAX_PRIORITY
+            start()
         }
-        release()
+    }
+
+    private fun stopDrainThread() {
+        drainThread?.let { thread ->
+            thread.interrupt()
+            try { thread.join(500) } catch (_: InterruptedException) {}
+        }
+        drainThread = null
+        audioQueue.clear()
     }
 
     private fun release() {

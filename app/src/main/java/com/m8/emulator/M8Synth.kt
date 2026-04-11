@@ -320,6 +320,11 @@ class M8Synth {
             svfBand += f * svfHigh
             svfLow += f * svfBand
 
+            // Prevent filter state blowup
+            if (svfBand.isNaN() || svfBand.isInfinite()) { svfBand = 0.0; svfLow = 0.0; svfHigh = 0.0 }
+            svfBand = svfBand.coerceIn(-10.0, 10.0)
+            svfLow = svfLow.coerceIn(-10.0, 10.0)
+
             // Soft-clip band state at high resonance to allow near-self-oscillation without instability
             if (preset.filterResonance > 0.7) {
                 svfBand = tanh(svfBand * 1.2) / 1.2
@@ -336,6 +341,11 @@ class M8Synth {
                     svf2High = lpOut - svf2Low - q * svf2Band
                     svf2Band += f * svf2High
                     svf2Low += f * svf2Band
+
+                    // Prevent filter state blowup
+                    if (svf2Band.isNaN() || svf2Band.isInfinite()) { svf2Band = 0.0; svf2Low = 0.0; svf2High = 0.0 }
+                    svf2Band = svf2Band.coerceIn(-10.0, 10.0)
+                    svf2Low = svf2Low.coerceIn(-10.0, 10.0)
                     svf2High
                 }
                 else -> svfLow
@@ -699,19 +709,20 @@ class M8Synth {
                 LIMITER_CLIP -> x.coerceIn(-1.0, 1.0)
                 LIMITER_SIN -> sin(x * PI * 0.5).coerceIn(-1.0, 1.0)
                 LIMITER_FOLD -> {
-                    // Wavefolding: reflect signal back when exceeding +/-1.0
-                    var v = x
-                    while (v > 1.0 || v < -1.0) {
+                    if (x.isNaN() || x.isInfinite()) return 0.0
+                    var v = x.coerceIn(-10.0, 10.0)
+                    repeat(8) {
                         if (v > 1.0) v = 2.0 - v
-                        if (v < -1.0) v = -2.0 - v
+                        else if (v < -1.0) v = -2.0 - v
+                        else return@repeat
                     }
-                    v
+                    v.coerceIn(-1.0, 1.0)
                 }
                 LIMITER_WRAP -> {
-                    // Wrap: signal wraps around when exceeding +/-1.0
-                    var v = x
-                    while (v > 1.0) v -= 2.0
-                    while (v < -1.0) v += 2.0
+                    if (x.isNaN() || x.isInfinite()) return 0.0
+                    var v = x % 2.0
+                    if (v > 1.0) v -= 2.0
+                    if (v < -1.0) v += 2.0
                     v
                 }
                 else -> x
@@ -1184,6 +1195,8 @@ class M8Synth {
             // Soft clip
             outL = tanhClip(outL)
             outR = tanhClip(outR)
+            if (outL.isNaN()) outL = 0.0
+            if (outR.isNaN()) outR = 0.0
 
             // Master level metering
             masterSumSqL += outL * outL
