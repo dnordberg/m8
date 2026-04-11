@@ -7,20 +7,14 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.material3.*
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.m8.data.ServerSettings
 import com.m8.input.KeyMapper
-import com.m8.network.ConnectionState
 import com.m8.ui.*
 
 class MainActivity : ComponentActivity() {
@@ -77,51 +71,12 @@ private fun M8Theme(content: @Composable () -> Unit) {
 
 @Composable
 private fun M8App(viewModel: M8ViewModel) {
-    var showSettings by remember { mutableStateOf(false) }
-    val connectionState by viewModel.connectionState.collectAsState()
     val displayTick by viewModel.displayTick.collectAsState()
-    val settings by viewModel.settings.collectAsState(initial = ServerSettings())
-    val isLocalMode by viewModel.isLocalMode.collectAsState()
 
-    // Start local emulator immediately on first launch
+    // Start local emulator immediately
     LaunchedEffect(Unit) {
         viewModel.startLocalEmulator()
     }
-
-    if (showSettings) {
-        SettingsScreen(
-            currentSettings = settings,
-            onSave = { newSettings ->
-                viewModel.saveSettings(newSettings)
-                viewModel.disconnect()
-                viewModel.connect(newSettings)
-                showSettings = false
-            },
-            onDismiss = { showSettings = false },
-        )
-    } else {
-        M8MainScreen(
-            viewModel = viewModel,
-            connectionState = connectionState,
-            displayTick = displayTick,
-            isLocalMode = isLocalMode,
-            onSettingsClick = { showSettings = true },
-            onToggleMode = { viewModel.toggleLocalMode() },
-        )
-    }
-}
-
-@Composable
-private fun M8MainScreen(
-    viewModel: M8ViewModel,
-    connectionState: ConnectionState,
-    displayTick: Int,
-    isLocalMode: Boolean,
-    onSettingsClick: () -> Unit,
-    onToggleMode: () -> Unit,
-) {
-    val isAudioMuted by viewModel.isAudioMuted.collectAsState()
-    val debugInfo by viewModel.debugInfo.collectAsState()
 
     Column(
         modifier = Modifier
@@ -129,58 +84,7 @@ private fun M8MainScreen(
             .background(Color.Black)
             .systemBarsPadding(),
     ) {
-        // Top bar — compact status row
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            // Left: mode indicator
-            if (isLocalMode) {
-                Text(
-                    text = "● LOCAL",
-                    color = Color(0xFF00FF00),
-                    fontSize = 11.sp,
-                    fontFamily = FontFamily.Monospace,
-                )
-            } else {
-                ConnectionStatusIndicator(state = connectionState)
-            }
-
-            // Right: action buttons
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                // Mode toggle
-                Text(
-                    text = if (isLocalMode) "[REMOTE]" else "[LOCAL]",
-                    color = Color(0xFF888888),
-                    fontSize = 11.sp,
-                    fontFamily = FontFamily.Monospace,
-                    modifier = Modifier.clickable { onToggleMode() },
-                )
-
-                if (!isLocalMode) {
-                    Text(
-                        text = if (isAudioMuted) "[MUTED]" else "[AUDIO]",
-                        color = if (isAudioMuted) Color(0xFFFF4444) else Color(0xFF00FF00),
-                        fontSize = 11.sp,
-                        fontFamily = FontFamily.Monospace,
-                        modifier = Modifier.clickable { viewModel.toggleAudioMute() },
-                    )
-                }
-
-                Text(
-                    text = "[SET]",
-                    color = Color(0xFF888888),
-                    fontSize = 11.sp,
-                    fontFamily = FontFamily.Monospace,
-                    modifier = Modifier.clickable { onSettingsClick() },
-                )
-            }
-        }
-
-        // M8 Display — fills available space, centered
+        // M8 Display
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -193,19 +97,7 @@ private fun M8MainScreen(
             )
         }
 
-        // Debug info bar
-        if (debugInfo.isNotEmpty()) {
-            Text(
-                text = debugInfo,
-                color = Color(0xFFFFFF00),
-                fontSize = 9.sp,
-                fontFamily = FontFamily.Monospace,
-                maxLines = 2,
-                modifier = Modifier.padding(horizontal = 12.dp),
-            )
-        }
-
-        // Touch controls — pinned to bottom
+        // Touch controls
         M8Controls(
             onKeyStateChanged = { keys -> viewModel.sendKeyState(keys) },
             modifier = Modifier.padding(bottom = 8.dp),
