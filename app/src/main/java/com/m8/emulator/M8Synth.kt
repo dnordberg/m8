@@ -97,6 +97,10 @@ class M8Synth {
         var envStage = 0  // 0=idle, 1=attack, 2=decay, 3=sustain, 4=release
         var envLevel = 0.0
         var envTime = 0.0
+        var releaseStartLevel = 0.0  // Captured level at release trigger for exponential release
+
+        // Per-voice gain from instrument AMP parameter (0.0-1.0)
+        var instrumentGain = 1.0
 
         // Filter envelope
         var filterEnvLevel = 0.0
@@ -117,6 +121,9 @@ class M8Synth {
 
         // HyperSynth state: 6 oscillator phases
         var hyperPhases = DoubleArray(6)
+
+        // MacroSynth state: multiple detuned oscillator phases for SAW_SWARM
+        var macroSwarmPhases = DoubleArray(7)
 
         // WavSynth state
         var wavPhase = 0.0
@@ -154,6 +161,7 @@ class M8Synth {
 
         fun releaseNote() {
             if (envStage != 0 && envStage != 4) {
+                releaseStartLevel = envLevel  // Capture current level for exponential release
                 envStage = 4 // release
                 envTime = 0.0
             }
@@ -163,33 +171,33 @@ class M8Synth {
         fun processEnvelope(dt: Double) {
             val adsr = preset.adsr
             when (envStage) {
-                1 -> { // Attack
+                1 -> { // Attack - exponential rise
                     envTime += dt
                     envLevel = if (adsr.attack <= 0.0) 1.0
-                    else (envTime / adsr.attack).coerceIn(0.0, 1.0)
-                    if (envLevel >= 1.0) {
+                    else (1.0 - exp(-envTime * 5.0 / adsr.attack)).coerceIn(0.0, 1.0)
+                    if (envLevel >= 0.999) {
+                        envLevel = 1.0
                         envStage = 2
                         envTime = 0.0
                     }
                 }
-                2 -> { // Decay
+                2 -> { // Decay - exponential fall to sustain
                     envTime += dt
-                    val decayProgress = if (adsr.decay <= 0.0) 1.0
-                    else (envTime / adsr.decay).coerceIn(0.0, 1.0)
-                    envLevel = 1.0 - (1.0 - adsr.sustain) * decayProgress
-                    if (decayProgress >= 1.0) {
+                    envLevel = if (adsr.decay <= 0.0) adsr.sustain
+                    else adsr.sustain + (1.0 - adsr.sustain) * exp(-envTime * 5.0 / adsr.decay)
+                    if (envLevel <= adsr.sustain + 0.001) {
+                        envLevel = adsr.sustain
                         envStage = 3
                     }
                 }
                 3 -> { // Sustain
                     envLevel = adsr.sustain
                 }
-                4 -> { // Release
+                4 -> { // Release - exponential fall from captured level
                     envTime += dt
-                    val releaseProgress = if (adsr.release <= 0.0) 1.0
-                    else (envTime / adsr.release).coerceIn(0.0, 1.0)
-                    envLevel *= (1.0 - releaseProgress)
-                    if (releaseProgress >= 1.0 || envLevel < 0.0001) {
+                    envLevel = if (adsr.release <= 0.0) 0.0
+                    else releaseStartLevel * exp(-envTime * 5.0 / adsr.release)
+                    if (envLevel < 0.0001) {
                         envStage = 0
                         envLevel = 0.0
                         active = false
@@ -278,6 +286,11 @@ class M8Synth {
                 // --- HyperSynth ---
                 WAVE_HYPER -> generateHyperSample()
 
+                // --- MacroSynth models ---
+                WAVE_MACRO_CSAW -> generateMacroCsaw(phaseInc)
+                WAVE_MACRO_MORPH -> generateMacroMorph(phaseInc)
+                WAVE_MACRO_SAW_SWARM -> generateMacroSawSwarm()
+
                 else -> 0.0
             }
 
@@ -301,11 +314,16 @@ class M8Synth {
 
             val cutoffHz = 20.0 * 2.0.pow(cutoffNorm.coerceIn(0.0, 1.0) * 11.0) // 20Hz - 40960Hz
             val f = 2.0 * sin(PI * (cutoffHz / SAMPLE_RATE).coerceIn(0.0, 0.49))
-            val q = 1.0 - preset.filterResonance.coerceIn(0.0, 0.95)
+            val q = max(0.5, 1.0 - preset.filterResonance.coerceIn(0.0, 1.0) * 0.98)
 
             svfHigh = shaped - svfLow - q * svfBand
             svfBand += f * svfHigh
             svfLow += f * svfBand
+
+            // Soft-clip band state at high resonance to allow near-self-oscillation without instability
+            if (preset.filterResonance > 0.7) {
+                svfBand = tanh(svfBand * 1.2) / 1.2
+            }
 
             return when (preset.filterType) {
                 FILTER_LP -> svfLow
@@ -567,6 +585,58 @@ class M8Synth {
             }
 
             return sum / (numOsc + if (p.hyperSubOsc > 0.0) 1 else 0).coerceAtLeast(1)
+        }
+
+        // --- MacroSynth: CSAW (crossfading saw) ---
+        // Timbre controls crossfade point between saw and inverted saw
+        private fun generateMacroCsaw(phaseInc: Double): Double {
+            val p = phase % 1.0
+            val timbre = preset.pulseWidth  // Reuse pulseWidth as timbre (0.0-1.0)
+            // Two saws with crossfade: normal saw fades into reversed/shifted saw
+            val saw1 = 2.0 * p - 1.0
+            val saw2 = 2.0 * ((p + 0.5) % 1.0) - 1.0
+            return saw1 * (1.0 - timbre) + saw2 * timbre - polyBlep(phase, phaseInc)
+        }
+
+        // --- MacroSynth: MORPH (morphing between basic shapes) ---
+        // Timbre (via pulseWidth) morphs: 0.0=sine, 0.33=triangle, 0.66=saw, 1.0=square
+        private fun generateMacroMorph(phaseInc: Double): Double {
+            val p = phase % 1.0
+            val morph = preset.pulseWidth.coerceIn(0.0, 1.0) * 3.0  // 0..3 range
+
+            val sine = sin(p * TWO_PI)
+            val tri = 4.0 * abs(p - 0.5) - 1.0
+            val saw = 2.0 * (p - floor(p + 0.5)) - polyBlep(phase, phaseInc)
+            val square = (if (p < 0.5) 1.0 else -1.0) + polyBlep(phase, phaseInc) - polyBlep(phase - 0.5, phaseInc)
+
+            return when {
+                morph < 1.0 -> sine * (1.0 - morph) + tri * morph
+                morph < 2.0 -> tri * (2.0 - morph) + saw * (morph - 1.0)
+                else -> saw * (3.0 - morph) + square * (morph - 2.0)
+            }
+        }
+
+        // --- MacroSynth: SAW_SWARM (multiple detuned saws) ---
+        // Uses 7 detuned saw oscillators; pulseWidth controls detune spread
+        private fun generateMacroSawSwarm(): Double {
+            val dt = 1.0 / SAMPLE_RATE
+            val spread = preset.pulseWidth.coerceIn(0.0, 1.0) * 0.03  // Max 3% detune
+            val numOsc = 7
+            var sum = 0.0
+
+            for (i in 0 until numOsc) {
+                val detuneRatio = 1.0 + spread * (i - (numOsc - 1) * 0.5) / (numOsc - 1).toDouble()
+                val oscFreq = frequency * detuneRatio
+                macroSwarmPhases[i] += oscFreq * dt
+                if (macroSwarmPhases[i] > 1e6) macroSwarmPhases[i] -= 1e6
+
+                val oscPhase = macroSwarmPhases[i] % 1.0
+                val phaseIncOsc = oscFreq / SAMPLE_RATE
+                val naive = 2.0 * (oscPhase - floor(oscPhase + 0.5))
+                sum += naive - polyBlep(macroSwarmPhases[i], phaseIncOsc)
+            }
+
+            return sum / numOsc
         }
 
         // --- HyperSynth stereo pair generation ---
@@ -859,10 +929,10 @@ class M8Synth {
     private val chorus = Chorus()
     private val reverb = PlateReverb()
 
-    // DC offset removal (high-pass at ~5Hz)
+    // DC offset removal (first-order high-pass, leaky integrator tracking DC level)
     private var dcL = 0.0
     private var dcR = 0.0
-    private val dcCoeff = 1.0 - (TWO_PI * 5.0 / SAMPLE_RATE)
+    private val dcAlpha = TWO_PI * 5.0 / SAMPLE_RATE // ~0.0007 for 5Hz cutoff
 
     // DJ filter state: 0x00=full LP, 0x80=bypass, 0xFF=full HP
     var djFilterValue = 0x80
@@ -909,6 +979,11 @@ class M8Synth {
         // HyperSynth
         const val WAVE_HYPER = 30
 
+        // MacroSynth models
+        const val WAVE_MACRO_CSAW = 40
+        const val WAVE_MACRO_MORPH = 41
+        const val WAVE_MACRO_SAW_SWARM = 42
+
         // Filter modes
         const val FILTER_LP = 0
         const val FILTER_HP = 1
@@ -951,8 +1026,7 @@ class M8Synth {
         )
 
         fun noteToFreq(midiNote: Int): Double {
-            val midi = midiNote + 23
-            return 440.0 * 2.0.pow((midi - 69) / 12.0)
+            return 440.0 * 2.0.pow((midiNote - 69) / 12.0)
         }
 
         private const val TWO_PI = 2.0 * PI
@@ -1059,7 +1133,7 @@ class M8Synth {
                 if (!v.active) continue
 
                 val sample = v.generateSample()
-                val gain = 0.15
+                val gain = v.instrumentGain * 0.2  // Per-instrument gain with headroom
 
                 val pan = (v.trackIndex.toDouble() / 7.0) * 0.6 + 0.2
                 val panL = cos(pan * PI * 0.5)
@@ -1101,11 +1175,9 @@ class M8Synth {
             outL = djL
             outR = djR
 
-            // DC offset removal
-            val prevDcL = dcL
-            val prevDcR = dcR
-            dcL = outL - prevDcL * dcCoeff
-            dcR = outR - prevDcR * dcCoeff
+            // DC offset removal (leaky integrator tracks DC, subtract it)
+            dcL += dcAlpha * (outL - dcL)
+            dcR += dcAlpha * (outR - dcR)
             outL -= dcL
             outR -= dcR
 
@@ -1170,6 +1242,7 @@ class M8Synth {
             v.fm4Phases.fill(0.0)
             v.fm4Feedback.fill(0.0)
             v.hyperPhases.fill(0.0)
+            v.macroSwarmPhases.fill(0.0)
             v.wavPhase = 0.0
         }
         delay.clear()
@@ -1182,6 +1255,152 @@ class M8Synth {
         trackLevels.fill(0.0)
         masterLevelL = 0.0
         masterLevelR = 0.0
+    }
+
+    /**
+     * Apply an M8Instrument's parameters to configure a voice's preset.
+     * Maps M8 byte-range parameters (0-255) to the synth engine's normalized values.
+     */
+    fun applyInstrument(trackIndex: Int, instrument: M8Instrument) {
+        if (trackIndex < 0 || trackIndex >= voices.size) return
+        val voice = voices[trackIndex]
+
+        // Map waveform from M8 instrument type and shape
+        val waveform = when (instrument.type) {
+            InstrumentType.WAVSYNTH -> when (instrument.wavSynth.shape) {
+                WavShape.PULSE_12 -> WAVE_PULSE_12
+                WavShape.PULSE_25 -> WAVE_PULSE_25
+                WavShape.PULSE_50 -> WAVE_PULSE
+                WavShape.PULSE_75 -> WAVE_PULSE_75
+                WavShape.SAW -> WAVE_SAW
+                WavShape.TRIANGLE -> WAVE_TRIANGLE
+                WavShape.SINE -> WAVE_SINE
+                WavShape.NOISE_PITCH -> WAVE_NOISE
+                WavShape.NOISE -> WAVE_NOISE
+                WavShape.OVERFLOW -> WAVE_OVERFLOW
+            }
+            InstrumentType.FM_SYNTH -> WAVE_FM4
+            InstrumentType.HYPERSYNTH -> WAVE_HYPER
+            InstrumentType.MACROSYNTH -> when (instrument.macroSynth.model) {
+                0 -> WAVE_MACRO_CSAW
+                1 -> WAVE_MACRO_MORPH
+                14 -> WAVE_MACRO_SAW_SWARM
+                else -> WAVE_SINE  // Fallback for unimplemented models
+            }
+            else -> WAVE_SINE
+        }
+
+        // Map filter type
+        val filterType = when (instrument.filter.type) {
+            FilterType.OFF -> FILTER_LP  // Use LP with full cutoff as "off"
+            FilterType.LP -> FILTER_LP
+            FilterType.HP -> FILTER_HP
+            FilterType.BP -> FILTER_BP
+            FilterType.BS -> FILTER_BS
+            FilterType.LP_HP -> FILTER_LP_HP
+        }
+
+        // Convert 0-255 byte parameters to normalized 0.0-1.0
+        val filterCutoff = instrument.filter.cutoff / 255.0
+        val filterResonance = instrument.filter.resonance / 255.0
+
+        // Map envelope parameters using M8's curve: time = 0.001 + (value / 255)^2 * 5.0
+        val env = instrument.modulation.env1
+        val attack = m8EnvTime(env.attack)
+        val decay = m8EnvTime(env.decay)
+        val sustain = env.sustain / 255.0
+        val release = m8EnvTime(env.release)
+
+        // Map effect sends
+        val chorusSend = instrument.amp.chorusSend / 255.0
+        val delaySend = instrument.amp.delaySend / 255.0
+        val reverbSend = instrument.amp.reverbSend / 255.0
+        val pan = instrument.amp.pan / 255.0
+
+        // Map limiter type
+        val limiterType = when (instrument.amp.limiter) {
+            LimiterType.CLIP -> LIMITER_CLIP
+            LimiterType.SIN -> LIMITER_SIN
+            LimiterType.FOLD -> LIMITER_FOLD
+            LimiterType.WRAP -> LIMITER_WRAP
+            LimiterType.POST, LimiterType.POST_AD -> LIMITER_TANH
+        }
+
+        // WavSynth-specific parameters
+        val wavSize = instrument.wavSynth.size
+        val wavMult = instrument.wavSynth.mult.coerceAtLeast(1)
+        val wavWarp = (instrument.wavSynth.warp / 255.0) * 2.0 - 1.0  // Map 0-255 to -1..1
+        val wavMirror = instrument.wavSynth.mirror > 0
+
+        // FM 4-operator parameters
+        val fm = instrument.fmSynth
+        val fm4Algorithm = fm.algorithm.ordinal
+
+        // MacroSynth: timbre maps to pulseWidth for morph/crossfade control
+        val macroTimbre = instrument.macroSynth.timbre / 255.0
+
+        // Build the preset with per-instrument filter envelope from env2 if configured
+        val filterEnvDepth = if (instrument.modulation.env2.amount != 0x80) {
+            (instrument.modulation.env2.amount - 0x80) / 127.0  // Bipolar: 0x80=0, 0xFF=+1
+        } else 0.0
+        val filterEnvDecay = m8EnvTime(instrument.modulation.env2.decay)
+
+        // Use macroTimbre for pulseWidth when instrument is MACROSYNTH
+        val pulseWidth = when (instrument.type) {
+            InstrumentType.MACROSYNTH -> macroTimbre
+            else -> when (instrument.wavSynth.shape) {
+                WavShape.PULSE_50 -> 0.5
+                WavShape.PULSE_25 -> 0.25
+                WavShape.PULSE_12 -> 0.12
+                WavShape.PULSE_75 -> 0.75
+                else -> 0.5
+            }
+        }
+
+        // Apply filter cutoff as full (bypass) when filter is OFF
+        val effectiveCutoff = if (instrument.filter.type == FilterType.OFF) 1.0 else filterCutoff
+
+        voice.preset = VoicePreset(
+            waveform = waveform,
+            pulseWidth = pulseWidth,
+            filterType = filterType,
+            filterCutoff = effectiveCutoff,
+            filterResonance = filterResonance,
+            adsr = ADSR(attack, decay, sustain, release),
+            filterEnvDepth = filterEnvDepth.coerceIn(-1.0, 1.0),
+            filterEnvDecay = filterEnvDecay,
+            chorusSend = chorusSend,
+            reverbSend = reverbSend,
+            delaySend = delaySend,
+            pan = pan,
+            limiterType = limiterType,
+            wavSize = wavSize,
+            wavMult = wavMult,
+            wavWarp = wavWarp,
+            wavMirror = wavMirror,
+            fm4Algorithm = fm4Algorithm,
+            fm4Op1Ratio = fm.op1Ratio.toDouble(),
+            fm4Op1Level = fm.op1Level / 255.0,
+            fm4Op1Feedback = fm.op1Feedback / 255.0,
+            fm4Op2Ratio = fm.op2Ratio.toDouble(),
+            fm4Op2Level = fm.op2Level / 255.0,
+            fm4Op2Feedback = fm.op2Feedback / 255.0,
+            fm4Op3Ratio = fm.op3Ratio.toDouble(),
+            fm4Op3Level = fm.op3Level / 255.0,
+            fm4Op3Feedback = fm.op3Feedback / 255.0,
+            fm4Op4Ratio = fm.op4Ratio.toDouble(),
+            fm4Op4Level = fm.op4Level / 255.0,
+            fm4Op4Feedback = fm.op4Feedback / 255.0,
+        )
+
+        // Apply per-instrument gain from AMP parameter
+        voice.instrumentGain = instrument.amp.amp / 255.0
+    }
+
+    /** Convert M8 envelope parameter (0-255) to time in seconds using M8's quadratic curve. */
+    private fun m8EnvTime(value: Int): Double {
+        val norm = value / 255.0
+        return 0.001 + norm * norm * 5.0
     }
 
     /** Tanh-style soft clipper */

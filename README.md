@@ -56,7 +56,27 @@ Every other M8 client requires a physical Teensy 4.1 with M8 Headless firmware c
 
 ## Quick Start
 
-### Just the app (no hardware needed)
+### Development (emulator)
+
+```bash
+./run.sh
+```
+
+This single command cold boots the Android emulator, builds the APK, uninstalls any old version, installs fresh, and launches the app. No saved state — clean every time.
+
+To watch logs while it runs:
+
+```bash
+adb logcat --pid=$(adb shell pidof com.m8)
+```
+
+To stop the emulator:
+
+```bash
+adb -s emulator-5554 emu kill
+```
+
+### Install on a real device
 
 1. Build: `./gradlew assembleDebug`
 2. Install the APK on your Android device
