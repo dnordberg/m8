@@ -345,6 +345,33 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         emulator.handleKeyState(keys)
     }
 
+    fun setScreen(screen: Int) {
+        emulator.screen = screen.coerceIn(0, 7)
+        emulator.editMode = false
+    }
+
+    fun nextScreen() {
+        emulator.screen = (emulator.screen + 1) % 8
+        emulator.editMode = false
+    }
+
+    fun prevScreen() {
+        emulator.screen = (emulator.screen - 1 + 8) % 8
+        emulator.editMode = false
+    }
+
+    fun adjustTempo(delta: Int) {
+        song.tempo = (song.tempo + delta).coerceIn(40, 300)
+        emulator.bpm = song.tempo
+    }
+
+    fun playFromCursor() {
+        emulator.playing = true
+        emulator.playRow = emulator.cursorY
+        phraseRow = emulator.cursorY
+        samplesUntilNextRow = 0
+    }
+
     override fun onCleared() {
         super.onCleared()
         stopEmulator()
