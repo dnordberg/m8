@@ -83,6 +83,7 @@ class MainActivity : ComponentActivity() {
             KeyMapper.ACTION_PLAY_FROM_CURSOR -> viewModel.playFromCursor()
             KeyMapper.ACTION_TAB_NEXT -> viewModel.nextScreen()
             KeyMapper.ACTION_TAB_PREV -> viewModel.prevScreen()
+            KeyMapper.ACTION_TOGGLE_TUTORIAL -> viewModel.toggleTutorial()
         }
     }
 }
@@ -130,21 +131,6 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
                 .background(Color.Black)
                 .systemBarsPadding(),
         ) {
-            // Top bar with tutorial button
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                if (!tutorialActive) {
-                    TutorialStartButton(
-                        onClick = { tutorial.start() },
-                    )
-                }
-            }
-
             // M8 Display
             Box(
                 modifier = Modifier

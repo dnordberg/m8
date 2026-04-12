@@ -389,8 +389,34 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         synth.allNotesOff()
     }
 
+    // 3-button combo detection for tutorial toggle: OPT+EDIT+SHIFT
+    private var comboHeldFrames = 0
+    private val COMBO_MASK = com.m8.protocol.M8Commands.KEY_OPTION or
+            com.m8.protocol.M8Commands.KEY_EDIT or
+            com.m8.protocol.M8Commands.KEY_SHIFT
+
     fun sendKeyState(keys: Int) {
+        // Detect OPT+EDIT+SHIFT held simultaneously (like on real hardware)
+        if (keys and COMBO_MASK == COMBO_MASK) {
+            comboHeldFrames++
+            if (comboHeldFrames == 1) {
+                // Toggle tutorial on first frame of combo
+                toggleTutorial()
+                return // Don't pass combo to emulator
+            }
+            return
+        } else {
+            comboHeldFrames = 0
+        }
         emulator.handleKeyState(keys)
+    }
+
+    fun toggleTutorial() {
+        if (tutorial.active) {
+            if (tutorial.paused) tutorial.resume() else tutorial.pause()
+        } else {
+            tutorial.start()
+        }
     }
 
     fun setScreen(screen: Int) {

@@ -55,12 +55,14 @@ object KeyMapper {
     const val ACTION_TAB_NEXT = 25
     const val ACTION_TAB_PREV = 26
     const val ACTION_DISMISS = 30
+    const val ACTION_TOGGLE_TUTORIAL = 31
 
     /**
      * Map a key event to an app-level hotkey action.
      * Returns null if the key is not an app hotkey.
      */
     fun mapHotkey(keyCode: Int, shiftHeld: Boolean): Int? = when {
+        keyCode == KeyEvent.KEYCODE_T -> ACTION_TOGGLE_TUTORIAL
         keyCode == KeyEvent.KEYCODE_H -> ACTION_TOGGLE_HOTKEYS
         keyCode == KeyEvent.KEYCODE_ESCAPE -> ACTION_DISMISS
         keyCode == KeyEvent.KEYCODE_1 -> ACTION_SCREEN_1
