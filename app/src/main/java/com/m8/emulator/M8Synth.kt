@@ -8,7 +8,9 @@ import java.nio.ByteOrder
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sign
 import kotlin.math.sin
+import kotlin.math.tanh
 
 /**
  * Simple, stable, loud synthesizer for the M8 tracker emulator.
@@ -134,8 +136,8 @@ class M8Synth {
             filterState += filterAlpha * (raw - filterState)
             filterState = filterState.coerceIn(-2.0, 2.0)
 
-            // Scale by envelope, velocity, and gain factor
-            return (filterState * envelope * volume * 0.8).coerceIn(-1.0, 1.0)
+            // Scale by envelope and velocity — clean gain, no clipping
+            return filterState * envelope * volume
         }
     }
 
@@ -244,25 +246,37 @@ class M8Synth {
             delayBufR[delayWritePos] = (mixR + delayR * DELAY_FEEDBACK).coerceIn(-2.0, 2.0)
             delayWritePos = (delayWritePos + 1) % DELAY_SAMPLES
 
-            val outL = mixL + delayL * DELAY_MIX
-            val outR = mixR + delayR * DELAY_MIX
+            // Mix dry + delay wet
+            var outL = mixL + delayL * DELAY_MIX
+            var outR = mixR + delayR * DELAY_MIX
 
-            // Fast soft clip: x / (1 + |x|)  -- never exceeds -1..1
-            val clipL = outL / (1.0 + abs(outL))
-            val clipR = outR / (1.0 + abs(outR))
+            // Master gain: scale to fill 16-bit range well
+            // With 8 voices each producing ~0.5 peak, sum is ~2.0 per channel
+            // Scale down to ~0.8 peak for headroom
+            outL *= 0.35
+            outR *= 0.35
 
-            if (abs(clipL) > peakL) peakL = abs(clipL)
-            if (abs(clipR) > peakR) peakR = abs(clipR)
+            // Gentle transparent limiter: only acts above 0.9, preserves signal below
+            fun softLimit(x: Double): Double {
+                val ax = abs(x)
+                return if (ax < 0.9) x
+                else sign(x) * (0.9 + 0.1 * tanh((ax - 0.9) * 10.0))
+            }
+            outL = softLimit(outL)
+            outR = softLimit(outR)
 
-            // Waveform capture for display (mono sum)
+            if (abs(outL) > peakL) peakL = abs(outL)
+            if (abs(outR) > peakR) peakR = abs(outR)
+
+            // Waveform capture
             if (waveformWriteIdx < WAVEFORM_CAPTURE_SIZE) {
-                waveformBuf[waveformWriteIdx] = (clipL + clipR) * 0.5
+                waveformBuf[waveformWriteIdx] = (outL + outR) * 0.5
                 waveformWriteIdx++
             }
 
-            // 16-bit PCM output at ~91% full scale
-            val sL = (clipL * 30000.0).toInt().coerceIn(-32768, 32767)
-            val sR = (clipR * 30000.0).toInt().coerceIn(-32768, 32767)
+            // 16-bit PCM — use full range
+            val sL = (outL * 32000.0).toInt().coerceIn(-32768, 32767)
+            val sR = (outR * 32000.0).toInt().coerceIn(-32768, 32767)
             buf.putShort(sL.toShort())
             buf.putShort(sR.toShort())
         }

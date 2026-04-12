@@ -129,6 +129,8 @@ class M8AudioPlayer {
 
     fun stop() {
         isPlaying = false
+        // Clear the queue first — this unblocks any thread stuck on put()
+        audioQueue.clear()
         stopDrainThread()
 
         try {

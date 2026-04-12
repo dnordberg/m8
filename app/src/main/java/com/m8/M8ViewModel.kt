@@ -70,7 +70,9 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     @Volatile private var previousSongRow = 0
 
     fun startLocalEmulator() {
-        // Song is already loaded by emulator.init { song.loadDemoSong() }
+        // Clean stop any existing audio before restarting
+        stopEmulator()
+
         // Sync sequencer state
         songRow = 0
         chainRow = 0
