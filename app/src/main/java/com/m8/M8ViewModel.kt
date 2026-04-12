@@ -44,6 +44,12 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     private val synth = M8Synth()
     private val localAudioPlayer = M8AudioPlayer()
     private val fxEngine = M8FxEngine()
+
+    // Tutorial system (reads emulator state)
+    val tutorial = com.m8.tutorial.M8Tutorial(emulator)
+
+    // Expose emulator screen for tutorial context
+    val currentScreen: Int get() = emulator.screen
     private var emulatorRenderJob: Job? = null
     private var audioThread: Thread? = null
 
@@ -60,6 +66,9 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     @Volatile private var samplesUntilNextRow = 0
     @Volatile private var wasPlaying = false
 
+    // Previous songRow value for detecting song-loop wraparound
+    @Volatile private var previousSongRow = 0
+
     fun startLocalEmulator() {
         // Song is already loaded by emulator.init { song.loadDemoSong() }
         // Sync sequencer state
@@ -68,6 +77,7 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         phraseRow = 0
         samplesUntilNextRow = 0
         wasPlaying = false
+        previousSongRow = 0
 
         // Display render loop — runs on default dispatcher for UI updates
         emulatorRenderJob?.cancel()
@@ -100,6 +110,18 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         localAudioPlayer.write(silenceChunk)
         localAudioPlayer.write(silenceChunk)
 
+        // Pass mixer settings so the synth can read per-track volumes, pans,
+        // and send levels directly from the song's mixer configuration.
+        synth.mixerSettings = song.mixer
+
+        // Give the synth a reference to the FX engine so it can call
+        // getFreqModifier() per-sample for arpeggio, vibrato, and portamento.
+        synth.fxEngine = fxEngine
+
+        // Configure synth voices from loaded instrument definitions instead
+        // of relying solely on hardcoded TRACK_PRESETS defaults.
+        configureVoicesFromInstruments()
+
         // Audio render loop — dedicated thread at urgent-audio priority.
         // Owns BPM timing, row advance, song sequencing, and synth output.
         // Runs independently of the coroutine scheduler to avoid preemption.
@@ -110,6 +132,7 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
                 android.os.Process.THREAD_PRIORITY_URGENT_AUDIO
             )
             Log.i(TAG, "Audio render thread started")
+            var audioErrorCount = 0
 
             while (!Thread.currentThread().isInterrupted) {
                 try {
@@ -154,10 +177,17 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
                         val pcm = synth.generateSilence()
                         localAudioPlayer.write(pcm)
                     }
+                    // Reset error count on successful iteration
+                    audioErrorCount = 0
                 } catch (e: Exception) {
                     if (e is InterruptedException) break
-                    Log.e(TAG, "Audio render error: ${e.message}", e)
-                    // Do not sleep — continue generating to avoid audio gaps
+                    audioErrorCount++
+                    Log.e(TAG, "Audio render error ($audioErrorCount): ${e.message}", e)
+                    if (audioErrorCount > 100) {
+                        Log.e(TAG, "Too many consecutive audio errors, stopping render thread")
+                        break
+                    }
+                    // Do not sleep — skip this chunk and continue to avoid audio gaps
                 }
             }
 
@@ -267,6 +297,18 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
+     * Configure synth voices from the loaded M8Instrument definitions.
+     * Called at startup so voices use instrument parameters instead of
+     * only falling back to hardcoded TRACK_PRESETS defaults.
+     */
+    private fun configureVoicesFromInstruments() {
+        for (i in 0 until 8) {
+            val inst = instruments.getOrNull(i) ?: continue
+            synth.configureVoice(i, inst)
+        }
+    }
+
+    /**
      * Advance the sequencer position after triggering the current row.
      * phraseRow overflows -> advance chainRow.
      * chainRow overflows (all chains exhausted) -> advance songRow.
@@ -293,6 +335,7 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
 
             if (exhausted) {
                 chainRow = 0
+                previousSongRow = songRow
                 songRow++
 
                 // Find next non-empty song row (or wrap)
@@ -309,6 +352,11 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
                     if (hasContent) break
                     songRow++
                     tries++
+                }
+
+                // Log when the song wraps back to the beginning
+                if (songRow < previousSongRow) {
+                    Log.i(TAG, "Song looped: wrapped from songRow=$previousSongRow back to songRow=$songRow (tempo=${song.tempo})")
                 }
             }
         }

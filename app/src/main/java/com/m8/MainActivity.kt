@@ -105,6 +105,19 @@ private fun M8Theme(content: @Composable () -> Unit) {
 @Composable
 private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
     val displayTick by viewModel.displayTick.collectAsState()
+    val tutorial = viewModel.tutorial
+
+    // Track tutorial state changes with displayTick (recomposes at ~30fps)
+    val tutorialActive = remember(displayTick) { tutorial.active }
+    val tutorialPaused = remember(displayTick) { tutorial.paused }
+    val tutorialComplete = remember(displayTick) { tutorial.isComplete }
+
+    // Auto-check tutorial completion on each frame
+    LaunchedEffect(displayTick) {
+        if (tutorialActive && !tutorialPaused && !tutorialComplete) {
+            tutorial.checkCompletion()
+        }
+    }
 
     LaunchedEffect(Unit) {
         viewModel.startLocalEmulator()
@@ -117,6 +130,21 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
                 .background(Color.Black)
                 .systemBarsPadding(),
         ) {
+            // Top bar with tutorial button
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (!tutorialActive) {
+                    TutorialStartButton(
+                        onClick = { tutorial.start() },
+                    )
+                }
+            }
+
             // M8 Display
             Box(
                 modifier = Modifier
@@ -140,6 +168,35 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
         // Hotkey overlay
         if (showHotkeys.value) {
             HotkeyOverlay(onDismiss = { showHotkeys.value = false })
+        }
+
+        // Tutorial overlay
+        if (tutorialActive && !tutorialPaused && !tutorialComplete) {
+            TutorialOverlay(
+                tutorial = tutorial,
+                onPause = { tutorial.pause() },
+                onStop = { tutorial.stop() },
+                onSkip = { tutorial.skip() },
+                onPrevious = { tutorial.previousStep() },
+            )
+        }
+
+        // Tutorial paused banner (contextual tips)
+        if (tutorialActive && tutorialPaused) {
+            TutorialPausedBanner(
+                currentScreen = viewModel.currentScreen,
+                onResume = { tutorial.resume() },
+                onResumeHere = {
+                    tutorial.jumpToScreen(viewModel.currentScreen)
+                    tutorial.resume()
+                },
+                onStop = { tutorial.stop() },
+            )
+        }
+
+        // Tutorial complete auto-stop
+        if (tutorialActive && tutorialComplete) {
+            tutorial.stop()
         }
     }
 }
