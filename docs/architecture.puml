@@ -1,190 +1,127 @@
-@startuml M8 Remote Architecture
-!theme plain
-skinparam backgroundColor #FEFEFE
-skinparam defaultFontName "Helvetica"
-skinparam defaultFontSize 12
-skinparam roundCorner 10
-skinparam shadowing false
-skinparam componentStyle rectangle
+@startuml M8 System Architecture
 
-skinparam package {
-  BackgroundColor<<hardware>> #FFF3E0
-  BorderColor<<hardware>> #E65100
-  BackgroundColor<<server>> #E3F2FD
-  BorderColor<<server>> #1565C0
-  BackgroundColor<<network>> #F3E5F5
-  BorderColor<<network>> #6A1B9A
-  BackgroundColor<<android>> #E8F5E9
-  BorderColor<<android>> #2E7D32
+skinparam backgroundColor #1a1a2e
+skinparam defaultFontColor #e0e0e0
+skinparam defaultFontName Monospaced
+skinparam componentBackgroundColor #16213e
+skinparam componentBorderColor #0f3460
+skinparam packageBackgroundColor #1a1a2e
+skinparam packageBorderColor #533483
+skinparam arrowColor #e94560
+skinparam noteBackgroundColor #0f3460
+
+title M8 Tracker — System Architecture
+
+package "Android App" {
+    package "Kotlin Layer" {
+        [MainActivity] as MA
+        [M8ViewModel] as VM
+        [M8Emulator] as EMU
+        [M8Song / Sequencer] as SEQ
+        [Compose UI] as UI
+    }
+
+    package "Native Layer (Rust)" {
+        [libm8_synth.so] as SYNTH
+        note right of SYNTH
+            PolyBLEP oscillators
+            2-pole SVF filter
+            ADSR envelopes
+            Delay + Reverb
+            Soft limiter
+        end note
+    }
+
+    package "Audio Output" {
+        [AudioTrack] as AT
+    }
 }
 
-skinparam component {
-  BackgroundColor #FFFFFF
-  BorderColor #424242
+MA --> VM : viewModels()
+VM --> EMU : renderFrame()
+VM --> SEQ : advanceSequencer()
+VM --> SYNTH : triggerRow() / generateChunk()\n<b>JNI calls</b>
+VM --> AT : write(pcm)\n<b>blocks = backpressure</b>
+EMU --> UI : SLIP display commands
+UI --> MA : touch/key input
+
+@enduml
+
+@startuml M8 Audio Pipeline
+
+skinparam backgroundColor #1a1a2e
+skinparam defaultFontColor #e0e0e0
+skinparam activityBackgroundColor #16213e
+skinparam activityBorderColor #0f3460
+
+title M8 Audio Pipeline (per chunk = 735 samples)
+
+start
+:Sequencer checks timing;
+if (samplesUntilNextRow <= 0?) then (yes)
+    :triggerRow(notes, vols);
+    note right: JNI → Rust
+    :advanceSequencer();
+endif
+
+:generateChunk();
+note right
+    Rust native code:
+    for each sample {
+        for each voice {
+            oscillator (PolyBLEP)
+            SVF filter
+            ADSR envelope
+        }
+        mix + pan
+        delay effect
+        reverb effect
+        soft limiter
+        → 16-bit PCM
+    }
+end note
+
+:AudioTrack.write(pcm);
+note right: **Blocks** when buffer full\n= natural real-time pacing
+
+stop
+
+@enduml
+
+@startuml M8 Voice Signal Flow
+
+skinparam backgroundColor #1a1a2e
+skinparam defaultFontColor #e0e0e0
+
+title M8 Voice Signal Flow (Rust)
+
+rectangle "Oscillator" as OSC {
+    card "Saw (PolyBLEP)" as SAW
+    card "Pulse (PolyBLEP)" as PUL
+    card "Sine" as SIN
+    card "Triangle" as TRI
+    card "Noise (LFSR)" as NOI
+    card "FM (2-op)" as FM
 }
 
-skinparam note {
-  BackgroundColor #FFF9C4
-  BorderColor #F9A825
+rectangle "Filter" as FLT {
+    card "2-pole SVF\n(stability clamped)" as SVF
 }
 
-title **M8 Remote — System Architecture**\n//Dirtywave M8 Headless over Tailscale//
-
-' ============================================================
-' HARDWARE LAYER
-' ============================================================
-package "Hardware" <<hardware>> {
-  component "**Teensy 4.1**\n//M8 Headless Firmware//" as teensy #FFE0B2
-  
-  note right of teensy
-    USB Vendor ID: 0x16C0
-    Serial: CDC ACM (/dev/ttyACM0)
-    Audio: USB Audio Class
-    44100 Hz / 16-bit / Stereo
-  end note
+rectangle "Envelope" as ENV {
+    card "ADSR\n(exponential)" as ADSR
 }
 
-' ============================================================
-' SERVER LAYER
-' ============================================================
-package "Linux Server" <<server>> {
-  
-  component "**bridge.py**\nSerial ↔ WebSocket\n//Port 8765//" as bridge #BBDEFB {
-  }
-  
-  component "**audio_stream.py**\nALSA → Opus → WebSocket\n//Port 8766//" as audio_srv #BBDEFB {
-  }
-
-  component "/dev/ttyACM0\n//USB CDC Serial//" as serial_dev #E1F5FE
-  component "ALSA hw:N,0\n//USB Audio//" as alsa_dev #E1F5FE
-  
-  component "arecord" as arecord #E1F5FE
-  component "opusenc" as opusenc #E1F5FE
-  
-  serial_dev -down-> bridge : "async read\n4096B chunks"
-  bridge -up-> serial_dev : "key commands\n[0x43, bitmask]"
-  
-  alsa_dev -down-> arecord : "S16_LE\n44100Hz stereo"
-  arecord -right-> opusenc : "raw PCM\npipe stdout→stdin"
-  opusenc -down-> audio_srv : "OGG/Opus\n4096B chunks"
+rectangle "Output" as OUT {
+    card "Pan → Stereo" as PAN
+    card "Send → Delay" as DL
+    card "Send → Reverb" as RV
 }
 
-teensy -down-> serial_dev : "**USB Serial**\nSLIP-encoded\ndisplay commands"
-teensy -down-> alsa_dev : "**USB Audio**\n44100Hz / 16-bit / stereo"
-
-' ============================================================
-' NETWORK LAYER
-' ============================================================
-package "Network" <<network>> {
-  component "**Tailscale VPN**\n//WireGuard Tunnel//" as tailscale #E1BEE7
-  
-  note bottom of tailscale
-    Server IP: 100.65.234.75
-    Default client target: 100.64.0.1
-    End-to-end encrypted
-  end note
-}
-
-bridge -down-> tailscale : "**WS :8765**\nBidirectional\n(display + input)"
-audio_srv -down-> tailscale : "**WS :8766**\nServer → Client\n(audio stream)"
-
-' ============================================================
-' ANDROID APP LAYER
-' ============================================================
-package "Android App" <<android>> {
-  
-  ' --- Network Layer ---
-  package "Network" as net_pkg {
-    component "**ConnectionManager**\n//Orchestrator//" as conn_mgr #C8E6C9
-    component "**M8WebSocketClient**\nOkHttp WebSocket\n//Display + Input//" as ws_client #C8E6C9
-    component "**M8AudioClient**\nOkHttp WebSocket\n//Audio Stream//" as audio_client #C8E6C9
-  }
-  
-  ' --- Protocol Layer ---
-  package "Protocol" as proto_pkg {
-    component "**M8Protocol**\nSLIP Decoder\n//Frame Parser//" as protocol #C8E6C9
-    component "**M8Commands**\n//Command Factory//" as commands #C8E6C9
-    component "**M8DisplayBuffer**\n320×240 Bitmap\n//Sprite Font//" as display_buf #C8E6C9
-  }
-  
-  ' --- Audio Layer ---
-  package "Audio" as audio_pkg {
-    component "**OpusDecoder**\n//MediaCodec//" as opus_dec #C8E6C9
-    component "**M8AudioPlayer**\nAudioTrack\n//48kHz Low-Latency//" as audio_player #C8E6C9
-  }
-  
-  ' --- Input Layer ---
-  package "Input" as input_pkg {
-    component "**KeyMapper**\nKeyboard + Gamepad\n//→ M8 Bitmask//" as keymapper #C8E6C9
-    component "**M8Controls**\nTouch D-Pad + Buttons\n//Haptic Feedback//" as controls #C8E6C9
-  }
-  
-  ' --- UI Layer ---
-  package "UI" as ui_pkg {
-    component "**M8Screen**\nCompose Canvas\n//4:3 Pixel-Perfect//" as screen #C8E6C9
-    component "**SettingsScreen**\nHost / Port / Auto\n//DataStore//" as settings #C8E6C9
-    component "**ConnectionStatus**\n//Color-coded dot//" as status_ui #C8E6C9
-  }
-  
-  ' --- ViewModel ---
-  component "**M8ViewModel**\n//AndroidViewModel//\nConnection lifecycle\n30fps display refresh" as viewmodel #A5D6A7
-  
-  component "**MainActivity**\n//ComponentActivity//\nHardware keyboard\nScreen-on lock" as activity #81C784
-}
-
-' ============================================================
-' CONNECTIONS
-' ============================================================
-
-' Network to app
-tailscale -down-> ws_client : "binary frames\n(SLIP data)"
-tailscale -down-> audio_client : "binary frames\n(OGG/Opus)"
-
-' ConnectionManager orchestration
-conn_mgr --> ws_client : connect/\ndisconnect
-conn_mgr --> audio_client : connect/\ndisconnect
-conn_mgr --> protocol
-conn_mgr --> display_buf
-
-' Display data flow
-ws_client -right-> protocol : "onBinaryMessage\n(raw bytes)"
-protocol -right-> display_buf : "drawRect()\ndrawChar()\ndrawWaveform()"
-display_buf -down-> screen : "snapshot()\n@Synchronized\nBitmap copy"
-
-' Audio data flow
-audio_client -down-> opus_dec : "Opus frames"
-opus_dec -right-> audio_player : "PCM samples\n48kHz stereo"
-
-' Input flow (reverse path)
-controls -up-> keymapper : "button press/\nrelease"
-keymapper -up-> commands : "M8 key\nbitmask"
-commands -up-> ws_client : "[0x43, keys]"
-
-' ViewModel wiring
-viewmodel --> conn_mgr
-viewmodel --> screen : "displayTick\n(30fps)"
-activity --> viewmodel
-activity --> controls : "onKeyDown\nonKeyUp"
-activity --> settings
-activity --> status_ui
-
-' ============================================================
-' LEGEND
-' ============================================================
-legend right
-  |= Color |= Layer |
-  |<#FFE0B2> | Hardware (Teensy 4.1) |
-  |<#BBDEFB> | Server (Linux VPS) |
-  |<#E1BEE7> | Network (Tailscale) |
-  |<#C8E6C9> | Android App |
-  
-  **Data Flows:**
-  → Display: Teensy → USB Serial → bridge.py → WS:8765 → SLIP decode → Bitmap → Canvas
-  → Audio: Teensy → USB Audio → ALSA → arecord → opusenc → WS:8766 → Opus decode → AudioTrack
-  → Input: Touch/Keys → KeyMapper → M8Commands → WS:8765 → bridge.py → USB Serial → Teensy
-  
-  **Ports:** 8765 (display bridge), 8766 (audio stream)
-  **Protocol:** SLIP framing (0xC0 delimiter, 0xDB escape)
-end legend
+OSC --> SVF
+SVF --> ADSR : filtered
+ADSR --> PAN : enveloped × volume
+PAN --> DL
+PAN --> RV
 
 @enduml

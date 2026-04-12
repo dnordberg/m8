@@ -7,6 +7,7 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.m8.audio.M8AudioPlayer
+import com.m8.audio.NativeSynth
 import com.m8.emulator.*
 import com.m8.network.ConnectionManager
 import kotlinx.coroutines.Job
@@ -41,9 +42,10 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     val displayTick: StateFlow<Int> = _displayTick
 
     private val emulator = M8Emulator()
-    private val synth = M8Synth()
+    private val synth = M8Synth() // kept for visualization API compat
     private val localAudioPlayer = M8AudioPlayer()
     private val fxEngine = M8FxEngine()
+    private var nativeSynthReady = false
 
     // Tutorial system (reads emulator state)
     val tutorial = com.m8.tutorial.M8Tutorial(emulator)
@@ -89,10 +91,17 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
                 // Reads from synth fields written by the audio thread; wrapped
                 // in try/catch since these are best-effort visualization values.
                 try {
-                    emulator.liveWaveformData = synth.getWaveformData()
-                    emulator.liveTrackLevels = synth.trackLevels.clone()
-                    emulator.liveMasterLevelL = synth.masterLevelL
-                    emulator.liveMasterLevelR = synth.masterLevelR
+                    if (nativeSynthReady) {
+                        val levels = NativeSynth.getMasterLevels()
+                        emulator.liveMasterLevelL = levels[0]
+                        emulator.liveMasterLevelR = levels[1]
+                        emulator.liveTrackLevels = NativeSynth.getTrackLevels()
+                    } else {
+                        emulator.liveWaveformData = synth.getWaveformData()
+                        emulator.liveTrackLevels = synth.trackLevels.clone()
+                        emulator.liveMasterLevelL = synth.masterLevelL
+                        emulator.liveMasterLevelR = synth.masterLevelR
+                    }
                 } catch (_: Exception) {
                     // Non-critical: visualization data may be briefly inconsistent
                 }
@@ -105,12 +114,18 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // Start audio player and pre-fill with silence so the AudioTrack
-        // internal buffer is primed before any notes trigger.
+        // Initialize native Rust synth engine
+        try {
+            NativeSynth.init()
+            nativeSynthReady = true
+            Log.i(TAG, "Native Rust synth engine initialized")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to init native synth, falling back to Kotlin: ${e.message}")
+            nativeSynthReady = false
+        }
+
+        // Start audio player
         localAudioPlayer.start()
-        val silenceChunk = synth.generateSilence()
-        localAudioPlayer.write(silenceChunk)
-        localAudioPlayer.write(silenceChunk)
 
         // Pass mixer settings so the synth can read per-track volumes, pans,
         // and send levels directly from the song's mixer configuration.
@@ -166,18 +181,20 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
                             advanceSequencer()
                         }
 
-                        val pcm = synth.generateChunk()
+                        val pcm = if (nativeSynthReady) NativeSynth.generateChunk()
+                                  else synth.generateChunk()
                         localAudioPlayer.write(pcm)
                         samplesUntilNextRow -= M8Synth.CHUNK_SAMPLES
                     } else {
                         if (wasPlaying) {
                             wasPlaying = false
-                            synth.allNotesOff()
+                            if (nativeSynthReady) NativeSynth.allNotesOff()
+                            else synth.allNotesOff()
                             fxEngine.reset()
                             samplesUntilNextRow = 0
                         }
-                        val pcm = synth.generateSilence()
-                        localAudioPlayer.write(pcm)
+                        // Write silence — just zeros
+                        localAudioPlayer.write(ByteArray(M8Synth.CHUNK_SAMPLES * 2 * 2))
                     }
                     // Reset error count on successful iteration
                     audioErrorCount = 0
@@ -263,7 +280,14 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        synth.triggerRow(rowData)
+        if (nativeSynthReady) {
+            // Pack notes and volumes into byte arrays for JNI
+            val notes = ByteArray(8) { rowData[it][0].toByte() }
+            val vols = ByteArray(8) { rowData[it][2].toByte() }
+            NativeSynth.triggerRow(notes, vols)
+        } else {
+            synth.triggerRow(rowData)
+        }
 
         // Log first row's notes for debugging
         if (phraseRow == 0) {
@@ -388,6 +412,11 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
 
         // Stop audio playback and silence all voices
         localAudioPlayer.stop()
+        if (nativeSynthReady) {
+            NativeSynth.allNotesOff()
+            NativeSynth.destroy()
+            nativeSynthReady = false
+        }
         synth.allNotesOff()
     }
 

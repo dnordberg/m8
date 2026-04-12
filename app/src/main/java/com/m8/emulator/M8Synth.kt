@@ -2,7 +2,16 @@ package com.m8.emulator
 
 import android.util.Log
 import com.m8.audio.M8AudioPlayer
-import kotlin.math.*
+import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.exp
+import kotlin.math.floor
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.pow
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 /**
  * M8 tracker synthesizer.
@@ -292,8 +301,8 @@ class M8Synth {
 
             // Master gain
             val mVol = if (mx != null) mx.masterVolume / 255.0 else 0.85
-            outL *= mVol * 0.4
-            outR *= mVol * 0.4
+            outL *= mVol * 0.3
+            outR *= mVol * 0.3
 
             // Transparent limiter — passes signal below 0.9 untouched
             outL = softLimit(outL)
@@ -349,8 +358,10 @@ class M8Synth {
         return (SR * 60.0 / (bpm * 4.0) * swingAmount).toInt()
     }
 
+    /** Cheap soft limiter — no transcendentals. Linear below 0.85, cubic squash above. */
     private fun softLimit(x: Double): Double {
-        val ax = abs(x)
-        return if (ax < 0.9) x else sign(x) * (0.9 + 0.1 * tanh((ax - 0.9) * 10.0))
+        if (x > 0.85) { val d = x - 0.85; return 0.85 + d / (1.0 + d * 6.0) }
+        if (x < -0.85) { val d = -x - 0.85; return -(0.85 + d / (1.0 + d * 6.0)) }
+        return x
     }
 }
