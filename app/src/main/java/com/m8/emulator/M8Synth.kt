@@ -3,8 +3,6 @@ package com.m8.emulator
 
 import android.util.Log
 import com.m8.audio.M8AudioPlayer
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -72,6 +70,8 @@ class M8Synth {
     private var waveformWriteIdx = 0
     private var debugCount = 0L
     private val silenceBytes = ByteArray(CHUNK_BYTES)
+    // Pre-allocated output buffer — reused every chunk, zero GC pressure
+    private val chunkBuf = ByteArray(CHUNK_BYTES)
 
     // --- Voice ---
 
@@ -214,7 +214,7 @@ class M8Synth {
 
     /** Generate one chunk of 16-bit stereo PCM audio. */
     fun generateChunk(): ByteArray {
-        val buf = ByteBuffer.allocate(CHUNK_BYTES).order(ByteOrder.LITTLE_ENDIAN)
+        val buf = chunkBuf
         var peakL = 0.0
         var peakR = 0.0
         val localTrackPeaks = DoubleArray(8)
@@ -274,11 +274,14 @@ class M8Synth {
                 waveformWriteIdx++
             }
 
-            // 16-bit PCM — use full range
+            // 16-bit PCM LE — use full range
             val sL = (outL * 32000.0).toInt().coerceIn(-32768, 32767)
             val sR = (outR * 32000.0).toInt().coerceIn(-32768, 32767)
-            buf.putShort(sL.toShort())
-            buf.putShort(sR.toShort())
+            val off = i * 4
+            buf[off] = (sL and 0xFF).toByte()
+            buf[off + 1] = (sL shr 8).toByte()
+            buf[off + 2] = (sR and 0xFF).toByte()
+            buf[off + 3] = (sR shr 8).toByte()
         }
 
         // Smoothed peak meters for visualization
@@ -296,12 +299,12 @@ class M8Synth {
             Log.d(TAG, "chunk=$debugCount active=$active L=$masterLevelL R=$masterLevelR")
         }
 
-        return buf.array()
+        return buf
     }
 
     /** Return a chunk of silence (same size as generateChunk output). */
     fun generateSilence(): ByteArray {
-        return silenceBytes.clone()
+        return silenceBytes
     }
 
     /** Release all voices immediately. */
