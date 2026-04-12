@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "com.m8"
+    namespace = "com.m8droid"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.m8"
+        applicationId = "com.m8droid"
         minSdk = 26
         targetSdk = 36
         versionCode = 1

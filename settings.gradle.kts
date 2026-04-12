@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "m8"
+rootProject.name = "m8droid"
 include(":app")

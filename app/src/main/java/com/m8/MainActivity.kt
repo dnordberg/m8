@@ -107,6 +107,7 @@ private fun M8Theme(content: @Composable () -> Unit) {
 private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
     val displayTick by viewModel.displayTick.collectAsState()
     val tutorial = viewModel.tutorial
+    var showHelpMenu by remember { mutableStateOf(false) }
 
     // Track tutorial state changes with displayTick (recomposes at ~30fps)
     val tutorialActive = remember(displayTick) { tutorial.active }
@@ -148,6 +149,26 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
             M8Controls(
                 onKeyStateChanged = { keys -> viewModel.sendKeyState(keys) },
                 modifier = Modifier.padding(bottom = 8.dp),
+            )
+        }
+
+        // Help button (top-right) — hidden while tutorial or overlays are up
+        if (!tutorialActive && !showHotkeys.value && !showHelpMenu) {
+            HelpButton(
+                onClick = { showHelpMenu = true },
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .systemBarsPadding()
+                    .padding(8.dp),
+            )
+        }
+
+        // Help menu modal
+        if (showHelpMenu) {
+            HelpMenu(
+                onDismiss = { showHelpMenu = false },
+                onStartTutorial = { viewModel.toggleTutorial() },
+                onShowHotkeys = { showHotkeys.value = true },
             )
         }
 
