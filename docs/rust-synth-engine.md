@@ -109,7 +109,7 @@ m8-synth/
 ├── src/
 │   └── lib.rs          — Complete synth engine + JNI exports
 app/src/main/
-├── java/com/m8/audio/
+├── java/com/m8droid/audio/
 │   └── NativeSynth.kt  — Kotlin JNI declarations
 ├── jniLibs/
 │   ├── arm64-v8a/

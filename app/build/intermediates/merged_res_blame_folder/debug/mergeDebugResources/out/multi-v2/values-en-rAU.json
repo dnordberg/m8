@@ -1,7 +1,7 @@
 {
     "logs": [
         {
-            "outputFile": "com.m8.app-mergeDebugResources-66:/values-en-rAU/values-en-rAU.xml",
+            "outputFile": "com.m8droid.app-mergeDebugResources-66:/values-en-rAU/values-en-rAU.xml",
             "map": [
                 {
                     "source": "/Users/danielnordberg/.gradle/caches/8.12/transforms/eb72acc4f3f569a12afdd48e44fbf5cd/transformed/core-1.13.1/res/values-en-rAU/values-en-rAU.xml",

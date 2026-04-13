@@ -1,2 +1,2 @@
-# M8 App ProGuard rules
--keep class com.m8.** { *; }
+# M8droid ProGuard rules
+-keep class com.m8droid.** { *; }

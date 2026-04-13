@@ -1,7 +1,7 @@
 {
     "logs": [
         {
-            "outputFile": "com.m8.app-mergeDebugResources-66:/values-en-rXC/values-en-rXC.xml",
+            "outputFile": "com.m8droid.app-mergeDebugResources-66:/values-en-rXC/values-en-rXC.xml",
             "map": [
                 {
                     "source": "/Users/danielnordberg/.gradle/caches/8.12/transforms/98f3e9f074d120e4535486532d463f90/transformed/material3-release/res/values-en-rXC/values-en-rXC.xml",

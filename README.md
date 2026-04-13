@@ -1,6 +1,8 @@
-# m8
+# M8droid
 
-A standalone M8 tracker for Android — no hardware required.
+A standalone M8-style tracker for Android — no hardware required.
+
+> **Disclaimer:** M8droid is an unofficial, community-built Android client inspired by the [Dirtywave M8](https://dirtywave.com/) headless firmware. It is **not affiliated with, authorized, or endorsed by Dirtywave**. "M8" is a trademark of Dirtywave; "M8droid" is used only to describe compatibility. All original hardware, firmware, and design credit belongs to Dirtywave / Trash80.
 
 ## What Makes This Different
 
@@ -67,7 +69,7 @@ This single command cold boots the Android emulator, builds the APK, uninstalls 
 To watch logs while it runs:
 
 ```bash
-adb logcat --pid=$(adb shell pidof com.m8)
+adb logcat --pid=$(adb shell pidof com.m8droid)
 ```
 
 To stop the emulator:
@@ -130,7 +132,7 @@ REMOTE MODE:
 ## Project Structure
 
 ```
-app/src/main/java/com/m8/
+app/src/main/java/com/m8droid/
 ├── MainActivity.kt          Activity, keyboard input
 ├── M8ViewModel.kt           Orchestrates emulator + synth + audio
 ├── emulator/
@@ -171,15 +173,23 @@ server/
 - `audio-engine-v2-april-9-2026` — ADSR, PolyBLEP, FM, SVF filters, effects
 - `audio-complete-april-9-2026` — live visualization, song mode, BPM sync, server synth
 
-## Sources & Inspiration
+## Sources, Credits & Attribution
 
-- [Dirtywave M8](https://dirtywave.com/) — the original hardware tracker
-- [M8 Headless Firmware](https://github.com/Dirtywave/M8HeadlessFirmware)
-- [m8c](https://github.com/laamaa/m8c) — native desktop M8 client
-- [M8 Web Display](https://github.com/Dirtywave/M8WebDisplay) — browser client
+M8droid would not exist without the work of others. Full credit to:
+
+- **[Dirtywave](https://dirtywave.com/) / Trash80** — creator of the original M8 hardware tracker, the firmware, the UI, the protocol, and the entire concept. Everything interesting about this project originates there.
+- **[M8 Headless Firmware](https://github.com/Dirtywave/M8HeadlessFirmware)** — the open-sourced firmware whose protocol and display commands this app implements. Licensed by Dirtywave; see that repository for its license terms.
+- **[m8c](https://github.com/laamaa/m8c)** by laamaa — the native desktop M8 client; reference implementation for the SLIP protocol and display rendering.
+- **[M8 Web Display](https://github.com/Dirtywave/M8WebDisplay)** — browser client, additional protocol reference.
+
+If you enjoy M8droid, please support Dirtywave by buying a real M8 — the hardware is the real thing and the project exists because of their work.
 
 ## License
 
-MIT — see [LICENSE](LICENSE)
+The M8droid Android application code is released under the MIT license — see [LICENSE](LICENSE).
 
-This project is not affiliated with or endorsed by Dirtywave. M8 is a trademark of Dirtywave.
+Portions of the protocol, command set, and display behavior are derived from the Dirtywave M8 Headless Firmware and related open-source clients; those components remain under their respective upstream licenses.
+
+## Trademark Notice
+
+"M8" is a trademark of Dirtywave. **M8droid is an unofficial, fan-made Android client and is not affiliated with, authorized, sponsored, or endorsed by Dirtywave in any way.** The name "M8droid" is used solely to indicate compatibility with the M8 protocol. If Dirtywave requests a name change, this project will comply.

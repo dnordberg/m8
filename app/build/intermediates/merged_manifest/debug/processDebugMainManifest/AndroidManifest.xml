@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.m8"
+    package="com.m8droid"
     android:versionCode="1"
     android:versionName="0.1.0" >
 
@@ -13,10 +13,10 @@
     <uses-permission android:name="android.permission.VIBRATE" />
 
     <permission
-        android:name="com.m8.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+        android:name="com.m8droid.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
         android:protectionLevel="signature" />
 
-    <uses-permission android:name="com.m8.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
+    <uses-permission android:name="com.m8droid.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
 
     <application
         android:allowBackup="true"
@@ -24,11 +24,11 @@
         android:debuggable="true"
         android:extractNativeLibs="false"
         android:icon="@mipmap/ic_launcher"
-        android:label="M8"
+        android:label="M8droid"
         android:supportsRtl="true"
-        android:theme="@style/Theme.M8" >
+        android:theme="@style/Theme.M8droid" >
         <activity
-            android:name="com.m8.MainActivity"
+            android:name="com.m8droid.MainActivity"
             android:configChanges="orientation|screenSize|keyboard|keyboardHidden"
             android:exported="true"
             android:screenOrientation="portrait"
@@ -45,7 +45,7 @@
 
         <provider
             android:name="androidx.startup.InitializationProvider"
-            android:authorities="com.m8.androidx-startup"
+            android:authorities="com.m8droid.androidx-startup"
             android:exported="false" >
             <meta-data
                 android:name="androidx.emoji2.text.EmojiCompatInitializer"

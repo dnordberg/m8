@@ -139,7 +139,7 @@ A Python asyncio service that captures USB audio from the Teensy and streams Opu
 
 ### Android Client
 
-The Android app (package `com.m8`) is built with Kotlin and Jetpack Compose.
+The Android app (package `com.m8droid`) is built with Kotlin and Jetpack Compose.
 
 **M8DisplayBuffer + M8Protocol** -- Maintains a 320x240 ARGB bitmap. Decodes SLIP-framed binary data from the WebSocket and applies draw commands (rectangles, characters, waveforms) to the bitmap using a sprite font renderer.
 

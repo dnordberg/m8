@@ -22,7 +22,7 @@ Native Android app for remotely controlling a Dirtywave M8 Headless tracker. Con
 ## Project Structure
 
 ```
-app/src/main/java/com/m8/
+app/src/main/java/com/m8droid/
 ├── MainActivity.kt              Activity shell, keyboard input dispatch, theme
 ├── M8ViewModel.kt               AndroidViewModel, connection lifecycle, display refresh
 │
@@ -199,10 +199,10 @@ plugins {
 }
 
 android {
-    namespace = "com.m8"
+    namespace = "com.m8droid"
     compileSdk = 36
     defaultConfig {
-        applicationId = "com.m8"
+        applicationId = "com.m8droid"
         minSdk = 26
         targetSdk = 36
         versionCode = 1

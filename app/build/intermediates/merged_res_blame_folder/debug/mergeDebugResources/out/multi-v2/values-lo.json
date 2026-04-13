@@ -1,7 +1,7 @@
 {
     "logs": [
         {
-            "outputFile": "com.m8.app-mergeDebugResources-66:/values-lo/values-lo.xml",
+            "outputFile": "com.m8droid.app-mergeDebugResources-66:/values-lo/values-lo.xml",
             "map": [
                 {
                     "source": "/Users/danielnordberg/.gradle/caches/8.12/transforms/f43054fbeef57dfcd36e6f68c43bb660/transformed/foundation-release/res/values-lo/values-lo.xml",

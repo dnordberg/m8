@@ -512,19 +512,19 @@ fn soft_limit(x: f64) -> f64 {
 // ===================== JNI EXPORTS =====================
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_m8_audio_NativeSynth_init(_env: JNIEnv, _class: JClass) {
+pub extern "system" fn Java_com_m8droid_audio_NativeSynth_init(_env: JNIEnv, _class: JClass) {
     let mut engine = ENGINE.lock().unwrap();
     *engine = Some(SynthEngine::new());
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_m8_audio_NativeSynth_destroy(_env: JNIEnv, _class: JClass) {
+pub extern "system" fn Java_com_m8droid_audio_NativeSynth_destroy(_env: JNIEnv, _class: JClass) {
     let mut engine = ENGINE.lock().unwrap();
     *engine = None;
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_m8_audio_NativeSynth_triggerRow<'a>(
+pub extern "system" fn Java_com_m8droid_audio_NativeSynth_triggerRow<'a>(
     mut env: JNIEnv<'a>, _class: JClass<'a>, notes: jbyteArray, vols: jbyteArray
 ) {
     let mut engine = ENGINE.lock().unwrap();
@@ -546,7 +546,7 @@ pub extern "system" fn Java_com_m8_audio_NativeSynth_triggerRow<'a>(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_m8_audio_NativeSynth_generateChunk<'a>(
+pub extern "system" fn Java_com_m8droid_audio_NativeSynth_generateChunk<'a>(
     env: JNIEnv<'a>, _class: JClass<'a>
 ) -> jbyteArray {
     let mut engine = ENGINE.lock().unwrap();
@@ -561,7 +561,7 @@ pub extern "system" fn Java_com_m8_audio_NativeSynth_generateChunk<'a>(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_m8_audio_NativeSynth_allNotesOff(_env: JNIEnv, _class: JClass) {
+pub extern "system" fn Java_com_m8droid_audio_NativeSynth_allNotesOff(_env: JNIEnv, _class: JClass) {
     let mut engine = ENGINE.lock().unwrap();
     if let Some(ref mut eng) = *engine {
         eng.all_notes_off();
@@ -569,7 +569,7 @@ pub extern "system" fn Java_com_m8_audio_NativeSynth_allNotesOff(_env: JNIEnv, _
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_m8_audio_NativeSynth_getMasterLevels<'a>(
+pub extern "system" fn Java_com_m8droid_audio_NativeSynth_getMasterLevels<'a>(
     env: JNIEnv<'a>, _class: JClass<'a>
 ) -> jdoubleArray {
     let engine = ENGINE.lock().unwrap();
@@ -581,7 +581,7 @@ pub extern "system" fn Java_com_m8_audio_NativeSynth_getMasterLevels<'a>(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_m8_audio_NativeSynth_getTrackLevels<'a>(
+pub extern "system" fn Java_com_m8droid_audio_NativeSynth_getTrackLevels<'a>(
     env: JNIEnv<'a>, _class: JClass<'a>
 ) -> jdoubleArray {
     let engine = ENGINE.lock().unwrap();
