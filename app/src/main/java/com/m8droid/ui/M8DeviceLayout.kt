@@ -105,6 +105,7 @@ fun M8DeviceLayout(
                         view = view,
                         onPress = ::pressKey,
                         onRelease = ::releaseKey,
+                        glyphSize = NAV_GLYPH_SIZE,
                     )
                     DeviceButton(
                         label = "OPTION",
@@ -136,15 +137,17 @@ fun M8DeviceLayout(
                         view = view,
                         onPress = ::pressKey,
                         onRelease = ::releaseKey,
+                        glyphSize = NAV_GLYPH_SIZE,
                     )
                     DeviceButton(
                         label = null,
                         caption = null,
-                        glyph = "\u25BC", // DOWN
+                        glyph = "\u25CF", // solid circle (center of d-pad)
                         keyBit = M8Commands.KEY_DOWN,
                         view = view,
                         onPress = ::pressKey,
                         onRelease = ::releaseKey,
+                        glyphSize = 14.sp,
                     )
                     DeviceButton(
                         label = null,
@@ -154,6 +157,7 @@ fun M8DeviceLayout(
                         view = view,
                         onPress = ::pressKey,
                         onRelease = ::releaseKey,
+                        glyphSize = NAV_GLYPH_SIZE,
                     )
                     Spacer(Modifier.size(DEVICE_BUTTON_SIZE))
                 }
@@ -164,11 +168,12 @@ fun M8DeviceLayout(
                     DeviceButton(
                         label = "SHIFT",
                         caption = null,
-                        glyph = null,
+                        glyph = "\u25BC", // down arrow + SHIFT label
                         keyBit = M8Commands.KEY_SHIFT,
                         view = view,
                         onPress = ::pressKey,
                         onRelease = ::releaseKey,
+                        glyphSize = SMALL_PLAY_GLYPH,
                     )
                     DeviceButton(
                         label = "PLAY",
@@ -178,6 +183,7 @@ fun M8DeviceLayout(
                         view = view,
                         onPress = ::pressKey,
                         onRelease = ::releaseKey,
+                        glyphSize = SMALL_PLAY_GLYPH,
                     )
                     Spacer(Modifier.size(DEVICE_BUTTON_SIZE))
                 }
@@ -188,6 +194,8 @@ fun M8DeviceLayout(
 
 private val DEVICE_BUTTON_SIZE: Dp = 60.dp
 private val DEVICE_BUTTON_GAP: Dp = 10.dp
+private val NAV_GLYPH_SIZE = 24.sp
+private val SMALL_PLAY_GLYPH = 11.sp
 
 @Composable
 private fun DeviceButton(
@@ -199,6 +207,7 @@ private fun DeviceButton(
     onPress: (Int) -> Unit,
     onRelease: (Int) -> Unit,
     modifier: Modifier = Modifier,
+    glyphSize: androidx.compose.ui.unit.TextUnit = 20.sp,
 ) {
     var pressed by remember { mutableStateOf(false) }
 
@@ -235,7 +244,7 @@ private fun DeviceButton(
                 Text(
                     text = glyph,
                     color = fg,
-                    fontSize = 20.sp,
+                    fontSize = glyphSize,
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center,
                 )
