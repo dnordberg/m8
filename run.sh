@@ -43,7 +43,7 @@ $ADB shell am force-stop "$PKG" 2>/dev/null || true
 
 # Build
 echo "Building..."
-./gradlew assembleDebug -q
+./gradlew assembleDebug -q --console=plain
 
 # Install
 echo "Installing..."
@@ -51,7 +51,7 @@ $ADB install -r app/build/outputs/apk/debug/app-debug.apk
 
 # Launch
 echo "Launching..."
-$ADB shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null
+$ADB shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
 
 echo ""
 echo "=== M8droid running on emulator ==="

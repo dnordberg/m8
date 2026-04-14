@@ -120,6 +120,8 @@ class M8Synth {
             envStage = 1; envTime = 0.0; envLevel = 0.0
             fenvLevel = 1.0; fenvTime = 0.0
             noteOn = true; active = true
+            // Clear SVF so a stale filter tail doesn't bleed into the new note
+            svfLo = 0.0; svfBd = 0.0
         }
 
         fun release() {
@@ -177,21 +179,21 @@ class M8Synth {
                 }
                 2 -> sin(phase * TWO_PI)
                 3 -> 4.0 * abs(phase - 0.5) - 1.0
-                4 -> { // Noise (pitched S&H)
-                    noiseCnt++
-                    val period = max(1, (SR / max(20.0, f)).toInt())
-                    if (noiseCnt >= period) {
-                        noiseCnt = 0
-                        val bit = (lfsr xor (lfsr shr 1)) and 1
-                        lfsr = (lfsr shr 1) or (bit shl 14)
-                        noiseVal = lfsr.toDouble() / 0x3FFF - 1.0
-                    }
+                4 -> { // Noise — full-rate LFSR through a one-pole LP (no stepping)
+                    val bit = (lfsr xor (lfsr shr 1)) and 1
+                    lfsr = (lfsr shr 1) or (bit shl 14)
+                    val white = lfsr.toDouble() / 16384.0 - 1.0
+                    val lpA = (f / SR * 6.0).coerceIn(0.02, 0.5)
+                    noiseVal += lpA * (white - noiseVal)
                     noiseVal
                 }
-                5 -> { // FM
+                5 -> { // FM — anti-aliased by shrinking index as mod freq approaches Nyquist
                     fmPh += f * pr.fmRatio / SR
                     if (fmPh > 1e6) fmPh -= floor(fmPh)
-                    val mod = sin(fmPh * TWO_PI) * pr.fmIdx * envLevel
+                    val modF = f * pr.fmRatio
+                    val maxIdx = max(0.0, (SR * 0.4) / max(1.0, modF) - 1.0)
+                    val safeIdx = min(pr.fmIdx, maxIdx)
+                    val mod = sin(fmPh * TWO_PI) * safeIdx * envLevel
                     sin((phase + mod) * TWO_PI)
                 }
                 else -> 0.0

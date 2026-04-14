@@ -67,109 +67,120 @@ fun M8DeviceLayout(
             screenContent()
         }
 
-        // ===== Button grid: fixed 4-column layout =====
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.padding(vertical = 12.dp),
+        // ===== Button area =====
+        // M8 logo floats at the left of the area; the 3-column button grid
+        // (UP col 0, DOWN col 1, RIGHT col 2) is centered. UP / LEFT / SHIFT
+        // all sit in column 0, matching the physical device.
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 12.dp),
+            contentAlignment = Alignment.Center,
         ) {
-            // Row 1: M8 logo | UP | OPTION | EDIT
-            Row(horizontalArrangement = Arrangement.spacedBy(DEVICE_BUTTON_GAP)) {
-                Box(
-                    modifier = Modifier.size(DEVICE_BUTTON_SIZE),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = "M8",
-                        color = Color(0xFFDDDDE4),
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.Black,
-                        fontFamily = FontFamily.Monospace,
+            Text(
+                text = "M8",
+                color = Color(0xFFDDDDE4),
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Black,
+                fontFamily = FontFamily.Monospace,
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .padding(start = 8.dp),
+            )
+
+            // 4-column grid. UP/DOWN/SHIFT all sit in column 1;
+            // OPTION/RIGHT/PLAY all sit in column 2; LEFT in col 0; EDIT in col 3.
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                // Row 1: [spacer] | UP | OPTION | EDIT
+                Row(horizontalArrangement = Arrangement.spacedBy(DEVICE_BUTTON_GAP)) {
+                    Spacer(Modifier.size(DEVICE_BUTTON_SIZE))
+                    DeviceButton(
+                        label = null,
+                        caption = null,
+                        glyph = "\u25B2", // UP
+                        keyBit = M8Commands.KEY_UP,
+                        view = view,
+                        onPress = ::pressKey,
+                        onRelease = ::releaseKey,
+                    )
+                    DeviceButton(
+                        label = "OPTION",
+                        caption = null,
+                        glyph = "\u2315",
+                        keyBit = M8Commands.KEY_OPTION,
+                        view = view,
+                        onPress = ::pressKey,
+                        onRelease = ::releaseKey,
+                    )
+                    DeviceButton(
+                        label = "EDIT",
+                        caption = null,
+                        glyph = "\u2217",
+                        keyBit = M8Commands.KEY_EDIT,
+                        view = view,
+                        onPress = ::pressKey,
+                        onRelease = ::releaseKey,
                     )
                 }
-                DeviceButton(
-                    label = null,
-                    caption = null,
-                    glyph = "\u25B2", // UP
-                    keyBit = M8Commands.KEY_UP,
-                    view = view,
-                    onPress = ::pressKey,
-                    onRelease = ::releaseKey,
-                )
-                DeviceButton(
-                    label = "OPTION",
-                    caption = null,
-                    glyph = "\u2315",
-                    keyBit = M8Commands.KEY_OPTION,
-                    view = view,
-                    onPress = ::pressKey,
-                    onRelease = ::releaseKey,
-                )
-                DeviceButton(
-                    label = "EDIT",
-                    caption = null,
-                    glyph = "\u2217",
-                    keyBit = M8Commands.KEY_EDIT,
-                    view = view,
-                    onPress = ::pressKey,
-                    onRelease = ::releaseKey,
-                )
-            }
 
-            // Row 2: LEFT | DOWN | RIGHT | [spacer]
-            Row(horizontalArrangement = Arrangement.spacedBy(DEVICE_BUTTON_GAP)) {
-                DeviceButton(
-                    label = null,
-                    caption = null,
-                    glyph = "\u25C0", // LEFT
-                    keyBit = M8Commands.KEY_LEFT,
-                    view = view,
-                    onPress = ::pressKey,
-                    onRelease = ::releaseKey,
-                )
-                DeviceButton(
-                    label = null,
-                    caption = null,
-                    glyph = "\u25BC", // DOWN
-                    keyBit = M8Commands.KEY_DOWN,
-                    view = view,
-                    onPress = ::pressKey,
-                    onRelease = ::releaseKey,
-                )
-                DeviceButton(
-                    label = null,
-                    caption = null,
-                    glyph = "\u25B6", // RIGHT
-                    keyBit = M8Commands.KEY_RIGHT,
-                    view = view,
-                    onPress = ::pressKey,
-                    onRelease = ::releaseKey,
-                )
-                Spacer(Modifier.size(DEVICE_BUTTON_SIZE))
-            }
+                // Row 2: LEFT | DOWN | RIGHT | [spacer]
+                Row(horizontalArrangement = Arrangement.spacedBy(DEVICE_BUTTON_GAP)) {
+                    DeviceButton(
+                        label = null,
+                        caption = null,
+                        glyph = "\u25C0", // LEFT
+                        keyBit = M8Commands.KEY_LEFT,
+                        view = view,
+                        onPress = ::pressKey,
+                        onRelease = ::releaseKey,
+                    )
+                    DeviceButton(
+                        label = null,
+                        caption = null,
+                        glyph = "\u25BC", // DOWN
+                        keyBit = M8Commands.KEY_DOWN,
+                        view = view,
+                        onPress = ::pressKey,
+                        onRelease = ::releaseKey,
+                    )
+                    DeviceButton(
+                        label = null,
+                        caption = null,
+                        glyph = "\u25B6", // RIGHT
+                        keyBit = M8Commands.KEY_RIGHT,
+                        view = view,
+                        onPress = ::pressKey,
+                        onRelease = ::releaseKey,
+                    )
+                    Spacer(Modifier.size(DEVICE_BUTTON_SIZE))
+                }
 
-            // Row 3: [spacer] | SHIFT | PLAY | [spacer]
-            Row(horizontalArrangement = Arrangement.spacedBy(DEVICE_BUTTON_GAP)) {
-                Spacer(Modifier.size(DEVICE_BUTTON_SIZE))
-                DeviceButton(
-                    label = "SHIFT",
-                    caption = null,
-                    glyph = null,
-                    keyBit = M8Commands.KEY_SHIFT,
-                    view = view,
-                    onPress = ::pressKey,
-                    onRelease = ::releaseKey,
-                )
-                DeviceButton(
-                    label = "PLAY",
-                    caption = null,
-                    glyph = "\u25B6",
-                    keyBit = M8Commands.KEY_PLAY,
-                    view = view,
-                    onPress = ::pressKey,
-                    onRelease = ::releaseKey,
-                )
-                Spacer(Modifier.size(DEVICE_BUTTON_SIZE))
+                // Row 3: [spacer] | SHIFT | PLAY | [spacer]
+                Row(horizontalArrangement = Arrangement.spacedBy(DEVICE_BUTTON_GAP)) {
+                    Spacer(Modifier.size(DEVICE_BUTTON_SIZE))
+                    DeviceButton(
+                        label = "SHIFT",
+                        caption = null,
+                        glyph = null,
+                        keyBit = M8Commands.KEY_SHIFT,
+                        view = view,
+                        onPress = ::pressKey,
+                        onRelease = ::releaseKey,
+                    )
+                    DeviceButton(
+                        label = "PLAY",
+                        caption = null,
+                        glyph = "\u25B6",
+                        keyBit = M8Commands.KEY_PLAY,
+                        view = view,
+                        onPress = ::pressKey,
+                        onRelease = ::releaseKey,
+                    )
+                    Spacer(Modifier.size(DEVICE_BUTTON_SIZE))
+                }
             }
         }
     }

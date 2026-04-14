@@ -129,6 +129,9 @@ impl Voice {
         self.fenv_time = 0.0;
         self.note_on = true;
         self.active = true;
+        // Clear filter state so a stale SVF tail doesn't bleed into the new note
+        self.svf_lo = 0.0;
+        self.svf_bd = 0.0;
     }
 
     fn release(&mut self) {
@@ -205,21 +208,23 @@ impl Voice {
             }
             2 => (self.phase * TWO_PI).sin(), // Sine
             3 => 4.0 * (self.phase - 0.5).abs() - 1.0, // Triangle
-            4 => { // Noise
-                self.noise_cnt += 1;
-                let period = (SR / self.freq.max(20.0)) as u32;
-                if self.noise_cnt >= period.max(1) {
-                    self.noise_cnt = 0;
-                    let bit = (self.lfsr ^ (self.lfsr >> 1)) & 1;
-                    self.lfsr = (self.lfsr >> 1) | (bit << 14);
-                    self.noise_val = self.lfsr as f64 / 0x3FFF as f64 - 1.0;
-                }
+            4 => { // Noise — full-rate LFSR through a one-pole LP (no stepping)
+                let bit = (self.lfsr ^ (self.lfsr >> 1)) & 1;
+                self.lfsr = (self.lfsr >> 1) | (bit << 14);
+                let white = self.lfsr as f64 / 16384.0 - 1.0;
+                // LP coefficient tracks pitch: higher notes → brighter hat
+                let lp_a = (self.freq / SR * 6.0).clamp(0.02, 0.5);
+                self.noise_val += lp_a * (white - self.noise_val);
                 self.noise_val
             }
-            5 => { // FM
+            5 => { // FM — anti-aliased by shrinking index as mod freq approaches Nyquist
                 self.fm_phase += self.freq * p.fm_ratio / SR;
                 if self.fm_phase > 1e6 { self.fm_phase -= self.fm_phase.floor(); }
-                let modulator = (self.fm_phase * TWO_PI).sin() * p.fm_idx * self.env_level;
+                // Bandwidth ≈ 2*(idx+1)*mod_freq; keep it under 0.8*Nyquist
+                let mod_f = self.freq * p.fm_ratio;
+                let max_idx = ((SR * 0.4) / mod_f.max(1.0) - 1.0).max(0.0);
+                let safe_idx = p.fm_idx.min(max_idx);
+                let modulator = (self.fm_phase * TWO_PI).sin() * safe_idx * self.env_level;
                 ((self.phase + modulator) * TWO_PI).sin()
             }
             _ => 0.0,
