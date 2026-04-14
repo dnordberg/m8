@@ -460,8 +460,22 @@ class M8Emulator {
             cmds.add(drawRect(kbX + offset * whiteKeyW - 3, kbY, 5, 11, cKeyBlack))
         }
 
-        // Footer
-        cmds.addAll(drawText("O$octave", rpX + 8, HEIGHT - 18, cTextDim, cBg))
+        // Footer — octave on the left
+        cmds.addAll(drawText("O$octave", 4, HEIGHT - 10, cTextDim, cBg))
+
+        // Bottom-right status cluster (mirrors real M8):
+        //   P            ← project dirty
+        //   SCPIT        ← Song / Chain / Phrase / Instr / Table live indicators
+        //   M            ← MIDI activity
+        val statusX = rpX
+        val statusY = HEIGHT - 30
+        cmds.addAll(drawText("P",     statusX,     statusY,          cTextDim, cBg))
+        cmds.addAll(drawText("S",     statusX,     statusY + 10,     if (screen == SCREEN_SONG)   cTextBright else cTextDim, cBg))
+        cmds.addAll(drawText("C",     statusX + 8, statusY + 10,     if (screen == SCREEN_CHAIN)  cTextBright else cTextDim, cBg))
+        cmds.addAll(drawText("P",     statusX + 16, statusY + 10,    if (screen == SCREEN_PHRASE) cTextBright else cTextDim, cBg))
+        cmds.addAll(drawText("I",     statusX + 24, statusY + 10,    if (screen == SCREEN_INSTRUMENT) cTextBright else cTextDim, cBg))
+        cmds.addAll(drawText("T",     statusX + 32, statusY + 10,    if (screen == SCREEN_TABLE)  cTextBright else cTextDim, cBg))
+        cmds.addAll(drawText("M",     statusX,     statusY + 20,     cTextDim, cBg))
 
         return cmds
     }
