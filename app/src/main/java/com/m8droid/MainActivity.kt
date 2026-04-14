@@ -154,37 +154,16 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
                 .background(Color.Black)
                 .systemBarsPadding(),
         ) {
+            val screen: @Composable () -> Unit = {
+                M8Screen(
+                    bitmap = viewModel.connectionManager.display.snapshot(),
+                    invalidationTick = displayTick,
+                )
+            }
+            val onKeys: (Int) -> Unit = { keys -> viewModel.sendKeyState(keys) }
             when (serverSettings.buttonLayout) {
-                ButtonLayout.DEVICE -> {
-                    M8DeviceLayout(
-                        onKeyStateChanged = { keys -> viewModel.sendKeyState(keys) },
-                        screenContent = {
-                            M8Screen(
-                                bitmap = viewModel.connectionManager.display.snapshot(),
-                                invalidationTick = displayTick,
-                            )
-                        },
-                    )
-                }
-                ButtonLayout.COMPACT -> {
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxWidth(),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            M8Screen(
-                                bitmap = viewModel.connectionManager.display.snapshot(),
-                                invalidationTick = displayTick,
-                            )
-                        }
-                        M8Controls(
-                            onKeyStateChanged = { keys -> viewModel.sendKeyState(keys) },
-                            modifier = Modifier.padding(bottom = 8.dp),
-                        )
-                    }
-                }
+                ButtonLayout.BEST -> M8BestLayout(onKeyStateChanged = onKeys, screenContent = screen)
+                ButtonLayout.FULL_DEVICE -> M8FullDeviceLayout(onKeyStateChanged = onKeys, screenContent = screen)
             }
         }
 

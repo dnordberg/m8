@@ -10,15 +10,15 @@ import kotlinx.coroutines.flow.map
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "m8_settings")
 
 enum class ButtonLayout {
-    COMPACT,  // original 3x4 grid view
-    DEVICE,   // full M8 tracker device look
+    BEST,          // ergonomic split thumb-zone layout (default)
+    FULL_DEVICE,   // skeuomorphic M8 hardware rendering
 }
 
 data class ServerSettings(
     val host: String = "100.65.234.75",
     val port: Int = 8765,
     val autoConnect: Boolean = true,
-    val buttonLayout: ButtonLayout = ButtonLayout.DEVICE,
+    val buttonLayout: ButtonLayout = ButtonLayout.BEST,
     val gamepadEnabled: Boolean = true,
     val keyboardEnabled: Boolean = true,
 )
@@ -41,7 +41,7 @@ class ServerConfig(private val context: Context) {
             autoConnect = prefs[AUTO_CONNECT] ?: true,
             buttonLayout = prefs[BUTTON_LAYOUT]
                 ?.let { runCatching { ButtonLayout.valueOf(it) }.getOrNull() }
-                ?: ButtonLayout.DEVICE,
+                ?: ButtonLayout.BEST,
             gamepadEnabled = prefs[GAMEPAD_ENABLED] ?: true,
             keyboardEnabled = prefs[KEYBOARD_ENABLED] ?: true,
         )

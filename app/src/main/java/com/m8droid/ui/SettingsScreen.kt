@@ -108,16 +108,22 @@ fun SettingsDialog(
                 fontFamily = FontFamily.Monospace,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Tap-to-apply: picking a chip persists immediately so the user
+                // sees the new layout without having to tap Save.
+                fun pickLayout(l: ButtonLayout) {
+                    layout = l
+                    onSave(buildSettings())
+                }
                 LayoutChip(
-                    label = "DEVICE",
-                    selected = layout == ButtonLayout.DEVICE,
-                    onClick = { layout = ButtonLayout.DEVICE },
+                    label = "BEST",
+                    selected = layout == ButtonLayout.BEST,
+                    onClick = { pickLayout(ButtonLayout.BEST) },
                     modifier = Modifier.weight(1f),
                 )
                 LayoutChip(
-                    label = "COMPACT",
-                    selected = layout == ButtonLayout.COMPACT,
-                    onClick = { layout = ButtonLayout.COMPACT },
+                    label = "DEVICE",
+                    selected = layout == ButtonLayout.FULL_DEVICE,
+                    onClick = { pickLayout(ButtonLayout.FULL_DEVICE) },
                     modifier = Modifier.weight(1f),
                 )
             }
