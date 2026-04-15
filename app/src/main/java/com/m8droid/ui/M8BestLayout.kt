@@ -52,8 +52,7 @@ fun M8BestLayout(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(Color.Black)
-            .padding(horizontal = 8.dp),
+            .background(Color.Black),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         // ===== Screen area: fills as much vertical space as possible =====
@@ -67,12 +66,12 @@ fun M8BestLayout(
         }
 
         // ===== Thumb-zone control area =====
-        // Two corner clusters separated by the M8 wordmark.
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 16.dp),
+                .padding(horizontal = 4.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             // Left thumb cluster: D-pad
             Box(
@@ -82,15 +81,7 @@ fun M8BestLayout(
                 DPadCluster(view = view, onPress = ::pressKey, onRelease = ::releaseKey)
             }
 
-            // Center: M8 wordmark
-            Text(
-                text = "M8",
-                color = Color(0xFFDDDDE4),
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Black,
-                fontFamily = FontFamily.Monospace,
-                modifier = Modifier.padding(horizontal = 4.dp),
-            )
+            Spacer(modifier = Modifier.width(8.dp))
 
             // Right thumb cluster: Diamond action buttons
             Box(
@@ -220,10 +211,10 @@ private fun ActionDiamondCluster(
     }
 }
 
-private val BEST_BUTTON_SIZE: Dp = 60.dp
-private val BEST_BUTTON_GAP: Dp = 10.dp
-private val NAV_GLYPH_SIZE = 24.sp
-private val SMALL_PLAY_GLYPH = 11.sp
+private val BEST_BUTTON_SIZE: Dp = 72.dp
+private val BEST_BUTTON_GAP: Dp = 8.dp
+private val NAV_GLYPH_SIZE = 28.sp
+private val SMALL_PLAY_GLYPH = 14.sp
 
 @Composable
 private fun BestButton(
