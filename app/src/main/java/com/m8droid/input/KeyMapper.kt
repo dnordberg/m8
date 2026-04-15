@@ -9,15 +9,21 @@ import com.m8droid.protocol.M8Commands
  */
 object KeyMapper {
 
+    // On the original M8 (Model 01), DOWN and SHIFT are the same physical
+    // button, so pressing "down" on a keyboard sends both bits at once to
+    // mirror that behavior. The dedicated Shift key below still sends shift
+    // alone for combos like shift+up / shift+left / shift+right.
+    private val DOWN_AND_SHIFT = M8Commands.KEY_DOWN or M8Commands.KEY_SHIFT
+
     private val keyMap = mapOf(
         // Arrow keys
         KeyEvent.KEYCODE_DPAD_UP to M8Commands.KEY_UP,
-        KeyEvent.KEYCODE_DPAD_DOWN to M8Commands.KEY_DOWN,
+        KeyEvent.KEYCODE_DPAD_DOWN to DOWN_AND_SHIFT,
         KeyEvent.KEYCODE_DPAD_LEFT to M8Commands.KEY_LEFT,
         KeyEvent.KEYCODE_DPAD_RIGHT to M8Commands.KEY_RIGHT,
         // WASD
         KeyEvent.KEYCODE_W to M8Commands.KEY_UP,
-        KeyEvent.KEYCODE_S to M8Commands.KEY_DOWN,
+        KeyEvent.KEYCODE_S to DOWN_AND_SHIFT,
         KeyEvent.KEYCODE_A to M8Commands.KEY_LEFT,
         KeyEvent.KEYCODE_D to M8Commands.KEY_RIGHT,
         // M8 buttons

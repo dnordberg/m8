@@ -50,38 +50,39 @@ class MainActivity : ComponentActivity() {
         return if (isGamepadEvent(event)) settings.gamepadEnabled else settings.keyboardEnabled
     }
 
-    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        if (!isInputAllowed(event)) return super.onKeyDown(keyCode, event)
+    // Handle hardware keys at dispatch time so focused Compose views can't
+    // swallow them before we see them. This is the reliable place to route
+    // keyboard + gamepad input in a Compose app.
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (!isInputAllowed(event)) return super.dispatchKeyEvent(event)
 
-        val shiftHeld = event?.isShiftPressed == true
-
-        // Check app-level hotkeys first
-        val hotkey = KeyMapper.mapHotkey(keyCode, shiftHeld)
-        if (hotkey != null) {
-            handleHotkey(hotkey)
-            return true
+        val keyCode = event.keyCode
+        when (event.action) {
+            KeyEvent.ACTION_DOWN -> {
+                if (event.repeatCount == 0) {
+                    val hotkey = KeyMapper.mapHotkey(keyCode, event.isShiftPressed)
+                    if (hotkey != null) {
+                        handleHotkey(hotkey)
+                        return true
+                    }
+                }
+                val m8Key = KeyMapper.mapKey(keyCode)
+                if (m8Key != null) {
+                    currentKeyState = currentKeyState or m8Key
+                    viewModel.sendKeyState(currentKeyState)
+                    return true
+                }
+            }
+            KeyEvent.ACTION_UP -> {
+                val m8Key = KeyMapper.mapKey(keyCode)
+                if (m8Key != null) {
+                    currentKeyState = currentKeyState and m8Key.inv()
+                    viewModel.sendKeyState(currentKeyState)
+                    return true
+                }
+            }
         }
-
-        // Then M8 button mapping
-        val m8Key = KeyMapper.mapKey(keyCode)
-        if (m8Key != null) {
-            currentKeyState = currentKeyState or m8Key
-            viewModel.sendKeyState(currentKeyState)
-            return true
-        }
-        return super.onKeyDown(keyCode, event)
-    }
-
-    override fun onKeyUp(keyCode: Int, event: KeyEvent?): Boolean {
-        if (!isInputAllowed(event)) return super.onKeyUp(keyCode, event)
-
-        val m8Key = KeyMapper.mapKey(keyCode)
-        if (m8Key != null) {
-            currentKeyState = currentKeyState and m8Key.inv()
-            viewModel.sendKeyState(currentKeyState)
-            return true
-        }
-        return super.onKeyUp(keyCode, event)
+        return super.dispatchKeyEvent(event)
     }
 
     private fun handleHotkey(action: Int) {
