@@ -8,8 +8,12 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -18,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import com.m8droid.data.ButtonLayout
 import com.m8droid.input.KeyMapper
 import com.m8droid.ui.*
+import com.m8droid.ui.daw.DawLayout
 
 class MainActivity : ComponentActivity() {
 
@@ -130,6 +135,8 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
     var showHelpMenu by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var showLoadDialog by remember { mutableStateOf(false) }
+    // In-memory UI mode. Not persisted — toggle chip is always visible for instant swap.
+    var dawMode by remember { mutableStateOf(false) }
     val serverSettings by viewModel.serverSettings.collectAsState()
 
     // Track tutorial state changes with displayTick (recomposes at ~30fps)
@@ -155,22 +162,31 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
                 .background(Color.Black)
                 .systemBarsPadding(),
         ) {
-            val screen: @Composable () -> Unit = {
-                M8Screen(
-                    bitmap = viewModel.connectionManager.display.snapshot(),
-                    invalidationTick = displayTick,
+            if (dawMode) {
+                DawLayout(
+                    viewModel = viewModel,
+                    onToggleMode = { dawMode = false },
+                    modifier = Modifier.fillMaxSize(),
                 )
-            }
-            val onKeys: (Int) -> Unit = { keys -> viewModel.setTouchKeys(keys) }
-            val keyState by viewModel.keyState.collectAsState()
-            when (serverSettings.buttonLayout) {
-                ButtonLayout.BEST -> M8BestLayout(onKeyStateChanged = onKeys, screenContent = screen, externalKeyMask = keyState)
-                ButtonLayout.FULL_DEVICE -> M8FullDeviceLayout(onKeyStateChanged = onKeys, screenContent = screen, externalKeyMask = keyState)
+            } else {
+                val screen: @Composable () -> Unit = {
+                    M8Screen(
+                        bitmap = viewModel.connectionManager.display.snapshot(),
+                        invalidationTick = displayTick,
+                    )
+                }
+                val onKeys: (Int) -> Unit = { keys -> viewModel.setTouchKeys(keys) }
+                val keyState by viewModel.keyState.collectAsState()
+                when (serverSettings.buttonLayout) {
+                    ButtonLayout.BEST -> M8BestLayout(onKeyStateChanged = onKeys, screenContent = screen, externalKeyMask = keyState)
+                    ButtonLayout.FULL_DEVICE -> M8FullDeviceLayout(onKeyStateChanged = onKeys, screenContent = screen, externalKeyMask = keyState)
+                }
             }
         }
 
-        // Top-right controls: load + settings + help. Hidden while overlays are up.
-        if (!tutorialActive && !showHotkeys.value && !showHelpMenu && !showSettings && !showLoadDialog) {
+        // Top-right controls: load + settings + help. Hidden while overlays are up
+        // and while the DAW shell is active (DAW has its own chrome).
+        if (!dawMode && !tutorialActive && !showHotkeys.value && !showHelpMenu && !showSettings && !showLoadDialog) {
             Row(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
@@ -178,6 +194,7 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
                     .padding(8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                DawModeChip(onClick = { dawMode = true })
                 LoadButton(onClick = { showLoadDialog = true })
                 SettingsButton(onClick = { showSettings = true })
                 HelpButton(onClick = { showHelpMenu = true })
@@ -246,5 +263,25 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
         if (tutorialActive && tutorialComplete) {
             tutorial.stop()
         }
+    }
+}
+
+@Composable
+private fun DawModeChip(onClick: () -> Unit) {
+    androidx.compose.foundation.layout.Box(
+        modifier = Modifier
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+            .background(Color(0xFF0E0D14))
+            .border(1.dp, Color(0xFF00FF7A), androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+    ) {
+        Text(
+            text = "DAW",
+            color = Color(0xFF00FF7A),
+            fontSize = 11.sp,
+            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+        )
     }
 }

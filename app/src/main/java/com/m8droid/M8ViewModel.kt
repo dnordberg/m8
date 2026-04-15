@@ -66,6 +66,41 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     private val song get() = emulator.song
     private val instruments get() = emulator.instruments
 
+    // Public accessors for the DAW view, which reads live emulator state.
+    val songData: M8Song get() = emulator.song
+    val instrumentList: Array<M8Instrument> get() = emulator.instruments
+    val isPlaying: Boolean get() = emulator.playing
+    val currentPlayRow: Int get() = emulator.playRow
+    val liveMasterLevels: Pair<Double, Double>
+        get() = emulator.liveMasterLevelL to emulator.liveMasterLevelR
+    val liveTrackLevelArray: DoubleArray? get() = emulator.liveTrackLevels
+
+    fun togglePlayback() {
+        emulator.playing = !emulator.playing
+        if (emulator.playing) emulator.playRow = 0
+    }
+
+    fun stopPlayback() {
+        emulator.playing = false
+        emulator.playRow = 0
+    }
+
+    fun setTempo(bpm: Int) {
+        emulator.song.tempo = bpm.coerceIn(30, 300)
+    }
+
+    fun setTrackVolume(track: Int, vol: Int) {
+        if (track in 0..7) emulator.song.mixer.trackVolumes[track] = vol.coerceIn(0, 255)
+    }
+
+    fun setTrackPan(track: Int, pan: Int) {
+        if (track in 0..7) emulator.song.mixer.trackPans[track] = pan.coerceIn(0, 255)
+    }
+
+    fun setMasterVolume(vol: Int) {
+        emulator.song.mixer.masterVolume = vol.coerceIn(0, 255)
+    }
+
     // Sequencer position
     @Volatile private var songRow = 0       // row in song grid (0-255)
     @Volatile private var chainRow = 0      // row within current chain (0-15)
