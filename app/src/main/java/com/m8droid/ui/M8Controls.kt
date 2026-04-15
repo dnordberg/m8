@@ -70,14 +70,14 @@ fun M8Controls(
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(BUTTON_GAP)) {
                 Spacer(Modifier.size(cell))
-                M8Button("UP", M8Commands.KEY_UP, ::pressKey, ::releaseKey, view, Modifier.size(cell))
+                M8Button("▲", M8Commands.KEY_UP, ::pressKey, ::releaseKey, view, Modifier.size(cell), labelSize = 24.sp)
                 M8Button("OPT", M8Commands.KEY_OPTION, ::pressKey, ::releaseKey, view, Modifier.size(cell))
                 M8Button("EDIT", M8Commands.KEY_EDIT, ::pressKey, ::releaseKey, view, Modifier.size(cell))
             }
             Row(horizontalArrangement = Arrangement.spacedBy(BUTTON_GAP)) {
-                M8Button("LT", M8Commands.KEY_LEFT, ::pressKey, ::releaseKey, view, Modifier.size(cell))
-                M8Button("DN", M8Commands.KEY_DOWN, ::pressKey, ::releaseKey, view, Modifier.size(cell))
-                M8Button("RT", M8Commands.KEY_RIGHT, ::pressKey, ::releaseKey, view, Modifier.size(cell))
+                M8Button("◀", M8Commands.KEY_LEFT, ::pressKey, ::releaseKey, view, Modifier.size(cell), labelSize = 24.sp)
+                M8Button("▼", M8Commands.KEY_DOWN, ::pressKey, ::releaseKey, view, Modifier.size(cell), labelSize = 24.sp)
+                M8Button("▶", M8Commands.KEY_RIGHT, ::pressKey, ::releaseKey, view, Modifier.size(cell), labelSize = 24.sp)
                 Spacer(Modifier.size(cell))
             }
             Row(horizontalArrangement = Arrangement.spacedBy(BUTTON_GAP)) {
@@ -98,6 +98,7 @@ private fun M8Button(
     onRelease: (Int) -> Unit,
     view: View,
     modifier: Modifier = Modifier,
+    labelSize: androidx.compose.ui.unit.TextUnit = 12.sp,
 ) {
     var pressed by remember { mutableStateOf(false) }
 
@@ -124,7 +125,7 @@ private fun M8Button(
         Text(
             text = label,
             color = if (pressed) Color.Black else Color(0xFF00FF00),
-            fontSize = 12.sp,
+            fontSize = labelSize,
             fontWeight = FontWeight.Bold,
             textAlign = TextAlign.Center,
         )
