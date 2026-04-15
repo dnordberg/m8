@@ -4,7 +4,9 @@ import android.view.HapticFeedbackConstants
 import android.view.View
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -156,16 +158,16 @@ private fun DeviceButton(
             .background(baseColor, RoundedCornerShape(12.dp))
             .border(1.dp, borderColor, RoundedCornerShape(12.dp))
             .pointerInput(keyBit) {
-                detectTapGestures(
-                    onPress = {
-                        pressed = true
-                        view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                        onPress(keyBit)
-                        tryAwaitRelease()
-                        pressed = false
-                        onRelease(keyBit)
-                    },
-                )
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    down.consume()
+                    pressed = true
+                    view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                    onPress(keyBit)
+                    waitForUpOrCancellation()?.consume()
+                    pressed = false
+                    onRelease(keyBit)
+                }
             },
         contentAlignment = Alignment.Center,
     ) {
