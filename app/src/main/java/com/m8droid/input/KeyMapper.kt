@@ -23,9 +23,14 @@ object KeyMapper {
         // M8 buttons
         KeyEvent.KEYCODE_Z to M8Commands.KEY_OPTION,
         KeyEvent.KEYCODE_X to M8Commands.KEY_EDIT,
+        KeyEvent.KEYCODE_E to M8Commands.KEY_EDIT,
+        KeyEvent.KEYCODE_ALT_LEFT to M8Commands.KEY_OPTION,
+        KeyEvent.KEYCODE_ALT_RIGHT to M8Commands.KEY_OPTION,
         KeyEvent.KEYCODE_SHIFT_LEFT to M8Commands.KEY_SHIFT,
         KeyEvent.KEYCODE_SHIFT_RIGHT to M8Commands.KEY_SHIFT,
         KeyEvent.KEYCODE_SPACE to M8Commands.KEY_PLAY,
+        KeyEvent.KEYCODE_ENTER to M8Commands.KEY_PLAY,
+        KeyEvent.KEYCODE_NUMPAD_ENTER to M8Commands.KEY_PLAY,
         // Gamepad
         KeyEvent.KEYCODE_BUTTON_A to M8Commands.KEY_OPTION,
         KeyEvent.KEYCODE_BUTTON_B to M8Commands.KEY_EDIT,
@@ -84,7 +89,6 @@ object KeyMapper {
         keyCode == KeyEvent.KEYCODE_RIGHT_BRACKET && shiftHeld -> ACTION_TEMPO_UP_10
         keyCode == KeyEvent.KEYCODE_LEFT_BRACKET -> ACTION_TEMPO_DOWN
         keyCode == KeyEvent.KEYCODE_RIGHT_BRACKET -> ACTION_TEMPO_UP
-        keyCode == KeyEvent.KEYCODE_ENTER -> ACTION_PLAY_FROM_CURSOR
         keyCode == KeyEvent.KEYCODE_TAB && shiftHeld -> ACTION_TAB_PREV
         keyCode == KeyEvent.KEYCODE_TAB -> ACTION_TAB_NEXT
         else -> null
