@@ -33,6 +33,7 @@ fun M8BestLayout(
     onKeyStateChanged: (Int) -> Unit,
     screenContent: @Composable () -> Unit,
     modifier: Modifier = Modifier,
+    externalKeyMask: Int = 0,
 ) {
     Column(modifier = modifier.fillMaxSize()) {
         Box(
@@ -48,6 +49,7 @@ fun M8BestLayout(
             modifier = Modifier
                 .weight(1f)
                 .padding(bottom = 8.dp),
+            externalKeyMask = externalKeyMask,
         )
     }
 }
@@ -65,9 +67,11 @@ fun M8FullDeviceLayout(
     onKeyStateChanged: (Int) -> Unit,
     screenContent: @Composable () -> Unit,
     modifier: Modifier = Modifier,
+    externalKeyMask: Int = 0,
 ) {
     var currentKeys by remember { mutableIntStateOf(0) }
     val view = LocalView.current
+    val displayMask = currentKeys or externalKeyMask
 
     fun pressKey(key: Int) {
         currentKeys = currentKeys or key
@@ -113,20 +117,20 @@ fun M8FullDeviceLayout(
                         fontFamily = FontFamily.Monospace,
                     )
                 }
-                DeviceButton(null, "\u25B2", M8Commands.KEY_UP, view, ::pressKey, ::releaseKey)
-                DeviceButton("OPTION", "\u2315", M8Commands.KEY_OPTION, view, ::pressKey, ::releaseKey)
-                DeviceButton("EDIT", "\u2217", M8Commands.KEY_EDIT, view, ::pressKey, ::releaseKey)
+                DeviceButton(null, "\u25B2", M8Commands.KEY_UP, view, ::pressKey, ::releaseKey, displayMask)
+                DeviceButton("OPTION", "\u2315", M8Commands.KEY_OPTION, view, ::pressKey, ::releaseKey, displayMask)
+                DeviceButton("EDIT", "\u2217", M8Commands.KEY_EDIT, view, ::pressKey, ::releaseKey, displayMask)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(DEVICE_BUTTON_GAP)) {
-                DeviceButton(null, "\u25C0", M8Commands.KEY_LEFT, view, ::pressKey, ::releaseKey)
-                DeviceButton(null, "\u25BC", M8Commands.KEY_DOWN, view, ::pressKey, ::releaseKey)
-                DeviceButton(null, "\u25B6", M8Commands.KEY_RIGHT, view, ::pressKey, ::releaseKey)
+                DeviceButton(null, "\u25C0", M8Commands.KEY_LEFT, view, ::pressKey, ::releaseKey, displayMask)
+                DeviceButton(null, "\u25BC", M8Commands.KEY_DOWN, view, ::pressKey, ::releaseKey, displayMask)
+                DeviceButton(null, "\u25B6", M8Commands.KEY_RIGHT, view, ::pressKey, ::releaseKey, displayMask)
                 Spacer(Modifier.size(DEVICE_BUTTON_SIZE))
             }
             Row(horizontalArrangement = Arrangement.spacedBy(DEVICE_BUTTON_GAP)) {
                 Spacer(Modifier.size(DEVICE_BUTTON_SIZE))
-                DeviceButton("SHIFT", null, M8Commands.KEY_SHIFT, view, ::pressKey, ::releaseKey)
-                DeviceButton("PLAY", "\u25B6", M8Commands.KEY_PLAY, view, ::pressKey, ::releaseKey)
+                DeviceButton("SHIFT", null, M8Commands.KEY_SHIFT, view, ::pressKey, ::releaseKey, displayMask)
+                DeviceButton("PLAY", "\u25B6", M8Commands.KEY_PLAY, view, ::pressKey, ::releaseKey, displayMask)
                 Spacer(Modifier.size(DEVICE_BUTTON_SIZE))
             }
         }
@@ -144,9 +148,10 @@ private fun DeviceButton(
     view: View,
     onPress: (Int) -> Unit,
     onRelease: (Int) -> Unit,
+    keyMask: Int,
     modifier: Modifier = Modifier,
 ) {
-    var pressed by remember { mutableStateOf(false) }
+    val pressed = (keyMask and keyBit) != 0
     val baseColor = if (pressed) Color(0xFF1A2740) else Color(0xFF1C1C20)
     val borderColor = if (pressed) Color(0xFF3A6BFF) else Color(0xFF2A2A30)
     val fg = if (pressed) Color(0xFF7FB4FF) else Color(0xFFDDDDE4)
@@ -161,11 +166,9 @@ private fun DeviceButton(
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     down.consume()
-                    pressed = true
                     view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
                     onPress(keyBit)
                     waitForUpOrCancellation()?.consume()
-                    pressed = false
                     onRelease(keyBit)
                 }
             },

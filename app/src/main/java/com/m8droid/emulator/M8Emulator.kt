@@ -18,6 +18,7 @@ class M8Emulator {
     companion object {
         const val WIDTH = 320
         const val HEIGHT = 240
+        const val RIGHT_PANEL_X = 248
         const val FONT_W = 8
         const val FONT_H = 10
 
@@ -42,7 +43,10 @@ class M8Emulator {
         const val SCREEN_MIXER = 5
         const val SCREEN_FX = 6
         const val SCREEN_CONFIG = 7
+        const val SCREEN_PROJECT = 8
 
+        // Screens shown in the top tab header / OPT+EDIT cycle. PROJECT is
+        // reachable only via Shift+Up and is intentionally kept out of the tab row.
         val SCREEN_NAMES = arrayOf("SONG", "CHAIN", "PHRASE", "INSTR", "TABLE", "MIXER", "FX", "CONFIG")
     }
 
@@ -107,6 +111,7 @@ class M8Emulator {
     private val cKeySep = intArrayOf(30, 40, 80)
 
     private var lastKeys = 0
+    private var shiftChordActive = false
 
     init {
         song.loadDemoSong()
@@ -208,11 +213,23 @@ class M8Emulator {
     // --- Key handling ---
 
     fun handleKeyState(keys: Int) {
-        val pressed = keys and lastKeys.inv()
+        val prevKeys = lastKeys
+        val pressed = keys and prevKeys.inv()
+        val released = prevKeys and keys.inv()
         val held = keys
         lastKeys = keys
 
         val shiftHeld = held and M8Commands.KEY_SHIFT != 0
+        val arrowPressed = pressed and (M8Commands.KEY_UP or M8Commands.KEY_DOWN or
+            M8Commands.KEY_LEFT or M8Commands.KEY_RIGHT) != 0
+
+        // Shift+Arrow navigates the view grid (matches real M8 view navigator).
+        // Suppresses the pending octave change from the earlier shift-press edge.
+        if (shiftHeld && arrowPressed && !editMode) {
+            shiftChordActive = true
+            navigateScreenGrid(pressed)
+            return
+        }
 
         // Navigation
         if (pressed and M8Commands.KEY_UP != 0) {
@@ -248,6 +265,7 @@ class M8Emulator {
                     SCREEN_INSTRUMENT -> 0
                     SCREEN_FX -> 0
                     SCREEN_CONFIG -> 0
+                    SCREEN_PROJECT -> 0
                     else -> 7
                 }
                 cursorX = min(maxX, cursorX + 1)
@@ -260,24 +278,27 @@ class M8Emulator {
             if (playing) playRow = 0
         }
 
-        // OPT = next screen
+        // OPT = previous screen
         if (pressed and M8Commands.KEY_OPTION != 0) {
-            screen = (screen + 1) % SCREEN_NAMES.size
+            screen = (screen - 1 + SCREEN_NAMES.size) % SCREEN_NAMES.size
             editMode = false
         }
 
-        // EDIT = previous screen, or enter edit mode if shift held
+        // EDIT = next screen, or enter edit mode if shift held
         if (pressed and M8Commands.KEY_EDIT != 0) {
             if (shiftHeld && screen == SCREEN_PHRASE) {
                 editMode = !editMode
             } else {
-                screen = (screen - 1 + SCREEN_NAMES.size) % SCREEN_NAMES.size
+                screen = (screen + 1) % SCREEN_NAMES.size
                 editMode = false
             }
         }
 
-        // SHIFT alone = change octave (when not in edit mode)
-        if (pressed and M8Commands.KEY_SHIFT != 0 && !editMode) {
+        // Track shift-chord usage so a pure shift tap (release without chord) can bump octave.
+        if (pressed and M8Commands.KEY_SHIFT != 0) {
+            shiftChordActive = false
+        }
+        if (released and M8Commands.KEY_SHIFT != 0 && !shiftChordActive && !editMode) {
             octave = (octave % 8) + 1
         }
 
@@ -290,6 +311,40 @@ class M8Emulator {
             val row = song.chains[selectedChain.coerceIn(0, 254)].rows[cursorY]
             if (row.phrase != M8Song.EMPTY) selectedPhrase = row.phrase
         }
+    }
+
+    // View grid for Shift+Arrow navigation, mirroring the real M8 view navigator.
+    // Row/col coordinates map to SCREEN_* indices; -1 = empty slot.
+    // Row 0 is the single PROJECT view (reached via Shift+Up from the main row).
+    private val screenGrid = arrayOf(
+        intArrayOf(SCREEN_PROJECT, SCREEN_PROJECT, SCREEN_PROJECT),
+        intArrayOf(SCREEN_SONG, SCREEN_CHAIN, SCREEN_PHRASE),
+        intArrayOf(SCREEN_INSTRUMENT, SCREEN_TABLE, SCREEN_MIXER),
+        intArrayOf(SCREEN_FX, SCREEN_CONFIG, -1),
+    )
+
+    private fun navigateScreenGrid(pressed: Int) {
+        var row = screenGrid.indexOfFirst { it.contains(screen) }
+        var col = if (row >= 0) screenGrid[row].indexOf(screen) else 0
+        if (row < 0) { row = 0; col = 0 }
+        val rows = screenGrid.size
+        val cols = screenGrid[0].size
+        fun step(dr: Int, dc: Int) {
+            var r = row; var c = col
+            repeat(rows * cols) {
+                r = (r + dr + rows) % rows
+                c = (c + dc + cols) % cols
+                if (screenGrid[r][c] >= 0) { row = r; col = c; return }
+            }
+        }
+        when {
+            pressed and M8Commands.KEY_LEFT != 0 -> step(0, -1)
+            pressed and M8Commands.KEY_RIGHT != 0 -> step(0, 1)
+            pressed and M8Commands.KEY_UP != 0 -> step(-1, 0)
+            pressed and M8Commands.KEY_DOWN != 0 -> step(1, 0)
+        }
+        screen = screenGrid[row][col]
+        editMode = false
     }
 
     private fun editNoteValue(delta: Int) {
@@ -339,7 +394,15 @@ class M8Emulator {
                 cmds.addAll(renderScreenHeader())
                 cmds.addAll(renderConfig())
             }
+            SCREEN_PROJECT -> cmds.addAll(renderProject())
         }
+
+        // Clear the sidebar column so screen content that strays into it
+        // can't bleed through, then draw the global status panel over top.
+        // Leave the top header strip (y < 13) alone so the screen tab row
+        // (SONG..CONFIG) stays visible.
+        cmds.add(drawRect(RIGHT_PANEL_X - 4, 13, WIDTH - (RIGHT_PANEL_X - 4), HEIGHT - 13, cBg))
+        cmds.addAll(renderRightPanel())
 
         frameCount++
         waveformPhase += 0.15
@@ -356,46 +419,13 @@ class M8Emulator {
     private fun renderSong(): List<ByteArray> {
         val cmds = mutableListOf<ByteArray>()
 
-        val rpX = 248
+        val rpX = RIGHT_PANEL_X
 
         // Waveform at top
         cmds.add(drawWaveform(4, 4, cWaveform, makeWaveformData(230)))
 
-        // VU meter (top right)
-        val vuX = rpX; val vuY = 14; val vuW = 64; val vuH = 5
-        val masterLevel = if (playing) {
-            ((liveMasterLevelL + liveMasterLevelR) / 2 * 200).toInt().coerceIn(0, 100)
-        } else 30
-        cmds.add(drawRect(vuX, vuY, vuW, vuH, intArrayOf(15, 15, 15)))
-        val fillW = vuW * masterLevel / 100
-        if (fillW > 0) {
-            val greenEnd = vuW * 50 / 100
-            val yellowEnd = vuW * 80 / 100
-            val gw = min(fillW, greenEnd)
-            cmds.add(drawRect(vuX, vuY, gw, vuH, intArrayOf(0, 180, 0)))
-            if (fillW > greenEnd) {
-                val yw = min(fillW, yellowEnd) - greenEnd
-                cmds.add(drawRect(vuX + greenEnd, vuY, yw, vuH, intArrayOf(200, 200, 0)))
-            }
-            if (fillW > yellowEnd) {
-                val rw = fillW - yellowEnd
-                cmds.add(drawRect(vuX + yellowEnd, vuY, rw, vuH, intArrayOf(200, 0, 0)))
-            }
-        }
-
-        // Progress bar
-        cmds.add(drawRect(vuX, vuY + 8, vuW, 3, intArrayOf(15, 15, 15)))
-        val progW = if (playing) vuW * playRow / 15 else 0
-        if (progW > 0) cmds.add(drawRect(vuX, vuY + 8, progW, 3, intArrayOf(50, 70, 180)))
-
         // Title
         cmds.addAll(drawText("SONG", 4, 32, cText, cBg))
-
-        // Tempo
-        val playIndicator = if (playing) ">" else " "
-        cmds.addAll(drawText("T", rpX, 46, cText, cBg))
-        cmds.addAll(drawText(playIndicator, rpX + 8, 46, cPlayArrow, cBg))
-        cmds.addAll(drawText("${song.tempo}", rpX + 16, 46, cText, cBg))
 
         // Column headers
         val headerY = 48
@@ -446,7 +476,83 @@ class M8Emulator {
             }
         }
 
-        // Right panel: per-track notes
+        // Footer — octave on the left
+        cmds.addAll(drawText("O$octave", 4, HEIGHT - 10, cTextDim, cBg))
+
+        return cmds
+    }
+
+    /**
+     * Right-side status panel (tempo, per-track notes, piano, SCPIT indicators).
+     * Rendered on every screen so global state is always visible, matching the
+     * real M8 firmware.
+     */
+    // ===== PROJECT screen =====
+
+    private fun renderProject(): List<ByteArray> {
+        val cmds = mutableListOf<ByteArray>()
+        val xLabel = 8
+        val xValue = 96
+        val yStart = 16
+        val lineH = FONT_H + 4
+
+        cmds.addAll(drawText("PROJECT", xLabel, yStart, cHeader, cBg))
+
+        val rows = listOf(
+            "NAME"        to "UNTITLED",
+            "TRANSPOSE"   to "00",
+            "TEMPO"       to song.tempo.toString(),
+            "QUANTIZE"    to "OFF",
+            "MIDI CHANNEL" to "01",
+            "KEY"         to "C",
+        )
+        for ((i, pair) in rows.withIndex()) {
+            val y = yStart + 20 + i * lineH
+            cmds.addAll(drawText(pair.first, xLabel, y, cTextDim, cBg))
+            cmds.addAll(drawText(pair.second, xValue, y, cText, cBg))
+        }
+
+        return cmds
+    }
+
+    private fun renderRightPanel(): List<ByteArray> {
+        val cmds = mutableListOf<ByteArray>()
+        val rpX = RIGHT_PANEL_X
+
+        // VU meter (top right)
+        val vuX = rpX; val vuY = 14; val vuW = 64; val vuH = 5
+        val masterLevel = if (playing) {
+            ((liveMasterLevelL + liveMasterLevelR) / 2 * 200).toInt().coerceIn(0, 100)
+        } else 30
+        cmds.add(drawRect(vuX, vuY, vuW, vuH, intArrayOf(15, 15, 15)))
+        val fillW = vuW * masterLevel / 100
+        if (fillW > 0) {
+            val greenEnd = vuW * 50 / 100
+            val yellowEnd = vuW * 80 / 100
+            val gw = min(fillW, greenEnd)
+            cmds.add(drawRect(vuX, vuY, gw, vuH, intArrayOf(0, 180, 0)))
+            if (fillW > greenEnd) {
+                val yw = min(fillW, yellowEnd) - greenEnd
+                cmds.add(drawRect(vuX + greenEnd, vuY, yw, vuH, intArrayOf(200, 200, 0)))
+            }
+            if (fillW > yellowEnd) {
+                val rw = fillW - yellowEnd
+                cmds.add(drawRect(vuX + yellowEnd, vuY, rw, vuH, intArrayOf(200, 0, 0)))
+            }
+        }
+
+        // Progress bar
+        cmds.add(drawRect(vuX, vuY + 8, vuW, 3, intArrayOf(15, 15, 15)))
+        val progW = if (playing) vuW * playRow / 15 else 0
+        if (progW > 0) cmds.add(drawRect(vuX, vuY + 8, progW, 3, intArrayOf(50, 70, 180)))
+
+        // Tempo
+        val playIndicator = if (playing) ">" else " "
+        cmds.addAll(drawText("T", rpX, 46, cText, cBg))
+        cmds.addAll(drawText(playIndicator, rpX + 8, 46, cPlayArrow, cBg))
+        cmds.addAll(drawText("${song.tempo}", rpX + 16, 46, cText, cBg))
+
+        // Per-track notes
         val activePhrase = getActivePhrase()
         val noteStartY = 62
         val noteLineH = 14
@@ -472,16 +578,13 @@ class M8Emulator {
             cmds.add(drawRect(kbX + offset * whiteKeyW - 3, kbY, 5, 11, cKeyBlack))
         }
 
-        // Footer — octave on the left
-        cmds.addAll(drawText("O$octave", 4, HEIGHT - 10, cTextDim, cBg))
-
         // Bottom-right status cluster (mirrors real M8):
         //   P            ← project dirty
         //   SCPIT        ← Song / Chain / Phrase / Instr / Table live indicators
         //   M            ← MIDI activity
         val statusX = rpX
         val statusY = HEIGHT - 30
-        cmds.addAll(drawText("P",     statusX,     statusY,          cTextDim, cBg))
+        cmds.addAll(drawText("P",     statusX,     statusY,          if (screen == SCREEN_PROJECT) cTextBright else cTextDim, cBg))
         cmds.addAll(drawText("S",     statusX,     statusY + 10,     if (screen == SCREEN_SONG)   cTextBright else cTextDim, cBg))
         cmds.addAll(drawText("C",     statusX + 8, statusY + 10,     if (screen == SCREEN_CHAIN)  cTextBright else cTextDim, cBg))
         cmds.addAll(drawText("P",     statusX + 16, statusY + 10,    if (screen == SCREEN_PHRASE) cTextBright else cTextDim, cBg))
@@ -501,7 +604,6 @@ class M8Emulator {
         val chain = song.chains[chainIdx]
 
         cmds.addAll(drawText("CHAIN ${M8Song.hex2(chainIdx)}", 4, yStart, cHeader, cBg))
-        cmds.addAll(drawText("T>${String.format("%03d", song.tempo)}", WIDTH - 44, yStart, cText, cBg))
 
         // Column headers
         val colPhrase = 28
@@ -546,9 +648,8 @@ class M8Emulator {
         cmds.addAll(drawText("PHRASE ${M8Song.hex2(phraseIdx)}", 4, yStart, cText, cBg))
 
         if (editMode) {
-            cmds.addAll(drawText("EDIT", WIDTH - 36, yStart, intArrayOf(255, 100, 100), cBg))
+            cmds.addAll(drawText("EDIT", 80, yStart, intArrayOf(255, 100, 100), cBg))
         }
-        cmds.addAll(drawText("T>${String.format("%03d", song.tempo)}", WIDTH - 44, yStart + 12, cText, cBg))
 
         // Track headers - each track column shows note/inst/vol compactly
         // Layout: rowNum(16px) + 8 tracks × (note3 + inst2 + vol2 = ~7 chars = 56px) ... too wide
@@ -556,7 +657,7 @@ class M8Emulator {
         // We'll show: row# | N I V | N I V | ... for 8 tracks
         // Each track column = 36px (note:24 + inst:8 + gap:4)
 
-        val trackW = 36
+        val trackW = 28
         val trackStartX = 20
         val colHeaderY = yStart + 12
 
@@ -752,7 +853,7 @@ class M8Emulator {
         val levels = liveTrackLevels
 
         for (ch in 0 until 8) {
-            val x = 8 + ch * 38
+            val x = 6 + ch * 29
             val y = yStart + 16
 
             // Track label with volume from mixer

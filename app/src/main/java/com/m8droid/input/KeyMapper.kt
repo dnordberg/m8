@@ -22,8 +22,10 @@ object KeyMapper {
         KeyEvent.KEYCODE_D to M8Commands.KEY_RIGHT,
         // M8 buttons
         KeyEvent.KEYCODE_Z to M8Commands.KEY_OPTION,
+        KeyEvent.KEYCODE_P to M8Commands.KEY_OPTION,
         KeyEvent.KEYCODE_X to M8Commands.KEY_EDIT,
         KeyEvent.KEYCODE_E to M8Commands.KEY_EDIT,
+        KeyEvent.KEYCODE_LEFT_BRACKET to M8Commands.KEY_EDIT,
         KeyEvent.KEYCODE_ALT_LEFT to M8Commands.KEY_OPTION,
         KeyEvent.KEYCODE_ALT_RIGHT to M8Commands.KEY_OPTION,
         KeyEvent.KEYCODE_SHIFT_LEFT to M8Commands.KEY_SHIFT,
@@ -85,9 +87,7 @@ object KeyMapper {
         keyCode == KeyEvent.KEYCODE_6 -> ACTION_SCREEN_6
         keyCode == KeyEvent.KEYCODE_7 -> ACTION_SCREEN_7
         keyCode == KeyEvent.KEYCODE_8 -> ACTION_SCREEN_8
-        keyCode == KeyEvent.KEYCODE_LEFT_BRACKET && shiftHeld -> ACTION_TEMPO_DOWN_10
         keyCode == KeyEvent.KEYCODE_RIGHT_BRACKET && shiftHeld -> ACTION_TEMPO_UP_10
-        keyCode == KeyEvent.KEYCODE_LEFT_BRACKET -> ACTION_TEMPO_DOWN
         keyCode == KeyEvent.KEYCODE_RIGHT_BRACKET -> ACTION_TEMPO_UP
         keyCode == KeyEvent.KEYCODE_TAB && shiftHeld -> ACTION_TAB_PREV
         keyCode == KeyEvent.KEYCODE_TAB -> ACTION_TAB_NEXT

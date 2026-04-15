@@ -66,7 +66,7 @@ class MainActivity : ComponentActivity() {
         val m8Key = KeyMapper.mapKey(keyCode)
         if (m8Key != null) {
             currentKeyState = currentKeyState or m8Key
-            viewModel.sendKeyState(currentKeyState)
+            viewModel.setKeyboardKeys(currentKeyState)
             return true
         }
         return super.onKeyDown(keyCode, event)
@@ -78,7 +78,7 @@ class MainActivity : ComponentActivity() {
         val m8Key = KeyMapper.mapKey(keyCode)
         if (m8Key != null) {
             currentKeyState = currentKeyState and m8Key.inv()
-            viewModel.sendKeyState(currentKeyState)
+            viewModel.setKeyboardKeys(currentKeyState)
             return true
         }
         return super.onKeyUp(keyCode, event)
@@ -161,10 +161,11 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
                     invalidationTick = displayTick,
                 )
             }
-            val onKeys: (Int) -> Unit = { keys -> viewModel.sendKeyState(keys) }
+            val onKeys: (Int) -> Unit = { keys -> viewModel.setTouchKeys(keys) }
+            val keyState by viewModel.keyState.collectAsState()
             when (serverSettings.buttonLayout) {
-                ButtonLayout.BEST -> M8BestLayout(onKeyStateChanged = onKeys, screenContent = screen)
-                ButtonLayout.FULL_DEVICE -> M8FullDeviceLayout(onKeyStateChanged = onKeys, screenContent = screen)
+                ButtonLayout.BEST -> M8BestLayout(onKeyStateChanged = onKeys, screenContent = screen, externalKeyMask = keyState)
+                ButtonLayout.FULL_DEVICE -> M8FullDeviceLayout(onKeyStateChanged = onKeys, screenContent = screen, externalKeyMask = keyState)
             }
         }
 

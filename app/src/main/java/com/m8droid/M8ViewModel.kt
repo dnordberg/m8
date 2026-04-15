@@ -433,12 +433,31 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
             com.m8droid.protocol.M8Commands.KEY_EDIT or
             com.m8droid.protocol.M8Commands.KEY_SHIFT
 
-    fun sendKeyState(keys: Int) {
+    // Separate masks per input source so touch + keyboard can be held simultaneously
+    // without one overwriting the other. Combined state is exposed via [keyState]
+    // so the on-screen controls can light up in response to keyboard input.
+    private var touchKeys = 0
+    private var keyboardKeys = 0
+    private val _keyState = MutableStateFlow(0)
+    val keyState: StateFlow<Int> = _keyState
+
+    fun setTouchKeys(keys: Int) {
+        touchKeys = keys
+        dispatchKeys()
+    }
+
+    fun setKeyboardKeys(keys: Int) {
+        keyboardKeys = keys
+        dispatchKeys()
+    }
+
+    private fun dispatchKeys() {
+        val keys = touchKeys or keyboardKeys
+        _keyState.value = keys
         // Detect OPT+EDIT+SHIFT held simultaneously (like on real hardware)
         if (keys and COMBO_MASK == COMBO_MASK) {
             comboHeldFrames++
             if (comboHeldFrames == 1) {
-                // Toggle tutorial on first frame of combo
                 toggleTutorial()
                 return // Don't pass combo to emulator
             }
@@ -448,6 +467,9 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         }
         emulator.handleKeyState(keys)
     }
+
+    @Deprecated("Use setTouchKeys/setKeyboardKeys", ReplaceWith("setTouchKeys(keys)"))
+    fun sendKeyState(keys: Int) = setTouchKeys(keys)
 
     /** Persist new settings and restart the local emulator so changes take effect. */
     fun saveSettings(settings: ServerSettings) {

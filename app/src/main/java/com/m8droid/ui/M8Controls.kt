@@ -39,9 +39,11 @@ private val NEON = Color(0xFF64A0DC)
 fun M8Controls(
     onKeyStateChanged: (Int) -> Unit,
     modifier: Modifier = Modifier,
+    externalKeyMask: Int = 0,
 ) {
     var currentKeys by remember { mutableIntStateOf(0) }
     val view = LocalView.current
+    val displayMask = currentKeys or externalKeyMask
 
     fun pressKey(key: Int) {
         currentKeys = currentKeys or key
@@ -74,20 +76,20 @@ fun M8Controls(
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(BUTTON_GAP)) {
                 M8Logo(Modifier.size(cell))
-                M8Button("▲", labelAbove = true, M8Commands.KEY_UP, ::pressKey, ::releaseKey, view, cell)
-                M8Button("♪ OPTION", labelAbove = false, M8Commands.KEY_OPTION, ::pressKey, ::releaseKey, view, cell)
-                M8Button("✱ EDIT", labelAbove = false, M8Commands.KEY_EDIT, ::pressKey, ::releaseKey, view, cell)
+                M8Button("▲", labelAbove = true, M8Commands.KEY_UP, ::pressKey, ::releaseKey, view, cell, displayMask)
+                M8Button("♪ OPTION", labelAbove = false, M8Commands.KEY_OPTION, ::pressKey, ::releaseKey, view, cell, displayMask)
+                M8Button("✱ EDIT", labelAbove = false, M8Commands.KEY_EDIT, ::pressKey, ::releaseKey, view, cell, displayMask)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(BUTTON_GAP)) {
-                M8Button("◀", labelAbove = false, M8Commands.KEY_LEFT, ::pressKey, ::releaseKey, view, cell)
-                M8Button("▼", labelAbove = false, M8Commands.KEY_DOWN, ::pressKey, ::releaseKey, view, cell)
-                M8Button("▶", labelAbove = false, M8Commands.KEY_RIGHT, ::pressKey, ::releaseKey, view, cell)
+                M8Button("◀", labelAbove = false, M8Commands.KEY_LEFT, ::pressKey, ::releaseKey, view, cell, displayMask)
+                M8Button("▼", labelAbove = false, M8Commands.KEY_DOWN, ::pressKey, ::releaseKey, view, cell, displayMask)
+                M8Button("▶", labelAbove = false, M8Commands.KEY_RIGHT, ::pressKey, ::releaseKey, view, cell, displayMask)
                 EmptyCell(cell)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(BUTTON_GAP)) {
                 EmptyCell(cell)
-                M8Button("⇡ SHIFT", labelAbove = false, M8Commands.KEY_SHIFT, ::pressKey, ::releaseKey, view, cell)
-                M8Button("▶ PLAY", labelAbove = false, M8Commands.KEY_PLAY, ::pressKey, ::releaseKey, view, cell)
+                M8Button("⇡ SHIFT", labelAbove = false, M8Commands.KEY_SHIFT, ::pressKey, ::releaseKey, view, cell, displayMask)
+                M8Button("▶ PLAY", labelAbove = false, M8Commands.KEY_PLAY, ::pressKey, ::releaseKey, view, cell, displayMask)
                 EmptyCell(cell)
             }
         }
@@ -130,8 +132,9 @@ private fun M8Button(
     onRelease: (Int) -> Unit,
     view: View,
     cell: Dp,
+    keyMask: Int,
 ) {
-    var pressed by remember { mutableStateOf(false) }
+    val pressed = (keyMask and keyBit) != 0
 
     val button = @Composable {
         Box(
@@ -146,11 +149,9 @@ private fun M8Button(
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
                         down.consume()
-                        pressed = true
                         view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
                         onPress(keyBit)
                         waitForUpOrCancellation()?.consume()
-                        pressed = false
                         onRelease(keyBit)
                     }
                 },
