@@ -489,6 +489,20 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         emulator.bpm = song.tempo
     }
 
+    /** Number of instrument slots the emulator exposes. */
+    val instrumentSlotCount: Int get() = instruments.size
+
+    /**
+     * Replace the instrument at [slot] with a newly-parsed M8Instrument
+     * (typically loaded from a .m8i file). Reconfigures the corresponding
+     * synth voice so the change is audible immediately.
+     */
+    fun replaceInstrument(slot: Int, newInst: M8Instrument) {
+        if (slot !in instruments.indices) return
+        instruments[slot] = newInst
+        runCatching { synth.configureVoice(slot, newInst) }
+    }
+
     fun playFromCursor() {
         emulator.playing = true
         emulator.playRow = emulator.cursorY

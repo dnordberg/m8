@@ -129,6 +129,7 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
     val tutorial = viewModel.tutorial
     var showHelpMenu by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    var showLoadDialog by remember { mutableStateOf(false) }
     val serverSettings by viewModel.serverSettings.collectAsState()
 
     // Track tutorial state changes with displayTick (recomposes at ~30fps)
@@ -167,8 +168,8 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
             }
         }
 
-        // Top-right controls: settings + help. Hidden while overlays are up.
-        if (!tutorialActive && !showHotkeys.value && !showHelpMenu && !showSettings) {
+        // Top-right controls: load + settings + help. Hidden while overlays are up.
+        if (!tutorialActive && !showHotkeys.value && !showHelpMenu && !showSettings && !showLoadDialog) {
             Row(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
@@ -176,9 +177,19 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
                     .padding(8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                LoadButton(onClick = { showLoadDialog = true })
                 SettingsButton(onClick = { showSettings = true })
                 HelpButton(onClick = { showHelpMenu = true })
             }
+        }
+
+        // Browse / download dialog
+        if (showLoadDialog) {
+            BrowseDialog(
+                onDismiss = { showLoadDialog = false },
+                slotCount = viewModel.instrumentSlotCount,
+                onLoadInstrument = { slot, inst -> viewModel.replaceInstrument(slot, inst) },
+            )
         }
 
         // Settings dialog

@@ -53,6 +53,19 @@ class M8DisplayBuffer(
     } else null
     private val charCanvas: Canvas? = if (charBitmap != null) Canvas(charBitmap!!) else null
 
+    // Double-buffered snapshot pool: snapshot() copies into one of these rather
+    // than allocating a fresh bitmap each frame. Two buffers let the UI thread
+    // read the previous snapshot while the next frame's snapshot is being written.
+    private val snapshotBitmaps = arrayOf(
+        Bitmap.createBitmap(WIDTH, HEIGHT, Bitmap.Config.ARGB_8888),
+        Bitmap.createBitmap(WIDTH, HEIGHT, Bitmap.Config.ARGB_8888),
+    )
+    private val snapshotCanvases = arrayOf(
+        Canvas(snapshotBitmaps[0]),
+        Canvas(snapshotBitmaps[1]),
+    )
+    private var snapshotIndex = 0
+
     @Synchronized
     fun clear() {
         canvas.drawColor(Color.BLACK)
@@ -136,6 +149,9 @@ class M8DisplayBuffer(
      */
     @Synchronized
     fun snapshot(): Bitmap {
-        return bitmap.copy(Bitmap.Config.ARGB_8888, false)
+        val idx = snapshotIndex
+        snapshotIndex = (idx + 1) and 1
+        snapshotCanvases[idx].drawBitmap(bitmap, 0f, 0f, null)
+        return snapshotBitmaps[idx]
     }
 }

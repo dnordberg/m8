@@ -259,6 +259,20 @@ class M8Synth {
     }
 
     fun generateChunk(): ByteArray {
+        // ---- Silence gate ----
+        // If no voice is active, flush the delay buffers so no stale tail or
+        // denormal dust leaks through, and return pure digital zeros. This
+        // guarantees true silence before the first note arrives and between
+        // notes while the sequencer idles on empty rows.
+        if (voices.none { it.active }) {
+            for (k in dlBufL.indices) { dlBufL[k] = 0.0; dlBufR[k] = 0.0 }
+            dlDampL = 0.0; dlDampR = 0.0
+            masterLevelL *= 0.7; masterLevelR *= 0.7
+            for (t in 0 until 8) trackLevels[t] *= 0.7
+            dbg++
+            return silence
+        }
+
         val buf = outBuf
         val tPk = DoubleArray(8)
         var pkL = 0.0; var pkR = 0.0

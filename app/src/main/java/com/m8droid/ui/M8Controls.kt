@@ -15,12 +15,15 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.min
 import androidx.compose.ui.unit.sp
 import com.m8droid.protocol.M8Commands
 
-private val BUTTON_SIZE = 52.dp
-private val BUTTON_GAP = 6.dp
+private val BUTTON_GAP = 4.dp
+private val SIDE_MARGIN = 0.dp
+private val MAX_BUTTON_SIZE = 96.dp
 
 /**
  * On-screen touch controls for M8 buttons.
@@ -48,30 +51,41 @@ fun M8Controls(
     //   .    UP   OPT  EDIT
     //   LT   DN   RT   .
     //   .    SH   PL   .
-    Column(
+    //
+    // Cells use weight(1f) so the 4-column grid stretches to fill the full
+    // width (minus tiny side margins), producing square buttons sized by the
+    // container.
+    BoxWithConstraints(
         modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(BUTTON_GAP),
+            .fillMaxSize()
+            .padding(horizontal = SIDE_MARGIN, vertical = 8.dp),
+        contentAlignment = Alignment.Center,
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(BUTTON_GAP)) {
-            Spacer(Modifier.size(BUTTON_SIZE))
-            M8Button("UP", M8Commands.KEY_UP, ::pressKey, ::releaseKey, view)
-            M8Button("OPT", M8Commands.KEY_OPTION, ::pressKey, ::releaseKey, view)
-            M8Button("EDIT", M8Commands.KEY_EDIT, ::pressKey, ::releaseKey, view)
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(BUTTON_GAP)) {
-            M8Button("LT", M8Commands.KEY_LEFT, ::pressKey, ::releaseKey, view)
-            M8Button("DN", M8Commands.KEY_DOWN, ::pressKey, ::releaseKey, view)
-            M8Button("RT", M8Commands.KEY_RIGHT, ::pressKey, ::releaseKey, view)
-            Spacer(Modifier.size(BUTTON_SIZE))
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(BUTTON_GAP)) {
-            Spacer(Modifier.size(BUTTON_SIZE))
-            M8Button("SHIFT", M8Commands.KEY_SHIFT, ::pressKey, ::releaseKey, view)
-            M8Button("PLAY", M8Commands.KEY_PLAY, ::pressKey, ::releaseKey, view)
-            Spacer(Modifier.size(BUTTON_SIZE))
+        val byWidth: Dp = (maxWidth - BUTTON_GAP * 3) / 4
+        val byHeight: Dp = (maxHeight - BUTTON_GAP * 2) / 3
+        val cell: Dp = min(min(byWidth, byHeight), MAX_BUTTON_SIZE)
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(BUTTON_GAP),
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(BUTTON_GAP)) {
+                Spacer(Modifier.size(cell))
+                M8Button("UP", M8Commands.KEY_UP, ::pressKey, ::releaseKey, view, Modifier.size(cell))
+                M8Button("OPT", M8Commands.KEY_OPTION, ::pressKey, ::releaseKey, view, Modifier.size(cell))
+                M8Button("EDIT", M8Commands.KEY_EDIT, ::pressKey, ::releaseKey, view, Modifier.size(cell))
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(BUTTON_GAP)) {
+                M8Button("LT", M8Commands.KEY_LEFT, ::pressKey, ::releaseKey, view, Modifier.size(cell))
+                M8Button("DN", M8Commands.KEY_DOWN, ::pressKey, ::releaseKey, view, Modifier.size(cell))
+                M8Button("RT", M8Commands.KEY_RIGHT, ::pressKey, ::releaseKey, view, Modifier.size(cell))
+                Spacer(Modifier.size(cell))
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(BUTTON_GAP)) {
+                Spacer(Modifier.size(cell))
+                M8Button("SHIFT", M8Commands.KEY_SHIFT, ::pressKey, ::releaseKey, view, Modifier.size(cell))
+                M8Button("PLAY", M8Commands.KEY_PLAY, ::pressKey, ::releaseKey, view, Modifier.size(cell))
+                Spacer(Modifier.size(cell))
+            }
         }
     }
 }
@@ -89,7 +103,6 @@ private fun M8Button(
 
     Box(
         modifier = modifier
-            .size(BUTTON_SIZE)
             .background(
                 color = if (pressed) Color(0xFF00FF00) else Color(0xFF333333),
                 shape = RoundedCornerShape(8.dp),

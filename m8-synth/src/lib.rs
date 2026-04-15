@@ -398,6 +398,23 @@ impl SynthEngine {
     }
 
     fn generate_chunk(&mut self) -> &[u8] {
+        // ---- Silence gate ----
+        // If no voice is active, flush the effect buffers so no stale delay/
+        // reverb tail or denormal dust leaks through, and emit pure digital
+        // zeros. This guarantees true silence before the first note arrives
+        // and between notes while the sequencer idles on empty rows.
+        let any_active = self.voices.iter().any(|v| v.active);
+        if !any_active {
+            self.delay.clear();
+            self.reverb.clear();
+            self.out_buf.fill(0);
+            self.master_l *= 0.7;
+            self.master_r *= 0.7;
+            for t in 0..8 { self.track_levels[t] *= 0.7; }
+            self.dbg_cnt += 1;
+            return &self.out_buf;
+        }
+
         let mut tpk = [0.0f64; 8];
         let mut pk_l = 0.0f64;
         let mut pk_r = 0.0f64;
