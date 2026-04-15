@@ -27,6 +27,7 @@ import com.m8droid.browse.ContentKind
 import com.m8droid.browse.DownloadStore
 import com.m8droid.browse.RemoteItem
 import com.m8droid.emulator.M8Instrument
+import com.m8droid.emulator.M8sParser
 
 private val M8_GREEN = Color(0xFF00FF00)
 private val M8_BG = Color(0xFF0A0A1A)
@@ -38,6 +39,7 @@ fun BrowseDialog(
     onDismiss: () -> Unit,
     slotCount: Int,
     onLoadInstrument: (slot: Int, inst: M8Instrument) -> Unit,
+    onLoadSong: (M8sParser.ParsedSong) -> Unit,
     viewModel: BrowseViewModel = viewModel(),
 ) {
     val sources = viewModel.sources
@@ -177,13 +179,22 @@ fun BrowseDialog(
                                     val e = sdSelected ?: return@SdDetailPane
                                     viewModel.loadInstrumentIntoSlot(e, slot, onLoadInstrument)
                                 },
+                                onLoadSong = {
+                                    val e = sdSelected ?: return@SdDetailPane
+                                    viewModel.loadSongFromEntry(e, onLoadSong)
+                                },
                             )
                         } else {
                             DetailPane(
                                 item = selected,
                                 downloading = downloading,
                                 lastDownloaded = lastDownloaded,
+                                loadStatus = loadStatus,
                                 onDownload = { viewModel.downloadSelected() },
+                                onDownloadAndLoadSong = {
+                                    val it = selected ?: return@DetailPane
+                                    viewModel.downloadAndLoadSong(it, onLoadSong)
+                                },
                                 onDismissResult = { viewModel.clearLastDownloaded() },
                             )
                         }
@@ -323,6 +334,7 @@ private fun SdDetailPane(
     slotCount: Int,
     loadStatus: String?,
     onLoad: (slot: Int) -> Unit,
+    onLoadSong: () -> Unit,
 ) {
     var selectedSlot by remember(entry?.id) { mutableStateOf(0) }
     Column(
@@ -408,7 +420,19 @@ private fun SdDetailPane(
                         .padding(horizontal = 10.dp, vertical = 6.dp),
                 )
             }
-            ContentKind.SONG -> NotYetNote("Song loader coming in next phase")
+            ContentKind.SONG -> {
+                Text(
+                    text = "[LOAD SONG]",
+                    color = M8_GREEN,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                    modifier = Modifier
+                        .border(1.dp, M8_GREEN, RoundedCornerShape(4.dp))
+                        .clickable { onLoadSong() }
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                )
+            }
             ContentKind.SAMPLE -> NotYetNote("Sample playback needs engine work")
             ContentKind.PACK -> NotYetNote("Pack unpack not implemented yet")
             else -> NotYetNote("No loader for this type yet")
@@ -507,7 +531,9 @@ private fun DetailPane(
     item: RemoteItem?,
     downloading: Boolean,
     lastDownloaded: com.m8droid.browse.DownloadStore.Entry?,
+    loadStatus: String?,
     onDownload: () -> Unit,
+    onDownloadAndLoadSong: () -> Unit,
     onDismissResult: () -> Unit,
 ) {
     Column(
@@ -579,7 +605,15 @@ private fun DetailPane(
                     .padding(horizontal = 10.dp, vertical = 4.dp),
             )
         } else {
-            val label = if (downloading) "DOWNLOADING..." else "[DOWNLOAD]"
+            // Songs get a "save + load in one click" action; everything
+            // else still uses plain download-to-SD.
+            val isSong = item.kind == ContentKind.SONG
+            val label = when {
+                downloading && isSong -> "LOADING..."
+                downloading -> "DOWNLOADING..."
+                isSong -> "[SAVE + LOAD]"
+                else -> "[DOWNLOAD]"
+            }
             Text(
                 text = label,
                 color = M8_GREEN,
@@ -588,9 +622,21 @@ private fun DetailPane(
                 fontFamily = FontFamily.Monospace,
                 modifier = Modifier
                     .border(1.dp, M8_GREEN, RoundedCornerShape(4.dp))
-                    .clickable(enabled = !downloading) { onDownload() }
+                    .clickable(enabled = !downloading) {
+                        if (isSong) onDownloadAndLoadSong() else onDownload()
+                    }
                     .padding(horizontal = 10.dp, vertical = 6.dp),
             )
+            if (!loadStatus.isNullOrBlank()) {
+                Spacer(Modifier.height(6.dp))
+                val isError = loadStatus.startsWith("ERROR", ignoreCase = true)
+                Text(
+                    text = loadStatus,
+                    color = if (isError) Color(0xFFFF4040) else M8_GREEN,
+                    fontSize = 10.sp,
+                    fontFamily = FontFamily.Monospace,
+                )
+            }
         }
     }
 }

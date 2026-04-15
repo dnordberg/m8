@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.m8droid.emulator.M8Instrument
 import com.m8droid.emulator.M8iParser
+import com.m8droid.emulator.M8sParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -154,6 +155,54 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
                 "LOADED '${inst.name}' -> SLOT $slot"
             }
             _loadStatus.value = result.getOrElse { "ERROR: ${it.message ?: "parse failed"}" }
+        }
+    }
+
+    /**
+     * Parse an .m8s file already on the SD store and hand the result to
+     * [apply] (typically M8ViewModel::replaceSong). Status / errors surface
+     * through [loadStatus], same as instrument loads.
+     */
+    fun loadSongFromEntry(
+        entry: DownloadStore.Entry,
+        apply: (M8sParser.ParsedSong) -> Unit,
+    ) {
+        viewModelScope.launch {
+            val result = runCatching {
+                val bytes = withContext(Dispatchers.IO) { File(entry.localPath).readBytes() }
+                val song = M8sParser.parse(bytes)
+                apply(song)
+                "LOADED '${song.header.name}' @ ${song.header.tempo} BPM"
+            }
+            _loadStatus.value = result.getOrElse { "ERROR: ${it.message ?: "parse failed"}" }
+        }
+    }
+
+    /**
+     * Download a remote .m8s, save it to the SD store, and immediately
+     * parse + apply it. This is the "one-click" load flow: the user
+     * picks a song in the browser and hears it without a separate
+     * download-then-load step.
+     */
+    fun downloadAndLoadSong(
+        item: RemoteItem,
+        apply: (M8sParser.ParsedSong) -> Unit,
+    ) {
+        _downloading.value = true
+        _error.value = null
+        _loadStatus.value = null
+        viewModelScope.launch {
+            val result = runCatching {
+                val bytes = http.getBytes(item.downloadUrl)
+                val entry = withContext(Dispatchers.IO) { store.save(item, bytes) }
+                _lastDownloaded.value = entry
+                _sdEntries.value = store.list().sortedByDescending { it.downloadedAt }
+                val song = M8sParser.parse(bytes)
+                apply(song)
+                "LOADED '${song.header.name}' @ ${song.header.tempo} BPM"
+            }
+            _loadStatus.value = result.getOrElse { "ERROR: ${it.message ?: "load failed"}" }
+            _downloading.value = false
         }
     }
 }

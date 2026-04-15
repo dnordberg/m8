@@ -113,6 +113,18 @@ class M8Emulator {
         resolveCurrentPhrases()
     }
 
+    /**
+     * Rewind the sequencer to row 0 and resolve phrase references from
+     * the current song grid. Call after replacing song data in place.
+     */
+    fun resetPlayheadAndResolve() {
+        songRow = 0
+        chainRow = 0
+        playRow = 0
+        songPosition = 0
+        resolveCurrentPhrases()
+    }
+
     // --- Resolve which phrases are active per track based on song position ---
 
     private fun resolveCurrentPhrases() {

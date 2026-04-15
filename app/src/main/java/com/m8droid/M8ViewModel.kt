@@ -503,6 +503,36 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         runCatching { synth.configureVoice(slot, newInst) }
     }
 
+    /**
+     * Replace the playing song with the data in [parsed]. Mutates the
+     * emulator's live M8Song (since it's held as a val) and rewinds the
+     * sequencer to row 0 so the new song starts from the top.
+     *
+     * Intentionally does NOT touch instruments — the .m8s parser is
+     * playback-core only (grid/phrases/chains/tables/tempo). Existing
+     * instrument slots stay live so steps with instrument references
+     * still produce sound. See DECISIONS.md.
+     */
+    fun replaceSong(parsed: M8sParser.ParsedSong) {
+        val wasPlaying = emulator.playing
+        emulator.playing = false
+        M8sParser.applyTo(parsed, song)
+        emulator.bpm = song.tempo
+        songRow = 0
+        chainRow = 0
+        phraseRow = 0
+        samplesUntilNextRow = 0
+        previousSongRow = 0
+        emulator.cursorX = 0
+        emulator.cursorY = 0
+        emulator.resetPlayheadAndResolve()
+        if (wasPlaying) {
+            emulator.playing = true
+            emulator.playRow = 0
+        }
+        Log.i(TAG, "Loaded song '${song.name}' @ ${song.tempo} BPM")
+    }
+
     fun playFromCursor() {
         emulator.playing = true
         emulator.playRow = emulator.cursorY

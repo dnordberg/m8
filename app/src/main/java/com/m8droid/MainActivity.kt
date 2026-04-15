@@ -189,6 +189,7 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
                 onDismiss = { showLoadDialog = false },
                 slotCount = viewModel.instrumentSlotCount,
                 onLoadInstrument = { slot, inst -> viewModel.replaceInstrument(slot, inst) },
+                onLoadSong = { parsed -> viewModel.replaceSong(parsed) },
             )
         }
 
