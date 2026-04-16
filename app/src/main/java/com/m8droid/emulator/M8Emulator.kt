@@ -93,6 +93,9 @@ class M8Emulator {
     var liveMasterLevelL = 0.0
     var liveMasterLevelR = 0.0
 
+    // MIDI activity indicator — ViewModel toggles this based on a decay timer.
+    @Volatile var midiActive: Boolean = false
+
     // --- Colors (matching real M8 default theme) ---
     private val cBg = intArrayOf(0, 0, 0)
     private val cText = intArrayOf(100, 160, 220)
@@ -590,7 +593,7 @@ class M8Emulator {
         cmds.addAll(drawText("P",     statusX + 16, statusY + 10,    if (screen == SCREEN_PHRASE) cTextBright else cTextDim, cBg))
         cmds.addAll(drawText("I",     statusX + 24, statusY + 10,    if (screen == SCREEN_INSTRUMENT) cTextBright else cTextDim, cBg))
         cmds.addAll(drawText("T",     statusX + 32, statusY + 10,    if (screen == SCREEN_TABLE)  cTextBright else cTextDim, cBg))
-        cmds.addAll(drawText("M",     statusX,     statusY + 20,     cTextDim, cBg))
+        cmds.addAll(drawText("M",     statusX,     statusY + 20,     if (midiActive) cTextBright else cTextDim, cBg))
 
         return cmds
     }

@@ -33,12 +33,18 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        viewModel.startMidi()
 
         setContent {
             M8Theme {
                 M8App(viewModel, showHotkeys)
             }
         }
+    }
+
+    override fun onDestroy() {
+        viewModel.stopMidi()
+        super.onDestroy()
     }
 
     /** True if the given KeyEvent came from a game controller. */

@@ -11,6 +11,7 @@ import com.m8droid.audio.NativeSynth
 import com.m8droid.data.ServerConfig
 import com.m8droid.data.ServerSettings
 import com.m8droid.emulator.*
+import com.m8droid.midi.MidiEngine
 import com.m8droid.network.ConnectionManager
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -65,6 +66,100 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     // Use the emulator's song data model (shared state for display + audio)
     private val song get() = emulator.song
     private val instruments get() = emulator.instruments
+
+    // ======================= MIDI =======================
+    private val midiEngine = MidiEngine(application.applicationContext).also { engine ->
+        engine.onNoteOn = { channel, note, velocity -> handleMidiNoteOn(channel, note, velocity) }
+        engine.onNoteOff = { channel, note -> handleMidiNoteOff(channel, note) }
+        engine.onActivity = { markMidiActivity() }
+    }
+
+    /** Last time (ms) we saw a MIDI event in either direction. Used by the M indicator. */
+    @Volatile private var lastMidiActivityMs: Long = 0L
+
+    /** Notes currently held on each MIDI channel so we can send matching Note Offs. */
+    private val midiHeldNotes = IntArray(8) { -1 }
+
+    /** Last notes we sent out from the sequencer, per track, so we can release them. */
+    private val midiOutHeld = IntArray(8) { -1 }
+
+    private fun markMidiActivity() {
+        lastMidiActivityMs = System.currentTimeMillis()
+        emulator.midiActive = true
+    }
+
+    /** Route an incoming MIDI note to the native synth on the matching M8 track. */
+    private fun handleMidiNoteOn(channel: Int, note: Int, velocity: Int) {
+        val track = channel.coerceIn(0, 7)
+        midiHeldNotes[track] = note
+        val notes = ByteArray(8) { if (it == track) note.toByte() else 0 }
+        val vols = ByteArray(8) { if (it == track) velocity.toByte() else 0 }
+        try {
+            if (nativeSynthReady) NativeSynth.triggerRow(notes, vols)
+            else synth.triggerRow(Array(8) { t ->
+                if (t == track) intArrayOf(note, t, velocity, 0, 0)
+                else intArrayOf(0, t, 0, 0, 0)
+            })
+        } catch (_: Exception) { }
+    }
+
+    private fun handleMidiNoteOff(channel: Int, note: Int) {
+        val track = channel.coerceIn(0, 7)
+        if (midiHeldNotes[track] != note) return
+        midiHeldNotes[track] = -1
+        val notes = ByteArray(8) { if (it == track) M8Synth.NOTE_OFF.toByte() else 0 }
+        val vols = ByteArray(8)
+        try {
+            if (nativeSynthReady) NativeSynth.triggerRow(notes, vols)
+            else synth.triggerRow(Array(8) { t ->
+                if (t == track) intArrayOf(M8Synth.NOTE_OFF, t, 0, 0, 0)
+                else intArrayOf(0, t, 0, 0, 0)
+            })
+        } catch (_: Exception) { }
+    }
+
+    /**
+     * Broadcast the sequencer row out to any connected MIDI devices. Called
+     * from the audio thread immediately after [triggerCurrentRow] fires the
+     * internal synth, so software and hardware stay locked in time.
+     */
+    private fun broadcastMidiRow(rowData: Array<IntArray>) {
+        for (t in 0 until 8) {
+            val note = rowData[t][0]
+            val vel = (rowData[t][2].coerceIn(0, 255) / 2).coerceIn(0, 127)
+            // Release any previously held note on this track before a new trigger.
+            val prev = midiOutHeld[t]
+            if (prev >= 0 && (note == M8Synth.NOTE_OFF || note in 1..127)) {
+                midiEngine.sendNoteOff(t, prev)
+                midiOutHeld[t] = -1
+            }
+            when {
+                note in 1..127 -> {
+                    midiEngine.sendNoteOn(t, note, if (vel > 0) vel else 100)
+                    midiOutHeld[t] = note
+                }
+                note == M8Synth.NOTE_OFF -> {
+                    // Already released above.
+                }
+            }
+        }
+    }
+
+    private fun releaseAllMidiOut() {
+        for (t in 0 until 8) {
+            val n = midiOutHeld[t]
+            if (n >= 0) {
+                midiEngine.sendNoteOff(t, n)
+                midiOutHeld[t] = -1
+            }
+        }
+    }
+
+    fun startMidi() = midiEngine.start()
+    fun stopMidi() {
+        releaseAllMidiOut()
+        midiEngine.stop()
+    }
 
     // Public accessors for the DAW view, which reads live emulator state.
     val songData: M8Song get() = emulator.song
@@ -147,6 +242,9 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
                 } catch (_: Exception) {
                     // Non-critical: visualization data may be briefly inconsistent
                 }
+
+                // Decay the MIDI-activity indicator after ~200ms of silence.
+                emulator.midiActive = System.currentTimeMillis() - lastMidiActivityMs < 200
 
                 val frameData = emulator.renderFrame()
                 connectionManager.protocol.processBytes(frameData)
@@ -330,6 +428,9 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             synth.triggerRow(rowData)
         }
+
+        // Mirror the row to any connected MIDI-out device.
+        broadcastMidiRow(rowData)
 
         // Log first row's notes for debugging
         if (phraseRow == 0) {

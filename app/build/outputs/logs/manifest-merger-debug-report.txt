@@ -1,9 +1,9 @@
 -- Merging decision tree log ---
 manifest
-ADDED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:2:1-27:12
-INJECTED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:2:1-27:12
-INJECTED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:2:1-27:12
-INJECTED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:2:1-27:12
+ADDED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:2:1-31:12
+INJECTED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:2:1-31:12
+INJECTED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:2:1-31:12
+INJECTED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:2:1-31:12
 MERGED from [androidx.navigation:navigation-common:2.8.5] /Users/danielnordberg/.gradle/caches/8.12/transforms/16b28b8aec04d50f21d1964b53a64f0f/transformed/navigation-common-2.8.5/AndroidManifest.xml:17:1-22:12
 MERGED from [androidx.navigation:navigation-runtime:2.8.5] /Users/danielnordberg/.gradle/caches/8.12/transforms/4a4cc33eb505c324ae6ff181755ec007/transformed/navigation-runtime-2.8.5/AndroidManifest.xml:17:1-22:12
 MERGED from [androidx.navigation:navigation-common-ktx:2.8.5] /Users/danielnordberg/.gradle/caches/8.12/transforms/b4e8c441af47ebcbc718baaf95a4743a/transformed/navigation-common-ktx-2.8.5/AndroidManifest.xml:2:1-7:12
@@ -104,9 +104,15 @@ uses-permission#android.permission.VIBRATE
 ADDED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:6:5-66
 	android:name
 		ADDED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:6:22-63
+uses-feature#android.software.midi
+ADDED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:10:5-83
+	android:required
+		ADDED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:10:56-80
+	android:name
+		ADDED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:10:19-55
 application
-ADDED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:8:5-26:19
-INJECTED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:8:5-26:19
+ADDED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:12:5-30:19
+INJECTED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:12:5-30:19
 MERGED from [com.google.android.material:material:1.12.0] /Users/danielnordberg/.gradle/caches/8.12/transforms/4a8ea58091dc0e54fc594b0672de4762/transformed/material-1.12.0/AndroidManifest.xml:22:5-20
 MERGED from [com.google.android.material:material:1.12.0] /Users/danielnordberg/.gradle/caches/8.12/transforms/4a8ea58091dc0e54fc594b0672de4762/transformed/material-1.12.0/AndroidManifest.xml:22:5-20
 MERGED from [androidx.constraintlayout:constraintlayout:2.0.1] /Users/danielnordberg/.gradle/caches/8.12/transforms/0003b6301a012267ec178f70d9c76a2c/transformed/constraintlayout-2.0.1/AndroidManifest.xml:9:5-20
@@ -130,37 +136,37 @@ MERGED from [androidx.versionedparcelable:versionedparcelable:1.1.1] /Users/dani
 	android:appComponentFactory
 		ADDED from [androidx.core:core:1.13.1] /Users/danielnordberg/.gradle/caches/8.12/transforms/eb72acc4f3f569a12afdd48e44fbf5cd/transformed/core-1.13.1/AndroidManifest.xml:28:18-86
 	android:supportsRtl
-		ADDED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:12:9-35
+		ADDED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:16:9-35
 	android:label
-		ADDED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:11:9-32
+		ADDED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:15:9-32
 	android:icon
-		ADDED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:10:9-43
+		ADDED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:14:9-43
 	android:allowBackup
-		ADDED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:9:9-35
+		ADDED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:13:9-35
 	android:theme
-		ADDED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:13:9-45
+		ADDED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:17:9-45
 activity#com.m8droid.MainActivity
-ADDED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:15:9-25:20
+ADDED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:19:9-29:20
 	android:screenOrientation
-		ADDED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:19:13-49
+		ADDED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:23:13-49
 	android:windowSoftInputMode
-		ADDED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:20:13-55
+		ADDED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:24:13-55
 	android:exported
-		ADDED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:17:13-36
+		ADDED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:21:13-36
 	android:configChanges
-		ADDED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:18:13-83
+		ADDED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:22:13-83
 	android:name
-		ADDED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:16:13-41
+		ADDED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:20:13-41
 intent-filter#action:name:android.intent.action.MAIN+category:name:android.intent.category.LAUNCHER
-ADDED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:21:13-24:29
+ADDED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:25:13-28:29
 action#android.intent.action.MAIN
-ADDED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:22:17-69
+ADDED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:26:17-69
 	android:name
-		ADDED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:22:25-66
+		ADDED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:26:25-66
 category#android.intent.category.LAUNCHER
-ADDED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:23:17-77
+ADDED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:27:17-77
 	android:name
-		ADDED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:23:27-74
+		ADDED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml:27:27-74
 uses-sdk
 INJECTED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml reason: use-sdk injection requested
 INJECTED from /Users/danielnordberg/code/m8/app/src/main/AndroidManifest.xml

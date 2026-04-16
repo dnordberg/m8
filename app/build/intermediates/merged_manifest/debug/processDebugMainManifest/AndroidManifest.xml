@@ -12,6 +12,14 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!--
+         USB MIDI over USB-OTG and Bluetooth MIDI. Optional so devices
+         without MIDI support can still install the app.
+    -->
+    <uses-feature
+        android:name="android.software.midi"
+        android:required="false" />
+
     <permission
         android:name="com.m8droid.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
         android:protectionLevel="signature" />

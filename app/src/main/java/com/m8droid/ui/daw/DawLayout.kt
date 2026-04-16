@@ -153,14 +153,23 @@ private fun DawSidebar(
 private fun SidebarItem(module: DawModule, selected: Boolean, onClick: () -> Unit) {
     val bg = if (selected) DawTheme.AccentGreen else DawTheme.BgCard
     val fg = if (selected) Color.Black else DawTheme.TextNormal
-    Box(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(DawTheme.CornerSm))
             .background(bg)
             .clickable(onClick = onClick)
             .padding(horizontal = DawTheme.SpaceMd, vertical = DawTheme.SpaceMd),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
+        when (module) {
+            DawModule.PATTERN -> DawPatternIcon(tint = fg, size = 18.dp)
+            DawModule.INSTRUMENT -> DawInstrumentIcon(tint = fg, size = 18.dp)
+            DawModule.MIXER -> DawMixerIcon(tint = fg, size = 18.dp)
+            DawModule.SAMPLES -> DawSamplesIcon(tint = fg, size = 18.dp)
+            DawModule.SYSTEM -> DawSystemIcon(tint = fg, size = 18.dp)
+        }
+        Spacer(Modifier.width(DawTheme.SpaceMd))
         Text(
             text = module.label,
             color = fg,
@@ -186,30 +195,37 @@ private fun DawTransportBar(viewModel: M8ViewModel) {
         horizontalArrangement = Arrangement.spacedBy(DawTheme.SpaceMd, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        TransportButton("\u23EA", DawTheme.AccentGreen) {
-            viewModel.adjustTempo(-1)
+        TransportButton(color = DawTheme.AccentGreen, onClick = { viewModel.adjustTempo(-1) }) { c ->
+            DawRewindIcon(tint = c, size = 22.dp)
         }
         TransportButton(
-            glyph = if (viewModel.isPlaying) "\u23F8" else "\u25B6",
             color = DawTheme.AccentGreen,
             filled = true,
-        ) { viewModel.togglePlayback() }
-        TransportButton("\u23FA", DawTheme.AccentMagenta) {
+            onClick = { viewModel.togglePlayback() },
+        ) { c ->
+            if (viewModel.isPlaying) DawPauseIcon(tint = c, size = 22.dp)
+            else DawPlayIcon(tint = c, size = 22.dp)
+        }
+        TransportButton(color = DawTheme.AccentMagenta, onClick = {
             // Record placeholder — toggles edit mode on the underlying emulator.
             viewModel.setTouchKeys(com.m8droid.protocol.M8Commands.KEY_EDIT)
             viewModel.setTouchKeys(0)
+        }) { c -> DawRecordIcon(tint = c, size = 22.dp) }
+        TransportButton(color = DawTheme.AccentGreen, onClick = { viewModel.stopPlayback() }) { c ->
+            DawStopIcon(tint = c, size = 22.dp)
         }
-        TransportButton("\u25A0", DawTheme.AccentGreen) { viewModel.stopPlayback() }
-        TransportButton("\u23E9", DawTheme.AccentGreen) { viewModel.adjustTempo(1) }
+        TransportButton(color = DawTheme.AccentGreen, onClick = { viewModel.adjustTempo(1) }) { c ->
+            DawFastForwardIcon(tint = c, size = 22.dp)
+        }
     }
 }
 
 @Composable
 private fun TransportButton(
-    glyph: String,
     color: Color,
     filled: Boolean = false,
     onClick: () -> Unit,
+    content: @Composable (Color) -> Unit,
 ) {
     val bg = if (filled) color else DawTheme.BgCard
     val fg = if (filled) Color.Black else color
@@ -222,11 +238,6 @@ private fun TransportButton(
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            text = glyph,
-            color = fg,
-            fontSize = DawTheme.FontTitle,
-            fontWeight = FontWeight.Bold,
-        )
+        content(fg)
     }
 }
