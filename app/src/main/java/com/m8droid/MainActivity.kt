@@ -15,14 +15,20 @@ import androidx.compose.material3.*
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.*
+import kotlinx.coroutines.CoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.m8droid.data.ButtonLayout
 import com.m8droid.input.KeyMapper
+import com.m8droid.academy.AcademyState
+import com.m8droid.academy.AcademyViewModel
 import com.m8droid.academy.AppMode
+import com.m8droid.academy.data.AcademyRepository
 import com.m8droid.ui.*
+import com.m8droid.ui.academy.AcademyShell
+import com.m8droid.ui.academy.QuestOverlay
 import com.m8droid.ui.daw.DawLayout
 
 class MainActivity : ComponentActivity() {
@@ -143,6 +149,14 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
     var showSettings by remember { mutableStateOf(false) }
     var showLoadDialog by remember { mutableStateOf(false) }
     var appMode by remember { mutableStateOf(AppMode.M8) }
+    val scope = rememberCoroutineScope()
+    val academyRepo = remember { AcademyRepository(viewModel.getApplication()) }
+    val academyVm = remember {
+        AcademyViewModel(viewModel.emulatorEvents, academyRepo, scope)
+    }
+    val academyState by academyVm.state.collectAsState()
+    val activeQuest by academyVm.activeQuest.collectAsState()
+    val lastEval by academyVm.lastEvaluation.collectAsState()
     val serverSettings by viewModel.serverSettings.collectAsState()
 
     // Track tutorial state changes with displayTick (recomposes at ~30fps)
@@ -194,16 +208,10 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
                             onHelp = { showHelpMenu = true },
                             onAcademy = null,
                         )
-                        Box(
-                            modifier = Modifier.weight(1f).fillMaxWidth(),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                text = "M8 ACADEMY",
-                                color = Color(0xFFFF00FF),
-                                fontSize = 24.sp,
-                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                            AcademyShell(
+                                viewModel = academyVm,
+                                onSwitchToM8 = { appMode = AppMode.M8 },
                             )
                         }
                     }
@@ -219,7 +227,7 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
                     val keyState by viewModel.keyState.collectAsState()
                     Column(modifier = Modifier.fillMaxSize()) {
                         com.m8droid.ui.daw.DawHeaderBar(
-                            subtitle = "CLASSIC",
+                            subtitle = if (academyState == AcademyState.QUEST_ACTIVE) "QUEST" else "CLASSIC",
                             isDawMode = false,
                             onToggleMode = { appMode = AppMode.DAW },
                             onLoad = { showLoadDialog = true },
@@ -227,6 +235,17 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
                             onHelp = { showHelpMenu = true },
                             onAcademy = { appMode = AppMode.ACADEMY },
                         )
+                        // Quest overlay when a quest is active
+                        if (academyState == AcademyState.QUEST_ACTIVE && activeQuest != null) {
+                            QuestOverlay(
+                                quest = activeQuest!!,
+                                evaluation = lastEval,
+                                failedAttempts = 0,
+                                onAbandon = {
+                                    academyVm.returnToIdle()
+                                },
+                            )
+                        }
                         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                             when (serverSettings.buttonLayout) {
                                 ButtonLayout.BEST -> M8BestLayout(onKeyStateChanged = onKeys, screenContent = screen, externalKeyMask = keyState)
