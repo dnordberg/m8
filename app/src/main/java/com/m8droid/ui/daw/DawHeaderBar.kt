@@ -32,6 +32,7 @@ fun DawHeaderBar(
     onSettings: () -> Unit,
     onHelp: () -> Unit,
     modifier: Modifier = Modifier,
+    onAcademy: (() -> Unit)? = null,
 ) {
     Row(
         modifier = modifier
@@ -77,6 +78,17 @@ fun DawHeaderBar(
         Spacer(Modifier.width(DawTheme.SpaceSm))
         HeaderIconButton(onClick = onHelp, tint = DawTheme.AccentCyan) { c ->
             DawHelpIcon(tint = c, size = 18.dp)
+        }
+        if (onAcademy != null) {
+            Spacer(Modifier.width(DawTheme.SpaceSm))
+            HeaderIconButton(onClick = onAcademy, tint = Color(0xFFFF00FF)) { c ->
+                Text(
+                    text = "♟",
+                    color = c,
+                    fontSize = DawTheme.FontHeading,
+                    fontFamily = FontFamily.Monospace,
+                )
+            }
         }
         Spacer(Modifier.width(DawTheme.SpaceMd))
         ModeToggleChip(isDawMode = isDawMode, onClick = onToggleMode)

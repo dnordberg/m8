@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.m8droid.data.ButtonLayout
 import com.m8droid.input.KeyMapper
+import com.m8droid.academy.AppMode
 import com.m8droid.ui.*
 import com.m8droid.ui.daw.DawLayout
 
@@ -141,8 +142,7 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
     var showHelpMenu by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var showLoadDialog by remember { mutableStateOf(false) }
-    // In-memory UI mode. Not persisted — toggle chip is always visible for instant swap.
-    var dawMode by remember { mutableStateOf(false) }
+    var appMode by remember { mutableStateOf(AppMode.M8) }
     val serverSettings by viewModel.serverSettings.collectAsState()
 
     // Track tutorial state changes with displayTick (recomposes at ~30fps)
@@ -157,6 +157,10 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
         }
     }
 
+    LaunchedEffect(appMode) {
+        viewModel.keyInputPaused = appMode == AppMode.ACADEMY
+    }
+
     LaunchedEffect(Unit) {
         viewModel.startLocalEmulator()
     }
@@ -168,39 +172,66 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
                 .background(Color.Black)
                 .systemBarsPadding(),
         ) {
-            if (dawMode) {
-                DawLayout(
-                    viewModel = viewModel,
-                    onToggleMode = { dawMode = false },
-                    onLoad = { showLoadDialog = true },
-                    onSettings = { showSettings = true },
-                    onHelp = { showHelpMenu = true },
-                    modifier = Modifier.fillMaxSize(),
-                )
-            } else {
-                val screen: @Composable () -> Unit = {
-                    M8Screen(
-                        bitmap = viewModel.connectionManager.display.snapshot(),
-                        invalidationTick = displayTick,
-                    )
-                }
-                val onKeys: (Int) -> Unit = { keys -> viewModel.setTouchKeys(keys) }
-                val keyState by viewModel.keyState.collectAsState()
-                // Classic view wrapped so the shared DawHeaderBar sits on top —
-                // one consistent header for both modes.
-                Column(modifier = Modifier.fillMaxSize()) {
-                    com.m8droid.ui.daw.DawHeaderBar(
-                        subtitle = "CLASSIC",
-                        isDawMode = false,
-                        onToggleMode = { dawMode = true },
+            when (appMode) {
+                AppMode.DAW -> {
+                    DawLayout(
+                        viewModel = viewModel,
+                        onToggleMode = { appMode = AppMode.M8 },
                         onLoad = { showLoadDialog = true },
                         onSettings = { showSettings = true },
                         onHelp = { showHelpMenu = true },
+                        modifier = Modifier.fillMaxSize(),
                     )
-                    Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                        when (serverSettings.buttonLayout) {
-                            ButtonLayout.BEST -> M8BestLayout(onKeyStateChanged = onKeys, screenContent = screen, externalKeyMask = keyState)
-                            ButtonLayout.FULL_DEVICE -> M8FullDeviceLayout(onKeyStateChanged = onKeys, screenContent = screen, externalKeyMask = keyState)
+                }
+                AppMode.ACADEMY -> {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        com.m8droid.ui.daw.DawHeaderBar(
+                            subtitle = "ACADEMY",
+                            isDawMode = false,
+                            onToggleMode = { appMode = AppMode.M8 },
+                            onLoad = { showLoadDialog = true },
+                            onSettings = { showSettings = true },
+                            onHelp = { showHelpMenu = true },
+                            onAcademy = null,
+                        )
+                        Box(
+                            modifier = Modifier.weight(1f).fillMaxWidth(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = "M8 ACADEMY",
+                                color = Color(0xFFFF00FF),
+                                fontSize = 24.sp,
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            )
+                        }
+                    }
+                }
+                AppMode.M8 -> {
+                    val screen: @Composable () -> Unit = {
+                        M8Screen(
+                            bitmap = viewModel.connectionManager.display.snapshot(),
+                            invalidationTick = displayTick,
+                        )
+                    }
+                    val onKeys: (Int) -> Unit = { keys -> viewModel.setTouchKeys(keys) }
+                    val keyState by viewModel.keyState.collectAsState()
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        com.m8droid.ui.daw.DawHeaderBar(
+                            subtitle = "CLASSIC",
+                            isDawMode = false,
+                            onToggleMode = { appMode = AppMode.DAW },
+                            onLoad = { showLoadDialog = true },
+                            onSettings = { showSettings = true },
+                            onHelp = { showHelpMenu = true },
+                            onAcademy = { appMode = AppMode.ACADEMY },
+                        )
+                        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                            when (serverSettings.buttonLayout) {
+                                ButtonLayout.BEST -> M8BestLayout(onKeyStateChanged = onKeys, screenContent = screen, externalKeyMask = keyState)
+                                ButtonLayout.FULL_DEVICE -> M8FullDeviceLayout(onKeyStateChanged = onKeys, screenContent = screen, externalKeyMask = keyState)
+                            }
                         }
                     }
                 }

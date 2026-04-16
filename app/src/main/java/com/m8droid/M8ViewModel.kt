@@ -60,6 +60,8 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     // Academy snapshot bridge
     val emulatorEvents = EmulatorEventRepository()
 
+    @Volatile var keyInputPaused = false
+
     // Tutorial system (reads emulator state)
     val tutorial = com.m8droid.tutorial.M8Tutorial(emulator)
 
@@ -619,7 +621,7 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             comboHeldFrames = 0
         }
-        emulator.handleKeyState(keys)
+        if (!keyInputPaused) emulator.handleKeyState(keys)
     }
 
     @Deprecated("Use setTouchKeys/setKeyboardKeys", ReplaceWith("setTouchKeys(keys)"))
