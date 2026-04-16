@@ -121,68 +121,68 @@ Explicit exclusions to prevent scope creep.
 
 ## Traceability
 
-Populated by roadmap creation. All v1 requirements will map to exactly one phase.
+Populated by roadmap creation. All v1 requirements map to exactly one phase.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| INFRA-01 | — | Pending |
-| INFRA-02 | — | Pending |
-| INFRA-03 | — | Pending |
-| INFRA-04 | — | Pending |
-| INFRA-05 | — | Pending |
-| INFRA-06 | — | Pending |
-| INFRA-07 | — | Pending |
-| INFRA-08 | — | Pending |
-| SND-01 | — | Pending |
-| SND-02 | — | Pending |
-| SND-03 | — | Pending |
-| SND-04 | — | Pending |
-| SND-05 | — | Pending |
-| SND-06 | — | Pending |
-| SND-07 | — | Pending |
-| SND-08 | — | Pending |
-| SND-09 | — | Pending |
-| SND-10 | — | Pending |
-| SND-11 | — | Pending |
-| SND-12 | — | Pending |
-| ACAD-01 | — | Pending |
-| ACAD-02 | — | Pending |
-| ACAD-03 | — | Pending |
-| ACAD-04 | — | Pending |
-| ACAD-05 | — | Pending |
-| ACAD-06 | — | Pending |
-| ACAD-07 | — | Pending |
-| ACAD-08 | — | Pending |
-| ACAD-09 | — | Pending |
-| ACAD-10 | — | Pending |
-| ACAD-11 | — | Pending |
-| ACAD-12 | — | Pending |
-| ACAD-13 | — | Pending |
-| ACAD-14 | — | Pending |
-| ACAD-15 | — | Pending |
-| ACAD-16 | — | Pending |
-| ACAD-17 | — | Pending |
-| ACAD-18 | — | Pending |
-| ACAD-19 | — | Pending |
-| ACAD-20 | — | Pending |
-| CONT-01 | — | Pending |
-| CONT-02 | — | Pending |
-| CONT-03 | — | Pending |
-| CONT-04 | — | Pending |
-| CONT-05 | — | Pending |
-| CONT-06 | — | Pending |
-| CONT-07 | — | Pending |
-| CONT-08 | — | Pending |
-| CONT-09 | — | Pending |
-| CONT-10 | — | Pending |
-| CONT-11 | — | Pending |
-| CONT-12 | — | Pending |
+| INFRA-01 | Phase 1 — Infrastructure | Pending |
+| INFRA-02 | Phase 1 — Infrastructure | Pending |
+| INFRA-03 | Phase 1 — Infrastructure | Pending |
+| INFRA-04 | Phase 1 — Infrastructure | Pending |
+| INFRA-05 | Phase 1 — Infrastructure | Pending |
+| INFRA-06 | Phase 1 — Infrastructure | Pending |
+| INFRA-07 | Phase 1 — Infrastructure | Pending |
+| INFRA-08 | Phase 1 — Infrastructure | Pending |
+| SND-01 | Phase 2 — Sound Quality Core | Pending |
+| SND-02 | Phase 2 — Sound Quality Core | Pending |
+| SND-03 | Phase 2 — Sound Quality Core | Pending |
+| SND-04 | Phase 2 — Sound Quality Core | Pending |
+| SND-05 | Phase 2 — Sound Quality Core | Pending |
+| SND-06 | Phase 2 — Sound Quality Core | Pending |
+| SND-07 | Phase 2 — Sound Quality Core | Pending |
+| SND-08 | Phase 2 — Sound Quality Core | Pending |
+| SND-09 | Phase 2 — Sound Quality Core | Pending |
+| SND-10 | Phase 2 — Sound Quality Core | Pending |
+| SND-11 | Phase 5 — Content + Mini-games + Macrosynth | Pending |
+| SND-12 | Phase 2 — Sound Quality Core | Pending |
+| ACAD-01 | Phase 3 — Academy Engine | Pending |
+| ACAD-02 | Phase 3 — Academy Engine | Pending |
+| ACAD-03 | Phase 3 — Academy Engine | Pending |
+| ACAD-04 | Phase 3 — Academy Engine | Pending |
+| ACAD-05 | Phase 3 — Academy Engine | Pending |
+| ACAD-06 | Phase 3 — Academy Engine | Pending |
+| ACAD-07 | Phase 3 — Academy Engine | Pending |
+| ACAD-08 | Phase 3 — Academy Engine | Pending |
+| ACAD-09 | Phase 3 — Academy Engine | Pending |
+| ACAD-10 | Phase 4 — Academy UI Shell | Pending |
+| ACAD-11 | Phase 4 — Academy UI Shell | Pending |
+| ACAD-12 | Phase 4 — Academy UI Shell | Pending |
+| ACAD-13 | Phase 4 — Academy UI Shell | Pending |
+| ACAD-14 | Phase 4 — Academy UI Shell | Pending |
+| ACAD-15 | Phase 4 — Academy UI Shell | Pending |
+| ACAD-16 | Phase 4 — Academy UI Shell | Pending |
+| ACAD-17 | Phase 4 — Academy UI Shell | Pending |
+| ACAD-18 | Phase 4 — Academy UI Shell | Pending |
+| ACAD-19 | Phase 4 — Academy UI Shell | Pending |
+| ACAD-20 | Phase 4 — Academy UI Shell | Pending |
+| CONT-01 | Phase 5 — Content + Mini-games + Macrosynth | Pending |
+| CONT-02 | Phase 5 — Content + Mini-games + Macrosynth | Pending |
+| CONT-03 | Phase 5 — Content + Mini-games + Macrosynth | Pending |
+| CONT-04 | Phase 5 — Content + Mini-games + Macrosynth | Pending |
+| CONT-05 | Phase 5 — Content + Mini-games + Macrosynth | Pending |
+| CONT-06 | Phase 5 — Content + Mini-games + Macrosynth | Pending |
+| CONT-07 | Phase 5 — Content + Mini-games + Macrosynth | Pending |
+| CONT-08 | Phase 5 — Content + Mini-games + Macrosynth | Pending |
+| CONT-09 | Phase 5 — Content + Mini-games + Macrosynth | Pending |
+| CONT-10 | Phase 5 — Content + Mini-games + Macrosynth | Pending |
+| CONT-11 | Phase 5 — Content + Mini-games + Macrosynth | Pending |
+| CONT-12 | Phase 5 — Content + Mini-games + Macrosynth | Pending |
 
 **Coverage:**
 - v1 requirements: 52 total
-- Mapped to phases: 0 (roadmap not yet created)
-- Unmapped: 52 ⚠️
+- Mapped to phases: 52 (roadmap created 2026-04-16)
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-04-16*
-*Last updated: 2026-04-16 after initial definition*
+*Last updated: 2026-04-16 after roadmap creation*
