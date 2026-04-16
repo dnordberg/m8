@@ -4,6 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -15,15 +17,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.m8droid.M8ViewModel
+import com.m8droid.protocol.M8Commands
+import kotlinx.coroutines.launch
 
-/**
- * Top-level DAW layout.
- * Header (title + mode toggle) / module sidebar (left) / content (center) /
- * transport bar (bottom).
- *
- * Module content composables are delegated: each module lives in its own file
- * and is wired by [moduleContent] so agents could iterate in parallel.
- */
 @Composable
 fun DawLayout(
     viewModel: M8ViewModel,
@@ -33,7 +29,9 @@ fun DawLayout(
     onHelp: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var selected by remember { mutableStateOf(DawModule.PATTERN) }
+    val modules = DawModule.values()
+    val pagerState = rememberPagerState(pageCount = { modules.size })
+    val scope = rememberCoroutineScope()
 
     Column(
         modifier = modifier
@@ -41,7 +39,7 @@ fun DawLayout(
             .background(DawTheme.BgRoot),
     ) {
         DawHeaderBar(
-            subtitle = selected.label,
+            subtitle = modules[pagerState.currentPage].label,
             isDawMode = true,
             onToggleMode = onToggleMode,
             onLoad = onLoad,
@@ -49,31 +47,43 @@ fun DawLayout(
             onHelp = onHelp,
         )
 
-        Row(
+        // Module tabs — compact, swipe-synced
+        ModuleTabRow(
+            modules = modules,
+            selectedIndex = pagerState.currentPage,
+            onSelect = { idx -> scope.launch { pagerState.animateScrollToPage(idx) } },
+        )
+
+        // Swipeable content pages
+        HorizontalPager(
+            state = pagerState,
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth(),
-        ) {
-            DawSidebar(
-                selected = selected,
-                onSelect = { selected = it },
-                modifier = Modifier
-                    .width(150.dp)
-                    .fillMaxHeight(),
-            )
+        ) { page ->
             Box(
                 modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .background(DawTheme.BgPanel)
-                    .border(1.dp, DawTheme.BorderDim),
+                    .fillMaxSize()
+                    .background(DawTheme.BgPanel),
             ) {
-                when (selected) {
-                    DawModule.PATTERN -> DawPatternView(viewModel, Modifier.fillMaxSize())
-                    DawModule.INSTRUMENT -> DawInstrumentView(viewModel, Modifier.fillMaxSize())
+                when (modules[page]) {
+                    DawModule.PATTERN -> {
+                        val nav = rememberDawNavState(DawDestination.PatternGrid)
+                        DawPatternView(viewModel, nav, Modifier.fillMaxSize())
+                    }
+                    DawModule.INSTRUMENT -> {
+                        val nav = rememberDawNavState(DawDestination.InstrumentList)
+                        DawInstrumentView(viewModel, nav, Modifier.fillMaxSize())
+                    }
                     DawModule.MIXER -> DawMixerView(viewModel, Modifier.fillMaxSize())
-                    DawModule.SAMPLES -> DawSamplesView(viewModel, Modifier.fillMaxSize())
-                    DawModule.SYSTEM -> DawSystemView(viewModel, Modifier.fillMaxSize())
+                    DawModule.SAMPLES -> {
+                        val nav = rememberDawNavState(DawDestination.SampleBrowser)
+                        DawSamplesView(viewModel, nav, Modifier.fillMaxSize())
+                    }
+                    DawModule.SYSTEM -> {
+                        val nav = rememberDawNavState(DawDestination.SystemMain)
+                        DawSystemView(viewModel, nav, Modifier.fillMaxSize())
+                    }
                 }
             }
         }
@@ -82,73 +92,52 @@ fun DawLayout(
     }
 }
 
-
 @Composable
-private fun DawSidebar(
-    selected: DawModule,
-    onSelect: (DawModule) -> Unit,
-    modifier: Modifier = Modifier,
+private fun ModuleTabRow(
+    modules: Array<DawModule>,
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit,
 ) {
-    Column(
-        modifier = modifier
-            .background(DawTheme.BgPanel)
-            .border(1.dp, DawTheme.BorderDim)
-            .padding(DawTheme.SpaceSm),
-        verticalArrangement = Arrangement.spacedBy(DawTheme.SpaceXs),
-    ) {
-        Text(
-            text = "MODULE_SELECT",
-            color = DawTheme.TextLabel,
-            fontSize = DawTheme.FontLabel,
-            fontWeight = FontWeight.Bold,
-            fontFamily = FontFamily.Monospace,
-            modifier = Modifier.padding(bottom = DawTheme.SpaceSm, start = DawTheme.SpaceXs),
-        )
-        DawModule.values().forEach { module ->
-            SidebarItem(
-                module = module,
-                selected = module == selected,
-                onClick = { onSelect(module) },
-            )
-        }
-    }
-}
-
-@Composable
-private fun SidebarItem(module: DawModule, selected: Boolean, onClick: () -> Unit) {
-    val bg = if (selected) DawTheme.AccentGreen else DawTheme.BgCard
-    val fg = if (selected) Color.Black else DawTheme.TextNormal
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(DawTheme.CornerSm))
-            .background(bg)
-            .clickable(onClick = onClick)
-            .padding(horizontal = DawTheme.SpaceMd, vertical = DawTheme.SpaceMd),
-        verticalAlignment = Alignment.CenterVertically,
+            .background(DawTheme.BgPanel)
+            .padding(horizontal = DawTheme.SpaceSm, vertical = DawTheme.SpaceXs),
+        horizontalArrangement = Arrangement.spacedBy(DawTheme.SpaceXs),
     ) {
-        when (module) {
-            DawModule.PATTERN -> DawPatternIcon(tint = fg, size = 18.dp)
-            DawModule.INSTRUMENT -> DawInstrumentIcon(tint = fg, size = 18.dp)
-            DawModule.MIXER -> DawMixerIcon(tint = fg, size = 18.dp)
-            DawModule.SAMPLES -> DawSamplesIcon(tint = fg, size = 18.dp)
-            DawModule.SYSTEM -> DawSystemIcon(tint = fg, size = 18.dp)
+        modules.forEachIndexed { index, module ->
+            val selected = index == selectedIndex
+            val bg = if (selected) DawTheme.AccentGreen else Color.Transparent
+            val fg = if (selected) Color.Black else DawTheme.TextDim
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(DawTheme.CornerSm))
+                    .background(bg)
+                    .clickable { onSelect(index) }
+                    .padding(vertical = DawTheme.SpaceSm),
+                contentAlignment = Alignment.Center,
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    when (module) {
+                        DawModule.PATTERN -> DawPatternIcon(tint = fg, size = 14.dp)
+                        DawModule.INSTRUMENT -> DawInstrumentIcon(tint = fg, size = 14.dp)
+                        DawModule.MIXER -> DawMixerIcon(tint = fg, size = 14.dp)
+                        DawModule.SAMPLES -> DawSamplesIcon(tint = fg, size = 14.dp)
+                        DawModule.SYSTEM -> DawSystemIcon(tint = fg, size = 14.dp)
+                    }
+                }
+            }
         }
-        Spacer(Modifier.width(DawTheme.SpaceMd))
-        Text(
-            text = module.label,
-            color = fg,
-            fontSize = DawTheme.FontBody,
-            fontWeight = FontWeight.Bold,
-            fontFamily = FontFamily.Monospace,
-        )
     }
 }
 
 @Composable
 private fun DawTransportBar(viewModel: M8ViewModel) {
     val tick by viewModel.displayTick.collectAsState()
-    // Reading tick keeps this composable recomposing ~30fps so isPlaying stays fresh.
     @Suppress("UNUSED_EXPRESSION") tick
 
     Row(
@@ -172,8 +161,7 @@ private fun DawTransportBar(viewModel: M8ViewModel) {
             else DawPlayIcon(tint = c, size = 22.dp)
         }
         TransportButton(color = DawTheme.AccentMagenta, onClick = {
-            // Record placeholder — toggles edit mode on the underlying emulator.
-            viewModel.setTouchKeys(com.m8droid.protocol.M8Commands.KEY_EDIT)
+            viewModel.setTouchKeys(M8Commands.KEY_EDIT)
             viewModel.setTouchKeys(0)
         }) { c -> DawRecordIcon(tint = c, size = 22.dp) }
         TransportButton(color = DawTheme.AccentGreen, onClick = { viewModel.stopPlayback() }) { c ->
