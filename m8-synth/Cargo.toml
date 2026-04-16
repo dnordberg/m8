@@ -4,10 +4,14 @@ version = "0.1.0"
 edition = "2021"
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 jni = "0.21"
+
+[dev-dependencies]
+# insta = "1.41"  # enable when network available for snapshot testing
+# hound = "3.5"   # enable when network available for WAV export
 
 [profile.release]
 opt-level = 3

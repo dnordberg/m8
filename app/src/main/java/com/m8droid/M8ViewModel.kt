@@ -11,6 +11,8 @@ import com.m8droid.audio.NativeSynth
 import com.m8droid.data.ServerConfig
 import com.m8droid.data.ServerSettings
 import com.m8droid.emulator.*
+import com.m8droid.academy.data.EmulatorEventRepository
+import com.m8droid.academy.data.EmulatorSnapshot
 import com.m8droid.midi.MidiEngine
 import com.m8droid.network.ConnectionManager
 import kotlinx.coroutines.Job
@@ -54,6 +56,9 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     private val localAudioPlayer = M8AudioPlayer()
     private val fxEngine = M8FxEngine()
     private var nativeSynthReady = false
+
+    // Academy snapshot bridge
+    val emulatorEvents = EmulatorEventRepository()
 
     // Tutorial system (reads emulator state)
     val tutorial = com.m8droid.tutorial.M8Tutorial(emulator)
@@ -248,6 +253,19 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
 
                 val frameData = emulator.renderFrame()
                 connectionManager.protocol.processBytes(frameData)
+
+                emulatorEvents.emit(EmulatorSnapshot(
+                    playing = emulator.playing,
+                    screen = emulator.screen,
+                    songRow = songRow,
+                    chainRow = chainRow,
+                    phraseRow = phraseRow,
+                    bpm = emulator.bpm,
+                    cursorX = emulator.cursorX,
+                    cursorY = emulator.cursorY,
+                    editMode = emulator.editMode,
+                    midiActive = emulator.midiActive,
+                ))
 
                 _displayTick.value++
                 delay(33) // ~30fps

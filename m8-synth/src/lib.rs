@@ -18,10 +18,17 @@ use std::sync::Mutex;
 
 static ENGINE: Mutex<Option<SynthEngine>> = Mutex::new(None);
 
-const SR: f64 = 44100.0;
+fn lock_engine() -> std::sync::MutexGuard<'static, Option<SynthEngine>> {
+    match ENGINE.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    }
+}
+
+pub const SR: f64 = 44100.0;
 const TWO_PI: f64 = 2.0 * PI;
-const CHUNK: usize = 735;
-const CHUNK_BYTES: usize = CHUNK * 2 * 2; // stereo 16-bit
+pub const CHUNK: usize = 735;
+pub const CHUNK_BYTES: usize = CHUNK * 2 * 2; // stereo 16-bit
 const NUM_VOICES: usize = 8;
 const DELAY_LEN: usize = (SR * 0.375) as usize;
 const NOTE_OFF: i32 = 0xFF;
@@ -29,7 +36,7 @@ const NOTE_OFF: i32 = 0xFF;
 // ===================== VOICE PRESET =====================
 
 #[derive(Clone, Copy)]
-struct Preset {
+pub struct Preset {
     wave: u8,       // 0=saw,1=pulse,2=sine,3=tri,4=noise,5=fm
     cutoff: f64,    // 0-1
     reso: f64,      // 0-1
@@ -355,21 +362,21 @@ impl Reverb {
 
 // ===================== ENGINE =====================
 
-struct SynthEngine {
+pub struct SynthEngine {
     voices: Vec<Voice>,
     delay: Delay,
     reverb: Reverb,
     out_buf: Vec<u8>,
-    track_levels: [f64; 8],
-    master_l: f64,
-    master_r: f64,
+    pub track_levels: [f64; 8],
+    pub master_l: f64,
+    pub master_r: f64,
     waveform: Vec<f64>,
     wf_idx: usize,
     dbg_cnt: u64,
 }
 
 impl SynthEngine {
-    fn new() -> Self {
+    pub fn new() -> Self {
         SynthEngine {
             voices: (0..NUM_VOICES).map(Voice::new).collect(),
             delay: Delay::new(),
@@ -383,7 +390,7 @@ impl SynthEngine {
         }
     }
 
-    fn trigger_row(&mut self, notes: &[i32], vols: &[i32]) {
+    pub fn trigger_row(&mut self, notes: &[i32], vols: &[i32]) {
         for t in 0..NUM_VOICES {
             let note = notes[t];
             let vol = vols[t];
@@ -397,7 +404,7 @@ impl SynthEngine {
         }
     }
 
-    fn generate_chunk(&mut self) -> &[u8] {
+    pub fn generate_chunk(&mut self) -> &[u8] {
         // ---- Silence gate ----
         // If no voice is active, flush the effect buffers so no stale delay/
         // reverb tail or denormal dust leaks through, and emit pure digital
@@ -492,7 +499,7 @@ impl SynthEngine {
         &self.out_buf
     }
 
-    fn all_notes_off(&mut self) {
+    pub fn all_notes_off(&mut self) {
         for v in &mut self.voices {
             v.note_on = false;
             v.env_stage = 0;
@@ -535,13 +542,13 @@ fn soft_limit(x: f64) -> f64 {
 
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_m8droid_audio_NativeSynth_init(_env: JNIEnv, _class: JClass) {
-    let mut engine = ENGINE.lock().unwrap();
+    let mut engine = lock_engine();
     *engine = Some(SynthEngine::new());
 }
 
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_m8droid_audio_NativeSynth_destroy(_env: JNIEnv, _class: JClass) {
-    let mut engine = ENGINE.lock().unwrap();
+    let mut engine = lock_engine();
     *engine = None;
 }
 
@@ -549,7 +556,7 @@ pub extern "system" fn Java_com_m8droid_audio_NativeSynth_destroy(_env: JNIEnv, 
 pub extern "system" fn Java_com_m8droid_audio_NativeSynth_triggerRow<'a>(
     mut env: JNIEnv<'a>, _class: JClass<'a>, notes: jbyteArray, vols: jbyteArray
 ) {
-    let mut engine = ENGINE.lock().unwrap();
+    let mut engine = lock_engine();
     if let Some(ref mut eng) = *engine {
         let mut n_buf = [0i8; 8];
         let mut v_buf = [0i8; 8];
@@ -571,20 +578,22 @@ pub extern "system" fn Java_com_m8droid_audio_NativeSynth_triggerRow<'a>(
 pub extern "system" fn Java_com_m8droid_audio_NativeSynth_generateChunk<'a>(
     env: JNIEnv<'a>, _class: JClass<'a>
 ) -> jbyteArray {
-    let mut engine = ENGINE.lock().unwrap();
-    let output = env.new_byte_array(CHUNK_BYTES as i32).unwrap();
+    let mut engine = lock_engine();
+    let output = match env.new_byte_array(CHUNK_BYTES as i32) {
+        Ok(arr) => arr,
+        Err(_) => return std::ptr::null_mut(),
+    };
     if let Some(ref mut eng) = *engine {
         let pcm = eng.generate_chunk();
-        // Safe: we're copying from our buffer to the JNI array
         let signed: &[i8] = unsafe { std::mem::transmute(pcm) };
-        env.set_byte_array_region(&output, 0, signed).unwrap();
+        let _ = env.set_byte_array_region(&output, 0, signed);
     }
     output.into_raw()
 }
 
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_m8droid_audio_NativeSynth_allNotesOff(_env: JNIEnv, _class: JClass) {
-    let mut engine = ENGINE.lock().unwrap();
+    let mut engine = lock_engine();
     if let Some(ref mut eng) = *engine {
         eng.all_notes_off();
     }
@@ -594,10 +603,13 @@ pub extern "system" fn Java_com_m8droid_audio_NativeSynth_allNotesOff(_env: JNIE
 pub extern "system" fn Java_com_m8droid_audio_NativeSynth_getMasterLevels<'a>(
     env: JNIEnv<'a>, _class: JClass<'a>
 ) -> jdoubleArray {
-    let engine = ENGINE.lock().unwrap();
-    let arr = env.new_double_array(2).unwrap();
+    let engine = lock_engine();
+    let arr = match env.new_double_array(2) {
+        Ok(a) => a,
+        Err(_) => return std::ptr::null_mut(),
+    };
     if let Some(ref eng) = *engine {
-        env.set_double_array_region(&arr, 0, &[eng.master_l, eng.master_r]).unwrap();
+        let _ = env.set_double_array_region(&arr, 0, &[eng.master_l, eng.master_r]);
     }
     arr.into_raw()
 }
@@ -606,10 +618,13 @@ pub extern "system" fn Java_com_m8droid_audio_NativeSynth_getMasterLevels<'a>(
 pub extern "system" fn Java_com_m8droid_audio_NativeSynth_getTrackLevels<'a>(
     env: JNIEnv<'a>, _class: JClass<'a>
 ) -> jdoubleArray {
-    let engine = ENGINE.lock().unwrap();
-    let arr = env.new_double_array(8).unwrap();
+    let engine = lock_engine();
+    let arr = match env.new_double_array(8) {
+        Ok(a) => a,
+        Err(_) => return std::ptr::null_mut(),
+    };
     if let Some(ref eng) = *engine {
-        env.set_double_array_region(&arr, 0, &eng.track_levels).unwrap();
+        let _ = env.set_double_array_region(&arr, 0, &eng.track_levels);
     }
     arr.into_raw()
 }
