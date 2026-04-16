@@ -28,6 +28,9 @@ import com.m8droid.M8ViewModel
 fun DawLayout(
     viewModel: M8ViewModel,
     onToggleMode: () -> Unit,
+    onLoad: () -> Unit,
+    onSettings: () -> Unit,
+    onHelp: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var selected by remember { mutableStateOf(DawModule.PATTERN) }
@@ -37,7 +40,14 @@ fun DawLayout(
             .fillMaxSize()
             .background(DawTheme.BgRoot),
     ) {
-        DawHeader(onToggleMode = onToggleMode)
+        DawHeaderBar(
+            subtitle = selected.label,
+            isDawMode = true,
+            onToggleMode = onToggleMode,
+            onLoad = onLoad,
+            onSettings = onSettings,
+            onHelp = onHelp,
+        )
 
         Row(
             modifier = Modifier
@@ -72,51 +82,6 @@ fun DawLayout(
     }
 }
 
-@Composable
-private fun DawHeader(onToggleMode: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(DawTheme.BgPanel)
-            .border(1.dp, DawTheme.BorderDim)
-            .padding(horizontal = DawTheme.SpaceMd, vertical = DawTheme.SpaceSm),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = ">_",
-            color = DawTheme.AccentGreen,
-            fontSize = DawTheme.FontTitle,
-            fontWeight = FontWeight.Black,
-            fontFamily = FontFamily.Monospace,
-        )
-        Spacer(Modifier.width(DawTheme.SpaceSm))
-        Text(
-            text = "TRACKER_OS_V1",
-            color = DawTheme.AccentGreen,
-            fontSize = DawTheme.FontHeading,
-            fontWeight = FontWeight.Bold,
-            fontFamily = FontFamily.Monospace,
-        )
-        Spacer(Modifier.weight(1f))
-        // Mode toggle chip — swap back to classic M8 view
-        Box(
-            modifier = Modifier
-                .clip(RoundedCornerShape(DawTheme.CornerMd))
-                .background(DawTheme.BgCardHi)
-                .border(1.dp, DawTheme.AccentMagenta, RoundedCornerShape(DawTheme.CornerMd))
-                .clickable(onClick = onToggleMode)
-                .padding(horizontal = DawTheme.SpaceMd, vertical = DawTheme.SpaceXs),
-        ) {
-            Text(
-                text = "M8 CLASSIC",
-                color = DawTheme.AccentMagenta,
-                fontSize = DawTheme.FontLabel,
-                fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace,
-            )
-        }
-    }
-}
 
 @Composable
 private fun DawSidebar(

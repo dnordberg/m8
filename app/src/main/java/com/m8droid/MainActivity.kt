@@ -172,6 +172,9 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
                 DawLayout(
                     viewModel = viewModel,
                     onToggleMode = { dawMode = false },
+                    onLoad = { showLoadDialog = true },
+                    onSettings = { showSettings = true },
+                    onHelp = { showHelpMenu = true },
                     modifier = Modifier.fillMaxSize(),
                 )
             } else {
@@ -183,27 +186,24 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
                 }
                 val onKeys: (Int) -> Unit = { keys -> viewModel.setTouchKeys(keys) }
                 val keyState by viewModel.keyState.collectAsState()
-                when (serverSettings.buttonLayout) {
-                    ButtonLayout.BEST -> M8BestLayout(onKeyStateChanged = onKeys, screenContent = screen, externalKeyMask = keyState)
-                    ButtonLayout.FULL_DEVICE -> M8FullDeviceLayout(onKeyStateChanged = onKeys, screenContent = screen, externalKeyMask = keyState)
+                // Classic view wrapped so the shared DawHeaderBar sits on top —
+                // one consistent header for both modes.
+                Column(modifier = Modifier.fillMaxSize()) {
+                    com.m8droid.ui.daw.DawHeaderBar(
+                        subtitle = "CLASSIC",
+                        isDawMode = false,
+                        onToggleMode = { dawMode = true },
+                        onLoad = { showLoadDialog = true },
+                        onSettings = { showSettings = true },
+                        onHelp = { showHelpMenu = true },
+                    )
+                    Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                        when (serverSettings.buttonLayout) {
+                            ButtonLayout.BEST -> M8BestLayout(onKeyStateChanged = onKeys, screenContent = screen, externalKeyMask = keyState)
+                            ButtonLayout.FULL_DEVICE -> M8FullDeviceLayout(onKeyStateChanged = onKeys, screenContent = screen, externalKeyMask = keyState)
+                        }
+                    }
                 }
-            }
-        }
-
-        // Top-right controls: load + settings + help. Hidden while overlays are up
-        // and while the DAW shell is active (DAW has its own chrome).
-        if (!dawMode && !tutorialActive && !showHotkeys.value && !showHelpMenu && !showSettings && !showLoadDialog) {
-            Row(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .systemBarsPadding()
-                    .padding(8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                DawModeChip(onClick = { dawMode = true })
-                LoadButton(onClick = { showLoadDialog = true })
-                SettingsButton(onClick = { showSettings = true })
-                HelpButton(onClick = { showHelpMenu = true })
             }
         }
 
@@ -272,22 +272,3 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
     }
 }
 
-@Composable
-private fun DawModeChip(onClick: () -> Unit) {
-    androidx.compose.foundation.layout.Box(
-        modifier = Modifier
-            .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-            .background(Color(0xFF0E0D14))
-            .border(1.dp, Color(0xFF00FF7A), androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-    ) {
-        Text(
-            text = "DAW",
-            color = Color(0xFF00FF7A),
-            fontSize = 11.sp,
-            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-        )
-    }
-}

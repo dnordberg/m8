@@ -274,6 +274,71 @@ fun DawFastForwardIcon(tint: Color, size: Dp = DefaultIconSize) {
     }
 }
 
+// ───────── Header action icons ─────────
+
+/** Up-arrow into a tray — LOAD action. */
+@Composable
+fun DawLoadIcon(tint: Color, size: Dp = DefaultIconSize) {
+    Canvas(modifier = Modifier.size(size)) {
+        val w = this.size.width
+        val h = this.size.height
+        val sw = h * 0.1f
+        // Tray floor
+        drawLine(
+            color = tint,
+            start = androidx.compose.ui.geometry.Offset(w * 0.18f, h * 0.85f),
+            end = androidx.compose.ui.geometry.Offset(w * 0.82f, h * 0.85f),
+            strokeWidth = sw,
+            cap = StrokeCap.Round,
+        )
+        // Vertical shaft
+        drawLine(
+            color = tint,
+            start = androidx.compose.ui.geometry.Offset(w * 0.5f, h * 0.18f),
+            end = androidx.compose.ui.geometry.Offset(w * 0.5f, h * 0.65f),
+            strokeWidth = sw,
+            cap = StrokeCap.Round,
+        )
+        // Arrow head
+        val arrow = Path().apply {
+            moveTo(w * 0.3f, h * 0.38f)
+            lineTo(w * 0.5f, h * 0.15f)
+            lineTo(w * 0.7f, h * 0.38f)
+        }
+        drawPath(arrow, color = tint, style = Stroke(width = sw, cap = StrokeCap.Round, join = StrokeJoin.Round))
+    }
+}
+
+/** Question-mark badge — HELP action. */
+@Composable
+fun DawHelpIcon(tint: Color, size: Dp = DefaultIconSize) {
+    Canvas(modifier = Modifier.size(size)) {
+        val w = this.size.width
+        val h = this.size.height
+        val sw = h * 0.1f
+        drawCircle(
+            color = tint,
+            radius = minOf(w, h) * 0.42f,
+            center = androidx.compose.ui.geometry.Offset(w / 2, h / 2),
+            style = Stroke(width = sw),
+        )
+        // Question arc
+        val q = Path().apply {
+            moveTo(w * 0.37f, h * 0.38f)
+            quadraticTo(w * 0.5f, h * 0.22f, w * 0.62f, h * 0.38f)
+            quadraticTo(w * 0.72f, h * 0.52f, w * 0.5f, h * 0.58f)
+            lineTo(w * 0.5f, h * 0.66f)
+        }
+        drawPath(q, color = tint, style = Stroke(width = sw, cap = StrokeCap.Round, join = StrokeJoin.Round))
+        // Dot
+        drawCircle(
+            color = tint,
+            radius = sw * 0.7f,
+            center = androidx.compose.ui.geometry.Offset(w * 0.5f, h * 0.78f),
+        )
+    }
+}
+
 /** Two left-pointing triangles — rewind. */
 @Composable
 fun DawRewindIcon(tint: Color, size: Dp = DefaultIconSize) {
