@@ -13,6 +13,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
 @Composable
@@ -29,8 +30,9 @@ fun DawHeaderBar(
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .height(44.dp)
             .background(DawTheme.BgPanel)
-            .padding(horizontal = DawTheme.SpaceLg, vertical = DawTheme.SpaceMd),
+            .padding(horizontal = DawTheme.SpaceLg),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // Title group — clean wordmark with optional context subtitle
@@ -55,6 +57,8 @@ fun DawHeaderBar(
                 color = DawTheme.TextDim,
                 fontSize = DawTheme.FontBody,
                 fontFamily = FontFamily.Monospace,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
 
@@ -123,6 +127,7 @@ private fun ModeToggleChip(isDawMode: Boolean, onClick: () -> Unit) {
             fontSize = DawTheme.FontLabel,
             fontWeight = FontWeight.Bold,
             fontFamily = FontFamily.Monospace,
+            maxLines = 1,
         )
     }
 }
