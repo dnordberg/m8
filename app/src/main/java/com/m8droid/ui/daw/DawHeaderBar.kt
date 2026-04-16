@@ -15,14 +15,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
-/**
- * Shared cyberpunk header bar used by both the DAW shell and the classic M8
- * device view. Contains the title, a free-form subtitle slot, and a row of
- * action chips (load / settings / help) plus the mode toggle.
- *
- * Consolidating both modes' chrome under one header keeps the top-of-screen
- * controls identical regardless of which body view is active.
- */
 @Composable
 fun DawHeaderBar(
     subtitle: String,
@@ -38,50 +30,51 @@ fun DawHeaderBar(
         modifier = modifier
             .fillMaxWidth()
             .background(DawTheme.BgPanel)
-            .border(1.dp, DawTheme.BorderDim)
-            .padding(horizontal = DawTheme.SpaceMd, vertical = DawTheme.SpaceSm),
+            .padding(horizontal = DawTheme.SpaceLg, vertical = DawTheme.SpaceMd),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // Title group — clean wordmark with optional context subtitle
         Text(
-            text = ">_",
+            text = "M8",
             color = DawTheme.AccentGreen,
             fontSize = DawTheme.FontTitle,
             fontWeight = FontWeight.Black,
             fontFamily = FontFamily.Monospace,
         )
-        Spacer(Modifier.width(DawTheme.SpaceSm))
-        Column {
+        if (subtitle.isNotBlank()) {
+            Spacer(Modifier.width(DawTheme.SpaceMd))
+            Box(
+                modifier = Modifier
+                    .height(16.dp)
+                    .width(1.dp)
+                    .background(DawTheme.BorderHi),
+            )
+            Spacer(Modifier.width(DawTheme.SpaceMd))
             Text(
-                text = "TRACKER_OS_V1",
-                color = DawTheme.AccentGreen,
-                fontSize = DawTheme.FontHeading,
-                fontWeight = FontWeight.Bold,
+                text = subtitle,
+                color = DawTheme.TextDim,
+                fontSize = DawTheme.FontBody,
                 fontFamily = FontFamily.Monospace,
             )
-            if (subtitle.isNotBlank()) {
-                Text(
-                    text = subtitle,
-                    color = DawTheme.TextDim,
-                    fontSize = DawTheme.FontLabel,
-                    fontFamily = FontFamily.Monospace,
-                )
-            }
         }
+
         Spacer(Modifier.weight(1f))
-        HeaderIconButton(onClick = onLoad, tint = DawTheme.AccentCyan) { c ->
-            DawLoadIcon(tint = c, size = 18.dp)
+
+        // Action icons — evenly spaced, no boxes around them
+        HeaderIconButton(onClick = onLoad, tint = DawTheme.TextNormal) { c ->
+            DawLoadIcon(tint = c, size = 20.dp)
         }
-        Spacer(Modifier.width(DawTheme.SpaceSm))
-        HeaderIconButton(onClick = onSettings, tint = DawTheme.AccentCyan) { c ->
-            DawSystemIcon(tint = c, size = 18.dp)
+        Spacer(Modifier.width(DawTheme.SpaceLg))
+        HeaderIconButton(onClick = onSettings, tint = DawTheme.TextNormal) { c ->
+            DawSystemIcon(tint = c, size = 20.dp)
         }
-        Spacer(Modifier.width(DawTheme.SpaceSm))
-        HeaderIconButton(onClick = onHelp, tint = DawTheme.AccentCyan) { c ->
-            DawHelpIcon(tint = c, size = 18.dp)
+        Spacer(Modifier.width(DawTheme.SpaceLg))
+        HeaderIconButton(onClick = onHelp, tint = DawTheme.TextNormal) { c ->
+            DawHelpIcon(tint = c, size = 20.dp)
         }
         if (onAcademy != null) {
-            Spacer(Modifier.width(DawTheme.SpaceSm))
-            HeaderIconButton(onClick = onAcademy, tint = Color(0xFFFF00FF)) { c ->
+            Spacer(Modifier.width(DawTheme.SpaceLg))
+            HeaderIconButton(onClick = onAcademy, tint = DawTheme.AccentMagenta) { c ->
                 Text(
                     text = "♟",
                     color = c,
@@ -90,7 +83,7 @@ fun DawHeaderBar(
                 )
             }
         }
-        Spacer(Modifier.width(DawTheme.SpaceMd))
+        Spacer(Modifier.width(DawTheme.SpaceXl))
         ModeToggleChip(isDawMode = isDawMode, onClick = onToggleMode)
     }
 }
@@ -103,10 +96,8 @@ private fun HeaderIconButton(
 ) {
     Box(
         modifier = Modifier
-            .size(34.dp)
+            .size(36.dp)
             .clip(RoundedCornerShape(DawTheme.CornerSm))
-            .background(DawTheme.BgCard)
-            .border(1.dp, DawTheme.BorderDim, RoundedCornerShape(DawTheme.CornerSm))
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -116,20 +107,19 @@ private fun HeaderIconButton(
 
 @Composable
 private fun ModeToggleChip(isDawMode: Boolean, onClick: () -> Unit) {
-    val label = if (isDawMode) "M8 CLASSIC" else "DAW"
-    val border = if (isDawMode) DawTheme.AccentMagenta else DawTheme.AccentGreen
-    val fg = if (isDawMode) DawTheme.AccentMagenta else DawTheme.AccentGreen
+    val label = if (isDawMode) "CLASSIC" else "DAW"
+    val accent = if (isDawMode) DawTheme.AccentMagenta else DawTheme.AccentGreen
+    val pillShape = RoundedCornerShape(50)
     Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(DawTheme.CornerMd))
-            .background(DawTheme.BgCardHi)
-            .border(1.dp, border, RoundedCornerShape(DawTheme.CornerMd))
+            .clip(pillShape)
+            .border(1.dp, accent, pillShape)
             .clickable(onClick = onClick)
             .padding(horizontal = DawTheme.SpaceMd, vertical = DawTheme.SpaceXs),
     ) {
         Text(
             text = label,
-            color = fg,
+            color = accent,
             fontSize = DawTheme.FontLabel,
             fontWeight = FontWeight.Bold,
             fontFamily = FontFamily.Monospace,

@@ -421,12 +421,38 @@ impl Reverb {
     }
 }
 
+// ===================== DC BLOCKER =====================
+
+/// First-order DC blocking filter: y[n] = x[n] - x[n-1] + R * y[n-1]
+/// R = 0.995 gives a ~35 Hz cutoff at 44.1 kHz — removes DC and sub-bass
+/// rumble from reverb/delay recirculation without affecting audible content.
+struct DcBlocker {
+    x_prev: f64,
+    y_prev: f64,
+}
+
+impl DcBlocker {
+    fn new() -> Self { DcBlocker { x_prev: 0.0, y_prev: 0.0 } }
+
+    #[inline(always)]
+    fn process(&mut self, x: f64) -> f64 {
+        let y = x - self.x_prev + 0.995 * self.y_prev;
+        self.x_prev = x;
+        self.y_prev = y;
+        y
+    }
+
+    fn clear(&mut self) { self.x_prev = 0.0; self.y_prev = 0.0; }
+}
+
 // ===================== ENGINE =====================
 
 pub struct SynthEngine {
     voices: Vec<Voice>,
     delay: Delay,
     reverb: Reverb,
+    dc_l: DcBlocker,
+    dc_r: DcBlocker,
     out_buf: Vec<u8>,
     pub track_levels: [f64; 8],
     pub master_l: f64,
@@ -442,6 +468,8 @@ impl SynthEngine {
             voices: (0..NUM_VOICES).map(Voice::new).collect(),
             delay: Delay::new(),
             reverb: Reverb::new(),
+            dc_l: DcBlocker::new(),
+            dc_r: DcBlocker::new(),
             out_buf: vec![0u8; CHUNK_BYTES],
             track_levels: [0.0; 8],
             master_l: 0.0, master_r: 0.0,
@@ -475,6 +503,8 @@ impl SynthEngine {
         if !any_active {
             self.delay.clear();
             self.reverb.clear();
+            self.dc_l.clear();
+            self.dc_r.clear();
             self.out_buf.fill(0);
             self.master_l *= 0.7;
             self.master_r *= 0.7;
@@ -528,6 +558,10 @@ impl SynthEngine {
             // Transparent limiter (pure arithmetic, no transcendentals)
             out_l = soft_limit(out_l);
             out_r = soft_limit(out_r);
+
+            // DC blocker — removes sub-bass rumble from reverb/delay recirculation
+            out_l = self.dc_l.process(out_l);
+            out_r = self.dc_r.process(out_r);
 
             if out_l.abs() > pk_l { pk_l = out_l.abs(); }
             if out_r.abs() > pk_r { pk_r = out_r.abs(); }

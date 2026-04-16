@@ -583,17 +583,54 @@ class M8Emulator {
 
         // Bottom-right status cluster (mirrors real M8):
         //   P            ← project dirty
+        //   ▲▲▲▲▲        ← up-arrow indicators (when screen above exists in grid)
         //   SCPIT        ← Song / Chain / Phrase / Instr / Table live indicators
+        //   ▼▼▼▼▼        ← down-arrow indicators (when screen below exists in grid)
         //   M            ← MIDI activity
         val statusX = rpX
-        val statusY = HEIGHT - 30
+        val statusY = HEIGHT - 38
+
         cmds.addAll(drawText("P",     statusX,     statusY,          if (screen == SCREEN_PROJECT) cTextBright else cTextDim, cBg))
-        cmds.addAll(drawText("S",     statusX,     statusY + 10,     if (screen == SCREEN_SONG)   cTextBright else cTextDim, cBg))
-        cmds.addAll(drawText("C",     statusX + 8, statusY + 10,     if (screen == SCREEN_CHAIN)  cTextBright else cTextDim, cBg))
-        cmds.addAll(drawText("P",     statusX + 16, statusY + 10,    if (screen == SCREEN_PHRASE) cTextBright else cTextDim, cBg))
-        cmds.addAll(drawText("I",     statusX + 24, statusY + 10,    if (screen == SCREEN_INSTRUMENT) cTextBright else cTextDim, cBg))
-        cmds.addAll(drawText("T",     statusX + 32, statusY + 10,    if (screen == SCREEN_TABLE)  cTextBright else cTextDim, cBg))
-        cmds.addAll(drawText("M",     statusX,     statusY + 20,     if (midiActive) cTextBright else cTextDim, cBg))
+
+        // SCPIT letters with sub-page arrow indicators above and below.
+        // The screenGrid arranges views in rows; arrows show navigable directions.
+        val scpitLetters = charArrayOf('S', 'C', 'P', 'I', 'T')
+        val scpitScreens = intArrayOf(SCREEN_SONG, SCREEN_CHAIN, SCREEN_PHRASE, SCREEN_INSTRUMENT, SCREEN_TABLE)
+        val letterY = statusY + 14
+        for (idx in scpitLetters.indices) {
+            val lx = statusX + idx * 8
+            val scr = scpitScreens[idx]
+            val active = screen == scr
+            val color = if (active) cTextBright else cTextDim
+
+            // Draw the letter
+            cmds.addAll(drawText(scpitLetters[idx].toString(), lx, letterY, color, cBg))
+
+            // Find this screen's position in the grid to determine up/down neighbours
+            val gridRow = screenGrid.indexOfFirst { it.contains(scr) }
+            val gridCol = if (gridRow >= 0) screenGrid[gridRow].indexOf(scr) else -1
+            if (gridRow >= 0 && gridCol >= 0) {
+                val hasUp = gridRow > 0 && screenGrid[gridRow - 1][gridCol] >= 0
+                val hasDown = gridRow < screenGrid.size - 1 && screenGrid[gridRow + 1][gridCol] >= 0
+
+                // Up arrow indicator: small 3-pixel triangle above the letter
+                if (hasUp) {
+                    val ax = lx + 2
+                    val ay = letterY - 4
+                    cmds.add(drawRect(ax + 1, ay, 1, 1, color))     // top pixel
+                    cmds.add(drawRect(ax, ay + 1, 3, 1, color))     // bottom row
+                }
+                // Down arrow indicator: small 3-pixel triangle below the letter
+                if (hasDown) {
+                    val ax = lx + 2
+                    val ay = letterY + FONT_H + 1
+                    cmds.add(drawRect(ax, ay, 3, 1, color))         // top row
+                    cmds.add(drawRect(ax + 1, ay + 1, 1, 1, color)) // bottom pixel
+                }
+            }
+        }
+
+        cmds.addAll(drawText("M",     statusX,     letterY + FONT_H + 6,     if (midiActive) cTextBright else cTextDim, cBg))
 
         return cmds
     }

@@ -228,6 +228,9 @@ class M8Synth {
     private var dlPos = 0
     private var dlDampL = 0.0
     private var dlDampR = 0.0
+    // DC blocker state (y = x - x_prev + R * y_prev, R = 0.995 ≈ 35 Hz cutoff)
+    private var dcXpL = 0.0; private var dcYpL = 0.0
+    private var dcXpR = 0.0; private var dcYpR = 0.0
     private val wfBuf = DoubleArray(WAVEFORM_CAPTURE_SIZE)
     private var wfIdx = 0
     private var dbg = 0L
@@ -267,6 +270,7 @@ class M8Synth {
         if (voices.none { it.active }) {
             for (k in dlBufL.indices) { dlBufL[k] = 0.0; dlBufR[k] = 0.0 }
             dlDampL = 0.0; dlDampR = 0.0
+            dcXpL = 0.0; dcYpL = 0.0; dcXpR = 0.0; dcYpR = 0.0
             masterLevelL *= 0.7; masterLevelR *= 0.7
             for (t in 0 until 8) trackLevels[t] *= 0.7
             dbg++
@@ -323,6 +327,10 @@ class M8Synth {
             // Transparent limiter — passes signal below 0.9 untouched
             outL = softLimit(outL)
             outR = softLimit(outR)
+
+            // DC blocker — removes sub-bass rumble from delay recirculation
+            val dcL = outL - dcXpL + 0.995 * dcYpL; dcXpL = outL; dcYpL = dcL; outL = dcL
+            val dcR = outR - dcXpR + 0.995 * dcYpR; dcXpR = outR; dcYpR = dcR; outR = dcR
 
             if (abs(outL) > pkL) pkL = abs(outL)
             if (abs(outR) > pkR) pkR = abs(outR)

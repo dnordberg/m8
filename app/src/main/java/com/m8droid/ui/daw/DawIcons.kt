@@ -276,7 +276,7 @@ fun DawFastForwardIcon(tint: Color, size: Dp = DefaultIconSize) {
 
 // ───────── Header action icons ─────────
 
-/** Up-arrow into a tray — LOAD action. */
+/** Down-arrow into a tray — DOWNLOAD / LOAD action. */
 @Composable
 fun DawLoadIcon(tint: Color, size: Dp = DefaultIconSize) {
     Canvas(modifier = Modifier.size(size)) {
@@ -294,16 +294,16 @@ fun DawLoadIcon(tint: Color, size: Dp = DefaultIconSize) {
         // Vertical shaft
         drawLine(
             color = tint,
-            start = androidx.compose.ui.geometry.Offset(w * 0.5f, h * 0.18f),
-            end = androidx.compose.ui.geometry.Offset(w * 0.5f, h * 0.65f),
+            start = androidx.compose.ui.geometry.Offset(w * 0.5f, h * 0.12f),
+            end = androidx.compose.ui.geometry.Offset(w * 0.5f, h * 0.60f),
             strokeWidth = sw,
             cap = StrokeCap.Round,
         )
-        // Arrow head
+        // Arrow head pointing down
         val arrow = Path().apply {
-            moveTo(w * 0.3f, h * 0.38f)
-            lineTo(w * 0.5f, h * 0.15f)
-            lineTo(w * 0.7f, h * 0.38f)
+            moveTo(w * 0.25f, h * 0.50f)
+            lineTo(w * 0.5f, h * 0.75f)
+            lineTo(w * 0.75f, h * 0.50f)
         }
         drawPath(arrow, color = tint, style = Stroke(width = sw, cap = StrokeCap.Round, join = StrokeJoin.Round))
     }
