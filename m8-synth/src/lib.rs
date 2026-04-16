@@ -100,9 +100,10 @@ struct Voice {
     fenv_level: f64,
     fenv_time: f64,
 
-    // SVF
-    svf_lo: f64,
-    svf_bd: f64,
+    // ZDF SVF
+    svf_ic1eq: f64,
+    svf_ic2eq: f64,
+    cutoff_smooth: f64,
 
     // FM
     fm_phase: f64,
@@ -120,7 +121,7 @@ impl Voice {
             active: false, note_on: false, preset_idx: idx,
             env_stage: 0, env_level: 0.0, env_time: 0.0, rel_start: 0.0,
             fenv_level: 0.0, fenv_time: 0.0,
-            svf_lo: 0.0, svf_bd: 0.0,
+            svf_ic1eq: 0.0, svf_ic2eq: 0.0, cutoff_smooth: 0.0,
             fm_phase: 0.0,
             lfsr: 0x7FFF, noise_val: 0.0, noise_cnt: 0,
         }
@@ -136,9 +137,8 @@ impl Voice {
         self.fenv_time = 0.0;
         self.note_on = true;
         self.active = true;
-        // Clear filter state so a stale SVF tail doesn't bleed into the new note
-        self.svf_lo = 0.0;
-        self.svf_bd = 0.0;
+        self.svf_ic1eq = 0.0;
+        self.svf_ic2eq = 0.0;
     }
 
     fn release(&mut self) {
@@ -214,7 +214,12 @@ impl Voice {
                       - poly_blep((self.phase - p.pw + 1.0) % 1.0, ph_inc)
             }
             2 => (self.phase * TWO_PI).sin(), // Sine
-            3 => 4.0 * (self.phase - 0.5).abs() - 1.0, // Triangle
+            3 => {
+                let naive = 4.0 * (self.phase - 0.5).abs() - 1.0;
+                let slope = if self.phase < 0.5 { 4.0 } else { -4.0 };
+                naive + slope * poly_blamp(self.phase, ph_inc)
+                      + (-slope) * poly_blamp((self.phase + 0.5) % 1.0, ph_inc)
+            }
             4 => { // Noise — full-rate LFSR through a one-pole LP (no stepping)
                 let bit = (self.lfsr ^ (self.lfsr >> 1)) & 1;
                 self.lfsr = (self.lfsr >> 1) | (bit << 14);
@@ -241,22 +246,27 @@ impl Voice {
         self.phase += ph_inc;
         if self.phase >= 1.0 { self.phase -= self.phase.floor(); }
 
-        // --- 2-pole SVF (clamped for stability) ---
-        let cut_norm = (p.cutoff + p.filt_env * self.fenv_level).clamp(0.0, 1.0);
-        let cut_hz = 20.0 * (2.0_f64).powf(cut_norm * 10.0);
-        let q = (1.0 - p.reso * 0.95).max(0.5);
-        let f = (2.0 * (PI * (cut_hz / SR).clamp(0.0, 0.48)).sin())
-                .min(2.0 * q - 0.01);
+        // --- ZDF SVF (Zavalishin topology, tanh saturation on integrators) ---
+        let cut_target = (p.cutoff + p.filt_env * self.fenv_level).clamp(0.0, 1.0);
+        self.cutoff_smooth += 0.005 * (cut_target - self.cutoff_smooth);
+        let cut_hz = 20.0 * (2.0_f64).powf(self.cutoff_smooth * 10.0);
+        let g = (PI * (cut_hz / SR).clamp(0.0, 0.49)).tan();
+        let k = 2.0 * (1.0 - p.reso * 0.95).max(0.05);
 
-        let hp = raw - self.svf_lo - q * self.svf_bd;
-        self.svf_bd += f * hp;
-        self.svf_lo += f * self.svf_bd;
-        self.svf_bd = self.svf_bd.clamp(-4.0, 4.0);
-        self.svf_lo = self.svf_lo.clamp(-4.0, 4.0);
-        if !self.svf_bd.is_finite() { self.svf_bd = 0.0; }
-        if !self.svf_lo.is_finite() { self.svf_lo = 0.0; }
+        let a1 = 1.0 / (1.0 + g * (g + k));
+        let a2 = g * a1;
+        let a3 = g * a2;
 
-        self.svf_lo * self.env_level * self.vol
+        let v3 = raw - self.svf_ic2eq;
+        let v1 = a1 * self.svf_ic1eq + a2 * v3;
+        let v2 = self.svf_ic2eq + a2 * self.svf_ic1eq + a3 * v3;
+
+        self.svf_ic1eq = 2.0 * tanh_cheap(v1) - self.svf_ic1eq;
+        self.svf_ic2eq = 2.0 * tanh_cheap(v2) - self.svf_ic2eq;
+        self.svf_ic1eq = flush_denorm(self.svf_ic1eq);
+        self.svf_ic2eq = flush_denorm(self.svf_ic2eq);
+
+        v2 * self.env_level * self.vol
     }
 }
 
@@ -285,11 +295,10 @@ impl Delay {
         let pos_r = self.pos % self.buf_r.len();
         let tap_l = self.buf_l[pos_l];
         let tap_r = self.buf_r[pos_r];
-        // Damped cross-feedback
         self.damp_l += 0.35 * (tap_r - self.damp_l);
         self.damp_r += 0.35 * (tap_l - self.damp_r);
-        self.buf_l[pos_l] = (in_l + self.damp_l * 0.4).clamp(-2.0, 2.0);
-        self.buf_r[pos_r] = (in_r + self.damp_r * 0.4).clamp(-2.0, 2.0);
+        self.buf_l[pos_l] = flush_denorm(in_l + tanh_cheap(self.damp_l * 0.4));
+        self.buf_r[pos_r] = flush_denorm(in_r + tanh_cheap(self.damp_r * 0.4));
         self.pos += 1;
         (tap_l, tap_r)
     }
@@ -303,60 +312,112 @@ impl Delay {
     }
 }
 
+struct DattorroAllpass {
+    buf: Vec<f64>,
+    pos: usize,
+}
+
+impl DattorroAllpass {
+    fn new(len: usize) -> Self {
+        DattorroAllpass { buf: vec![0.0; len], pos: 0 }
+    }
+
+    #[inline(always)]
+    fn process(&mut self, input: f64, coeff: f64) -> f64 {
+        let idx = self.pos % self.buf.len();
+        let delayed = self.buf[idx];
+        let node = input - coeff * delayed;
+        self.buf[idx] = flush_denorm(node);
+        self.pos += 1;
+        delayed + coeff * node
+    }
+
+    fn clear(&mut self) { self.buf.fill(0.0); self.pos = 0; }
+}
+
+struct DattorroDelay {
+    buf: Vec<f64>,
+    pos: usize,
+}
+
+impl DattorroDelay {
+    fn new(len: usize) -> Self {
+        DattorroDelay { buf: vec![0.0; len], pos: 0 }
+    }
+
+    #[inline(always)]
+    fn read(&self) -> f64 {
+        self.buf[self.pos % self.buf.len()]
+    }
+
+    #[inline(always)]
+    fn write_advance(&mut self, val: f64) {
+        let idx = self.pos % self.buf.len();
+        self.buf[idx] = flush_denorm(val);
+        self.pos += 1;
+    }
+
+    fn clear(&mut self) { self.buf.fill(0.0); self.pos = 0; }
+}
+
 struct Reverb {
-    combs: [Vec<f64>; 4],
-    comb_pos: [usize; 4],
-    comb_damp: [f64; 4],
-    aps: [Vec<f64>; 2],
-    ap_pos: [usize; 2],
+    pre_ap: [DattorroAllpass; 4],
+    tank_ap_l: DattorroAllpass,
+    tank_ap_r: DattorroAllpass,
+    tank_dl_l: DattorroDelay,
+    tank_dl_r: DattorroDelay,
+    damp_l: f64,
+    damp_r: f64,
+    decay: f64,
 }
 
 impl Reverb {
     fn new() -> Self {
         Reverb {
-            combs: [
-                vec![0.0; 1116], vec![0.0; 1188],
-                vec![0.0; 1277], vec![0.0; 1356],
+            pre_ap: [
+                DattorroAllpass::new(142), DattorroAllpass::new(107),
+                DattorroAllpass::new(379), DattorroAllpass::new(277),
             ],
-            comb_pos: [0; 4],
-            comb_damp: [0.0; 4],
-            aps: [vec![0.0; 556], vec![0.0; 441]],
-            ap_pos: [0; 2],
+            tank_ap_l: DattorroAllpass::new(672),
+            tank_ap_r: DattorroAllpass::new(908),
+            tank_dl_l: DattorroDelay::new(4453),
+            tank_dl_r: DattorroDelay::new(4217),
+            damp_l: 0.0,
+            damp_r: 0.0,
+            decay: 0.75,
         }
     }
 
     #[inline(always)]
     fn process(&mut self, input: f64) -> f64 {
-        let mut sum = 0.0;
-        for c in 0..4 {
-            let len = self.combs[c].len();
-            let pos = self.comb_pos[c] % len;
-            let tap = self.combs[c][pos];
-            self.comb_damp[c] += 0.3 * (tap - self.comb_damp[c]);
-            self.combs[c][pos] = (input + self.comb_damp[c] * 0.84).clamp(-2.0, 2.0);
-            self.comb_pos[c] += 1;
-            sum += tap;
+        let mut x = input;
+        for ap in &mut self.pre_ap {
+            x = ap.process(x, 0.5);
         }
-        sum *= 0.25;
 
-        for a in 0..2 {
-            let len = self.aps[a].len();
-            let pos = self.ap_pos[a] % len;
-            let tap = self.aps[a][pos];
-            let temp = -sum * 0.5 + tap;
-            self.aps[a][pos] = (sum + tap * 0.5).clamp(-2.0, 2.0);
-            self.ap_pos[a] += 1;
-            sum = temp;
-        }
-        sum
+        let tank_r_out = self.tank_dl_r.read();
+        let left_in = x + tank_r_out * self.decay;
+        let left_ap = self.tank_ap_l.process(left_in, -0.5);
+        self.damp_l += 0.4 * (left_ap - self.damp_l);
+        self.tank_dl_l.write_advance(self.damp_l * self.decay);
+
+        let tank_l_out = self.tank_dl_l.read();
+        let right_in = x + tank_l_out * self.decay;
+        let right_ap = self.tank_ap_r.process(right_in, -0.5);
+        self.damp_r += 0.4 * (right_ap - self.damp_r);
+        self.tank_dl_r.write_advance(self.damp_r * self.decay);
+
+        (tank_l_out + tank_r_out) * 0.5
     }
 
     fn clear(&mut self) {
-        for c in &mut self.combs { c.fill(0.0); }
-        for a in &mut self.aps { a.fill(0.0); }
-        self.comb_pos = [0; 4];
-        self.ap_pos = [0; 2];
-        self.comb_damp = [0.0; 4];
+        for ap in &mut self.pre_ap { ap.clear(); }
+        self.tank_ap_l.clear();
+        self.tank_ap_r.clear();
+        self.tank_dl_l.clear();
+        self.tank_dl_r.clear();
+        self.damp_l = 0.0;
+        self.damp_r = 0.0;
     }
 }
 
@@ -504,8 +565,8 @@ impl SynthEngine {
             v.note_on = false;
             v.env_stage = 0;
             v.active = false;
-            v.svf_lo = 0.0;
-            v.svf_bd = 0.0;
+            v.svf_ic1eq = 0.0;
+            v.svf_ic2eq = 0.0;
         }
         self.delay.clear();
         self.reverb.clear();
@@ -529,6 +590,32 @@ fn poly_blep(t: f64, dt: f64) -> f64 {
     } else {
         0.0
     }
+}
+
+#[inline(always)]
+fn poly_blamp(t: f64, dt: f64) -> f64 {
+    let p = t % 1.0;
+    if p < dt {
+        let x = p / dt;
+        let u = 1.0 - x;
+        -u * u * u / 3.0 * dt
+    } else if p > 1.0 - dt {
+        let x = (p - 1.0) / dt + 1.0;
+        x * x * x / 3.0 * dt
+    } else {
+        0.0
+    }
+}
+
+#[inline(always)]
+fn tanh_cheap(x: f64) -> f64 {
+    let x2 = x * x;
+    x * (27.0 + x2) / (27.0 + 9.0 * x2)
+}
+
+#[inline(always)]
+fn flush_denorm(x: f64) -> f64 {
+    if x.abs() < 1e-15 { 0.0 } else { x }
 }
 
 #[inline(always)]

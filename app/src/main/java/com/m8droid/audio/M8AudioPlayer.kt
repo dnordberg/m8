@@ -41,8 +41,11 @@ class M8AudioPlayer {
                 return
             }
 
-            // Use minBuf or ~100ms, whichever is larger
-            val bufferSize = maxOf(minBuf, SAMPLE_RATE * FRAME_SIZE / 10)
+            // 2940 frames (~66ms at 44100) — enough headroom to absorb scheduler jitter
+            // on mid-range devices without adding perceptible latency.
+            val targetFrames = 2940
+            val targetBytes = targetFrames * FRAME_SIZE
+            val bufferSize = maxOf(minBuf, targetBytes)
 
             Log.i(TAG, "Creating AudioTrack: rate=$SAMPLE_RATE, minBuf=$minBuf, buf=$bufferSize")
 
