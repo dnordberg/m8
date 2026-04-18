@@ -317,54 +317,65 @@ class M8Emulator {
         }
     }
 
-    // View grid for Shift+Arrow navigation, mirroring the on-screen P / SCPIT / M
-    // indicator. Each screen lives at a fixed (row, col) coordinate:
+    // Shift+Arrow navigates the on-screen P / SCPIT / M cluster.
     //
-    //   row 0:                      PROJECT(c=2)
-    //   row 1: SONG  CHAIN  PHRASE  INSTR   TABLE      (cols 0..4)
-    //   row 2:       MIXER  FX      CONFIG             (cols 1..3)
+    //   P             ← PROJECT     (top of the column)
+    //   S C P I T     ← SCPIT row   (SONG CHAIN PHRASE INSTR TABLE)
+    //   M             ← MIXER       (bottom of the column; M-row also holds FX, CONFIG)
     //
-    // SHIFT+LEFT/RIGHT moves to the next occupied slot in the same row (clamped, no wrap).
-    // SHIFT+UP/DOWN moves to the screen in the adjacent row whose column is closest
-    // to the current column (clamped, no wrap).
-    private val screenGrid: Map<Int, Pair<Int, Int>> = mapOf(
-        SCREEN_PROJECT to (0 to 2),
-        SCREEN_SONG to (1 to 0),
-        SCREEN_CHAIN to (1 to 1),
-        SCREEN_PHRASE to (1 to 2),
-        SCREEN_INSTRUMENT to (1 to 3),
-        SCREEN_TABLE to (1 to 4),
-        SCREEN_MIXER to (2 to 1),
-        SCREEN_FX to (2 to 2),
-        SCREEN_CONFIG to (2 to 3),
+    // Rules:
+    //   SHIFT+UP   from any SCPIT screen → PROJECT (remembers which SCPIT was active)
+    //   SHIFT+DOWN from any SCPIT screen → MIXER
+    //   SHIFT+UP   from MIXER/FX/CONFIG  → last-active SCPIT screen
+    //   SHIFT+DOWN from PROJECT          → last-active SCPIT screen
+    //   SHIFT+LEFT/RIGHT cycles within the current row (SCPIT or MIXER/FX/CONFIG), clamped.
+    //   PROJECT is a single-screen row, so LEFT/RIGHT/UP on it are no-ops.
+    //   MIXER row LEFT/RIGHT cycles MIXER → FX → CONFIG (clamped).
+    private val scpitOrder = listOf(
+        SCREEN_SONG, SCREEN_CHAIN, SCREEN_PHRASE, SCREEN_INSTRUMENT, SCREEN_TABLE
     )
-
-    private fun nearestInRow(row: Int, preferredCol: Int): Int? =
-        screenGrid.entries
-            .filter { it.value.first == row }
-            .minByOrNull { kotlin.math.abs(it.value.second - preferredCol) }
-            ?.key
-
-    private fun nextInRow(row: Int, fromCol: Int, dir: Int): Int? {
-        val sameRow = screenGrid.entries.filter { it.value.first == row }
-        return if (dir > 0) {
-            sameRow.filter { it.value.second > fromCol }.minByOrNull { it.value.second }?.key
-        } else {
-            sameRow.filter { it.value.second < fromCol }.maxByOrNull { it.value.second }?.key
-        }
-    }
+    private val mRowOrder = listOf(SCREEN_MIXER, SCREEN_FX, SCREEN_CONFIG)
+    private var lastScpitScreen = SCREEN_SONG
 
     private fun navigateScreenGrid(pressed: Int) {
-        val pos = screenGrid[screen] ?: return
-        val (row, col) = pos
-        val target = when {
-            pressed and M8Commands.KEY_UP != 0 -> nearestInRow(row - 1, col)
-            pressed and M8Commands.KEY_DOWN != 0 -> nearestInRow(row + 1, col)
-            pressed and M8Commands.KEY_LEFT != 0 -> nextInRow(row, col, -1)
-            pressed and M8Commands.KEY_RIGHT != 0 -> nextInRow(row, col, 1)
-            else -> null
+        val prev = screen
+        val next = when {
+            pressed and M8Commands.KEY_UP != 0 -> when {
+                prev in scpitOrder -> SCREEN_PROJECT
+                prev in mRowOrder -> lastScpitScreen
+                else -> prev
+            }
+            pressed and M8Commands.KEY_DOWN != 0 -> when {
+                prev in scpitOrder -> SCREEN_MIXER
+                prev == SCREEN_PROJECT -> lastScpitScreen
+                else -> prev
+            }
+            pressed and M8Commands.KEY_LEFT != 0 -> when {
+                prev in scpitOrder -> {
+                    val i = scpitOrder.indexOf(prev)
+                    scpitOrder[max(0, i - 1)]
+                }
+                prev in mRowOrder -> {
+                    val i = mRowOrder.indexOf(prev)
+                    mRowOrder[max(0, i - 1)]
+                }
+                else -> prev
+            }
+            pressed and M8Commands.KEY_RIGHT != 0 -> when {
+                prev in scpitOrder -> {
+                    val i = scpitOrder.indexOf(prev)
+                    scpitOrder[min(scpitOrder.size - 1, i + 1)]
+                }
+                prev in mRowOrder -> {
+                    val i = mRowOrder.indexOf(prev)
+                    mRowOrder[min(mRowOrder.size - 1, i + 1)]
+                }
+                else -> prev
+            }
+            else -> prev
         }
-        if (target != null) screen = target
+        if (next in scpitOrder) lastScpitScreen = next
+        screen = next
         editMode = false
     }
 
