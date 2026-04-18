@@ -83,18 +83,7 @@ fun BrowseDialog(
                         fontFamily = FontFamily.Monospace,
                         modifier = Modifier.weight(1f),
                     )
-                    Text(
-                        text = "X",
-                        color = M8_GREEN,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
-                        modifier = Modifier
-                            .size(28.dp)
-                            .border(1.dp, M8_GREEN, RoundedCornerShape(4.dp))
-                            .clickable { onDismiss() }
-                            .wrapContentSize(Alignment.Center),
-                    )
+                    CloseButton(onClick = onDismiss, tint = M8_GREEN)
                 }
 
                 Spacer(Modifier.height(8.dp))

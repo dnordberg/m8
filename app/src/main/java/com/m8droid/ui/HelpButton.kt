@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -62,13 +63,20 @@ fun HelpMenu(
                 .clickable(enabled = false) {},
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text(
-                text = "HELP",
-                color = Color(0xFF00FF00),
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "HELP",
+                    color = Color(0xFF00FF00),
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                )
+                CloseButton(onClick = onDismiss)
+            }
             Text(
                 text = "M8 is a tracker-style music sequencer. Use the touch buttons below the screen to navigate: OPT + arrows switches screens, EDIT enters values, SHIFT modifies.",
                 color = Color(0xFFAABBCC),
@@ -94,13 +102,7 @@ fun HelpMenu(
                 },
             )
 
-            Text(
-                text = "Tap anywhere outside to close",
-                color = Color(0xFF666666),
-                fontSize = 10.sp,
-                fontFamily = FontFamily.Monospace,
-                modifier = Modifier.padding(top = 4.dp),
-            )
+
         }
     }
 }
@@ -132,6 +134,28 @@ private fun HelpMenuItem(
             color = Color(0xFF8899AA),
             fontSize = 10.sp,
             fontFamily = FontFamily.Monospace,
+        )
+    }
+}
+
+@Composable
+fun CloseButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    tint: Color = Color(0xFF00FF00),
+) {
+    Box(
+        modifier = modifier
+            .size(28.dp)
+            .background(Color(0x33FFFFFF), CircleShape)
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = "\u2715",
+            color = tint,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
         )
     }
 }

@@ -29,7 +29,6 @@ import com.m8droid.academy.data.AcademyRepository
 import com.m8droid.ui.*
 import com.m8droid.ui.academy.AcademyShell
 import com.m8droid.ui.academy.QuestOverlay
-import com.m8droid.ui.daw.DawLayout
 
 class MainActivity : ComponentActivity() {
 
@@ -187,26 +186,15 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
                 .systemBarsPadding(),
         ) {
             when (appMode) {
-                AppMode.DAW -> {
-                    DawLayout(
-                        viewModel = viewModel,
-                        onToggleMode = { appMode = AppMode.M8 },
-                        onLoad = { showLoadDialog = true },
-                        onSettings = { showSettings = true },
-                        onHelp = { showHelpMenu = true },
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
                 AppMode.ACADEMY -> {
                     Column(modifier = Modifier.fillMaxSize()) {
-                        com.m8droid.ui.daw.DawHeaderBar(
+                        AppHeaderBar(
                             subtitle = "ACADEMY",
-                            isDawMode = false,
-                            onToggleMode = { appMode = AppMode.M8 },
                             onLoad = { showLoadDialog = true },
                             onSettings = { showSettings = true },
                             onHelp = { showHelpMenu = true },
                             onAcademy = null,
+                            onClose = { appMode = AppMode.M8 },
                         )
                         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                             AcademyShell(
@@ -226,10 +214,8 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
                     val onKeys: (Int) -> Unit = { keys -> viewModel.setTouchKeys(keys) }
                     val keyState by viewModel.keyState.collectAsState()
                     Column(modifier = Modifier.fillMaxSize()) {
-                        com.m8droid.ui.daw.DawHeaderBar(
+                        AppHeaderBar(
                             subtitle = if (academyState == AcademyState.QUEST_ACTIVE) "QUEST" else "CLASSIC",
-                            isDawMode = false,
-                            onToggleMode = { appMode = AppMode.DAW },
                             onLoad = { showLoadDialog = true },
                             onSettings = { showSettings = true },
                             onHelp = { showHelpMenu = true },
@@ -321,4 +307,3 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
         }
     }
 }
-

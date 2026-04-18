@@ -22,10 +22,11 @@ class GitHubSource(private val http: HttpClient) : ContentSource {
         val defaultBranch: String = "main",
     )
 
-    // Curated list — kept small so we don't drown users in noise.
+    // Curated list of community repos with M8 content.
     private val repos = listOf(
         Repo("laamaa", "m8i", ""),
-        Repo("trash80", "M8HeadlessFirmware", "", defaultBranch = "main"),
+        Repo("tobokegao", "m8-tracker-instruments", ""),
+        Repo("d-huck", "m8-themes", ""),
     )
 
     override suspend fun fetchItems(query: String, page: Int): List<RemoteItem> {

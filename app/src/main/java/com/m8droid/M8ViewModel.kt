@@ -168,7 +168,7 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         midiEngine.stop()
     }
 
-    // Public accessors for the DAW view, which reads live emulator state.
+    // Public accessors for views that read live emulator state.
     val songData: M8Song get() = emulator.song
     val instrumentList: Array<M8Instrument> get() = emulator.instruments
     val isPlaying: Boolean get() = emulator.playing

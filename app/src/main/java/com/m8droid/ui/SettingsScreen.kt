@@ -67,13 +67,20 @@ fun SettingsDialog(
                 .clickable(enabled = false) {},
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Text(
-                text = "SETTINGS",
-                color = Color(0xFF00FF00),
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "SETTINGS",
+                    color = Color(0xFF00FF00),
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                )
+                CloseButton(onClick = onDismiss)
+            }
 
             LabeledField(label = "HOST", value = host, onValueChange = { host = it })
             LabeledField(
