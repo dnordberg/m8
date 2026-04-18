@@ -78,7 +78,7 @@ fun HelpMenu(
                 CloseButton(onClick = onDismiss)
             }
             Text(
-                text = "M8 is a tracker-style music sequencer. Use the touch buttons below the screen to navigate: OPT + arrows switches screens, EDIT enters values, SHIFT modifies.",
+                text = "M8 is a tracker-style music sequencer. Use the touch buttons to navigate. SHIFT + LEFT/RIGHT switches screens. EDIT enters/exits edit mode. OPT is a context modifier.",
                 color = Color(0xFFAABBCC),
                 fontSize = 12.sp,
                 fontFamily = FontFamily.Monospace,

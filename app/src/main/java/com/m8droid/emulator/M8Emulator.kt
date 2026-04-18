@@ -281,20 +281,21 @@ class M8Emulator {
             if (playing) playRow = 0
         }
 
-        // OPT = previous screen
-        if (pressed and M8Commands.KEY_OPTION != 0) {
-            screen = (screen - 1 + SCREEN_NAMES.size) % SCREEN_NAMES.size
-            editMode = false
+        // OPT = context action (copy/select/instrument preview depending on screen)
+        // On real M8, OPT alone doesn't switch screens. OPT+arrow combos are
+        // contextual (e.g. OPT+UP/DN = selection, OPT+EDIT = cut, etc.).
+        // For the emulator we treat OPT as a modifier — no standalone action yet.
+        val optHeld = held and M8Commands.KEY_OPTION != 0
+        if (pressed and M8Commands.KEY_OPTION != 0 && !shiftHeld) {
+            // OPT pressed alone: no screen change. Could trigger selection
+            // mode or instrument preview in a future update.
         }
 
-        // EDIT = next screen, or enter edit mode if shift held
+        // EDIT = toggle edit mode at cursor position (enter/modify values).
+        // On real M8, EDIT does NOT switch screens — it enters the value
+        // under the cursor for editing, or exits edit mode.
         if (pressed and M8Commands.KEY_EDIT != 0) {
-            if (shiftHeld && screen == SCREEN_PHRASE) {
-                editMode = !editMode
-            } else {
-                screen = (screen + 1) % SCREEN_NAMES.size
-                editMode = false
-            }
+            editMode = !editMode
         }
 
         // Track shift-chord usage so a pure shift tap (release without chord) can bump octave.
