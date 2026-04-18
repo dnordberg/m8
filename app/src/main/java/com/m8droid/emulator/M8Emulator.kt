@@ -317,28 +317,54 @@ class M8Emulator {
         }
     }
 
-    // View grid for Shift+Arrow navigation, mirroring the real M8 view navigator.
-    // Row/col coordinates map to SCREEN_* indices; -1 = empty slot.
-    // Row 0 is the single PROJECT view (reached via Shift+Up from the main row).
-    // Linear screen order matching the M8 header tab strip:
-    // SONG  CHAIN  PHRASE  INSTR  TABLE  MIXER  FX  CONFIG
-    // SHIFT+LEFT/RIGHT moves one screen in this order (clamped, no wrap).
-    private fun navigateScreenGrid(pressed: Int) {
-        val count = SCREEN_NAMES.size  // 8 screens (0..7)
-        when {
-            pressed and M8Commands.KEY_LEFT != 0 -> {
-                screen = max(0, screen - 1)
-            }
-            pressed and M8Commands.KEY_RIGHT != 0 -> {
-                screen = min(count - 1, screen + 1)
-            }
-            pressed and M8Commands.KEY_UP != 0 -> {
-                screen = max(0, screen - 1)
-            }
-            pressed and M8Commands.KEY_DOWN != 0 -> {
-                screen = min(count - 1, screen + 1)
-            }
+    // View grid for Shift+Arrow navigation, mirroring the on-screen P / SCPIT / M
+    // indicator. Each screen lives at a fixed (row, col) coordinate:
+    //
+    //   row 0:                      PROJECT(c=2)
+    //   row 1: SONG  CHAIN  PHRASE  INSTR   TABLE      (cols 0..4)
+    //   row 2:       MIXER  FX      CONFIG             (cols 1..3)
+    //
+    // SHIFT+LEFT/RIGHT moves to the next occupied slot in the same row (clamped, no wrap).
+    // SHIFT+UP/DOWN moves to the screen in the adjacent row whose column is closest
+    // to the current column (clamped, no wrap).
+    private val screenGrid: Map<Int, Pair<Int, Int>> = mapOf(
+        SCREEN_PROJECT to (0 to 2),
+        SCREEN_SONG to (1 to 0),
+        SCREEN_CHAIN to (1 to 1),
+        SCREEN_PHRASE to (1 to 2),
+        SCREEN_INSTRUMENT to (1 to 3),
+        SCREEN_TABLE to (1 to 4),
+        SCREEN_MIXER to (2 to 1),
+        SCREEN_FX to (2 to 2),
+        SCREEN_CONFIG to (2 to 3),
+    )
+
+    private fun nearestInRow(row: Int, preferredCol: Int): Int? =
+        screenGrid.entries
+            .filter { it.value.first == row }
+            .minByOrNull { kotlin.math.abs(it.value.second - preferredCol) }
+            ?.key
+
+    private fun nextInRow(row: Int, fromCol: Int, dir: Int): Int? {
+        val sameRow = screenGrid.entries.filter { it.value.first == row }
+        return if (dir > 0) {
+            sameRow.filter { it.value.second > fromCol }.minByOrNull { it.value.second }?.key
+        } else {
+            sameRow.filter { it.value.second < fromCol }.maxByOrNull { it.value.second }?.key
         }
+    }
+
+    private fun navigateScreenGrid(pressed: Int) {
+        val pos = screenGrid[screen] ?: return
+        val (row, col) = pos
+        val target = when {
+            pressed and M8Commands.KEY_UP != 0 -> nearestInRow(row - 1, col)
+            pressed and M8Commands.KEY_DOWN != 0 -> nearestInRow(row + 1, col)
+            pressed and M8Commands.KEY_LEFT != 0 -> nextInRow(row, col, -1)
+            pressed and M8Commands.KEY_RIGHT != 0 -> nextInRow(row, col, 1)
+            else -> null
+        }
+        if (target != null) screen = target
         editMode = false
     }
 
