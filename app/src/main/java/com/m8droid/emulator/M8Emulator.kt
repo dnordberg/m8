@@ -320,11 +320,17 @@ class M8Emulator {
     // View grid for Shift+Arrow navigation, mirroring the real M8 view navigator.
     // Row/col coordinates map to SCREEN_* indices; -1 = empty slot.
     // Row 0 is the single PROJECT view (reached via Shift+Up from the main row).
+    // Screen grid matches the real M8 view navigator layout:
+    //   Row 0: PROJECT  PROJECT  PROJECT   (top row — project settings)
+    //   Row 1: SONG     CHAIN    PHRASE    (sequencer views)
+    //   Row 2: INSTR    TABLE    MIXER     (instrument / mixing)
+    //   Row 3: FX       CONFIG   CONFIG    (effects / config)
+    // No dead cells — CONFIG fills the gap so every position is reachable.
     private val screenGrid = arrayOf(
         intArrayOf(SCREEN_PROJECT, SCREEN_PROJECT, SCREEN_PROJECT),
         intArrayOf(SCREEN_SONG, SCREEN_CHAIN, SCREEN_PHRASE),
         intArrayOf(SCREEN_INSTRUMENT, SCREEN_TABLE, SCREEN_MIXER),
-        intArrayOf(SCREEN_FX, SCREEN_CONFIG, -1),
+        intArrayOf(SCREEN_FX, SCREEN_CONFIG, SCREEN_CONFIG),
     )
 
     private fun navigateScreenGrid(pressed: Int) {
@@ -333,20 +339,30 @@ class M8Emulator {
         if (row < 0) { row = 0; col = 0 }
         val rows = screenGrid.size
         val cols = screenGrid[0].size
-        fun step(dr: Int, dc: Int) {
-            var r = row; var c = col
-            repeat(rows * cols) {
-                r = (r + dr + rows) % rows
-                c = (c + dc + cols) % cols
-                if (screenGrid[r][c] >= 0) { row = r; col = c; return }
+
+        when {
+            pressed and M8Commands.KEY_LEFT != 0 -> {
+                // Move left within the row, wrapping around
+                repeat(cols) {
+                    col = (col - 1 + cols) % cols
+                    if (screenGrid[row][col] != screen || col == 0) return@repeat
+                }
+            }
+            pressed and M8Commands.KEY_RIGHT != 0 -> {
+                repeat(cols) {
+                    col = (col + 1) % cols
+                    if (screenGrid[row][col] != screen || col == 0) return@repeat
+                }
+            }
+            pressed and M8Commands.KEY_UP != 0 -> {
+                row = (row - 1 + rows) % rows
+            }
+            pressed and M8Commands.KEY_DOWN != 0 -> {
+                row = (row + 1) % rows
             }
         }
-        when {
-            pressed and M8Commands.KEY_LEFT != 0 -> step(0, -1)
-            pressed and M8Commands.KEY_RIGHT != 0 -> step(0, 1)
-            pressed and M8Commands.KEY_UP != 0 -> step(-1, 0)
-            pressed and M8Commands.KEY_DOWN != 0 -> step(1, 0)
-        }
+        // Clamp column to valid range for this row
+        col = col.coerceIn(0, cols - 1)
         screen = screenGrid[row][col]
         editMode = false
     }
