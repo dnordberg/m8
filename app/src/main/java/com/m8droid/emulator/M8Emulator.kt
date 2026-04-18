@@ -320,50 +320,25 @@ class M8Emulator {
     // View grid for Shift+Arrow navigation, mirroring the real M8 view navigator.
     // Row/col coordinates map to SCREEN_* indices; -1 = empty slot.
     // Row 0 is the single PROJECT view (reached via Shift+Up from the main row).
-    // Screen grid matches the real M8 view navigator layout:
-    //   Row 0: PROJECT  PROJECT  PROJECT   (top row — project settings)
-    //   Row 1: SONG     CHAIN    PHRASE    (sequencer views)
-    //   Row 2: INSTR    TABLE    MIXER     (instrument / mixing)
-    //   Row 3: FX       CONFIG   CONFIG    (effects / config)
-    // No dead cells — CONFIG fills the gap so every position is reachable.
-    private val screenGrid = arrayOf(
-        intArrayOf(SCREEN_PROJECT, SCREEN_PROJECT, SCREEN_PROJECT),
-        intArrayOf(SCREEN_SONG, SCREEN_CHAIN, SCREEN_PHRASE),
-        intArrayOf(SCREEN_INSTRUMENT, SCREEN_TABLE, SCREEN_MIXER),
-        intArrayOf(SCREEN_FX, SCREEN_CONFIG, SCREEN_CONFIG),
-    )
-
+    // Linear screen order matching the M8 header tab strip:
+    // SONG  CHAIN  PHRASE  INSTR  TABLE  MIXER  FX  CONFIG
+    // SHIFT+LEFT/RIGHT moves one screen in this order (clamped, no wrap).
     private fun navigateScreenGrid(pressed: Int) {
-        var row = screenGrid.indexOfFirst { it.contains(screen) }
-        var col = if (row >= 0) screenGrid[row].indexOf(screen) else 0
-        if (row < 0) { row = 0; col = 0 }
-        val rows = screenGrid.size
-        val cols = screenGrid[0].size
-
+        val count = SCREEN_NAMES.size  // 8 screens (0..7)
         when {
             pressed and M8Commands.KEY_LEFT != 0 -> {
-                // Move left within the row, wrapping around
-                repeat(cols) {
-                    col = (col - 1 + cols) % cols
-                    if (screenGrid[row][col] != screen || col == 0) return@repeat
-                }
+                screen = max(0, screen - 1)
             }
             pressed and M8Commands.KEY_RIGHT != 0 -> {
-                repeat(cols) {
-                    col = (col + 1) % cols
-                    if (screenGrid[row][col] != screen || col == 0) return@repeat
-                }
+                screen = min(count - 1, screen + 1)
             }
             pressed and M8Commands.KEY_UP != 0 -> {
-                row = (row - 1 + rows) % rows
+                screen = max(0, screen - 1)
             }
             pressed and M8Commands.KEY_DOWN != 0 -> {
-                row = (row + 1) % rows
+                screen = min(count - 1, screen + 1)
             }
         }
-        // Clamp column to valid range for this row
-        col = col.coerceIn(0, cols - 1)
-        screen = screenGrid[row][col]
         editMode = false
     }
 
@@ -600,17 +575,14 @@ class M8Emulator {
 
         // Bottom-right status cluster (mirrors real M8):
         //   P            ← project dirty
-        //   ▲▲▲▲▲        ← up-arrow indicators (when screen above exists in grid)
         //   SCPIT        ← Song / Chain / Phrase / Instr / Table live indicators
-        //   ▼▼▼▼▼        ← down-arrow indicators (when screen below exists in grid)
         //   M            ← MIDI activity
         val statusX = rpX
         val statusY = HEIGHT - 38
 
         cmds.addAll(drawText("P",     statusX,     statusY,          if (screen == SCREEN_PROJECT) cTextBright else cTextDim, cBg))
 
-        // SCPIT letters with sub-page arrow indicators above and below.
-        // The screenGrid arranges views in rows; arrows show navigable directions.
+        // SCPIT letters — show which screen is active in the linear tab strip.
         val scpitLetters = charArrayOf('S', 'C', 'P', 'I', 'T')
         val scpitScreens = intArrayOf(SCREEN_SONG, SCREEN_CHAIN, SCREEN_PHRASE, SCREEN_INSTRUMENT, SCREEN_TABLE)
         val letterY = statusY + 14
@@ -619,32 +591,7 @@ class M8Emulator {
             val scr = scpitScreens[idx]
             val active = screen == scr
             val color = if (active) cTextBright else cTextDim
-
-            // Draw the letter
             cmds.addAll(drawText(scpitLetters[idx].toString(), lx, letterY, color, cBg))
-
-            // Find this screen's position in the grid to determine up/down neighbours
-            val gridRow = screenGrid.indexOfFirst { it.contains(scr) }
-            val gridCol = if (gridRow >= 0) screenGrid[gridRow].indexOf(scr) else -1
-            if (gridRow >= 0 && gridCol >= 0) {
-                val hasUp = gridRow > 0 && screenGrid[gridRow - 1][gridCol] >= 0
-                val hasDown = gridRow < screenGrid.size - 1 && screenGrid[gridRow + 1][gridCol] >= 0
-
-                // Up arrow indicator: small 3-pixel triangle above the letter
-                if (hasUp) {
-                    val ax = lx + 2
-                    val ay = letterY - 4
-                    cmds.add(drawRect(ax + 1, ay, 1, 1, color))     // top pixel
-                    cmds.add(drawRect(ax, ay + 1, 3, 1, color))     // bottom row
-                }
-                // Down arrow indicator: small 3-pixel triangle below the letter
-                if (hasDown) {
-                    val ax = lx + 2
-                    val ay = letterY + FONT_H + 1
-                    cmds.add(drawRect(ax, ay, 3, 1, color))         // top row
-                    cmds.add(drawRect(ax + 1, ay + 1, 1, 1, color)) // bottom pixel
-                }
-            }
         }
 
         cmds.addAll(drawText("M",     statusX,     letterY + FONT_H + 6,     if (midiActive) cTextBright else cTextDim, cBg))
