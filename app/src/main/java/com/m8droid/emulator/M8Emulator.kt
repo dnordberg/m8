@@ -212,6 +212,20 @@ class M8Emulator {
         resolveCurrentPhrases()
         songPosition++
     }
+    // --- Clipboard for copy/paste ---
+    private var clipboardNote = M8Song.EMPTY
+    private var clipboardInst = M8Song.EMPTY
+    private var clipboardVol = M8Song.EMPTY
+    private var clipboardFx1Cmd = 0; private var clipboardFx1Val = 0
+    private var clipboardFx2Cmd = 0; private var clipboardFx2Val = 0
+    private var clipboardFx3Cmd = 0; private var clipboardFx3Val = 0
+    private var clipboardChainPhrase = M8Song.EMPTY
+    private var clipboardChainTranspose = 0
+    private var clipboardSongChain = M8Song.EMPTY
+    // Selection range for OPT+arrow
+    private var selectionActive = false
+    private var selStartY = 0
+    private var selEndY = 0
 
     // --- Key handling ---
 
@@ -223,90 +237,169 @@ class M8Emulator {
         lastKeys = keys
 
         val shiftHeld = held and M8Commands.KEY_SHIFT != 0
+        val optHeld = held and M8Commands.KEY_OPTION != 0
+        val editHeld = held and M8Commands.KEY_EDIT != 0
         val arrowPressed = pressed and (M8Commands.KEY_UP or M8Commands.KEY_DOWN or
             M8Commands.KEY_LEFT or M8Commands.KEY_RIGHT) != 0
 
-        // Shift+Arrow navigates the view grid (matches real M8 view navigator).
-        // Suppresses the pending octave change from the earlier shift-press edge.
+        // ======== SHIFT+Arrow: screen navigation ========
         if (shiftHeld && arrowPressed && !editMode) {
             shiftChordActive = true
             navigateScreenGrid(pressed)
             return
         }
 
-        // Navigation
-        if (pressed and M8Commands.KEY_UP != 0) {
-            if (editMode && shiftHeld && screen == SCREEN_PHRASE) {
-                editNoteValue(1) // semitone up
-            } else {
-                cursorY = max(0, cursorY - 1)
-            }
-        }
-        if (pressed and M8Commands.KEY_DOWN != 0) {
-            if (editMode && shiftHeld && screen == SCREEN_PHRASE) {
-                editNoteValue(-1) // semitone down
-            } else {
-                cursorY = min(15, cursorY + 1)
-            }
-        }
-        if (pressed and M8Commands.KEY_LEFT != 0) {
-            if (editMode && shiftHeld && screen == SCREEN_PHRASE) {
-                editNoteValue(-12) // octave down
-            } else {
-                cursorX = max(0, cursorX - 1)
-            }
-        }
-        if (pressed and M8Commands.KEY_RIGHT != 0) {
-            if (editMode && shiftHeld && screen == SCREEN_PHRASE) {
-                editNoteValue(12) // octave up
-            } else {
-                val maxX = when (screen) {
-                    SCREEN_SONG, SCREEN_PHRASE -> 7
-                    SCREEN_CHAIN -> 1  // phrase column + transpose column
-                    SCREEN_TABLE -> 4  // transpose, vol, fx1, fx2, fx3
-                    SCREEN_MIXER -> 7
-                    SCREEN_INSTRUMENT -> 0
-                    SCREEN_FX -> 0
-                    SCREEN_CONFIG -> 0
-                    SCREEN_PROJECT -> 0
-                    else -> 7
+        // ======== OPT+EDIT combos (cut/paste) ========
+        if (optHeld && pressed and M8Commands.KEY_EDIT != 0) {
+            shiftChordActive = true
+            when (screen) {
+                SCREEN_PHRASE -> {
+                    val phraseIdx = currentPhrasePerTrack.getOrElse(cursorX) { M8Song.EMPTY }
+                    if (phraseIdx != M8Song.EMPTY && phraseIdx <= 254) {
+                        val step = song.phrases[phraseIdx].steps[cursorY]
+                        clipboardNote = step.note; clipboardInst = step.instrument
+                        clipboardVol = step.volume
+                        clipboardFx1Cmd = step.fx1Cmd; clipboardFx1Val = step.fx1Val
+                        clipboardFx2Cmd = step.fx2Cmd; clipboardFx2Val = step.fx2Val
+                        clipboardFx3Cmd = step.fx3Cmd; clipboardFx3Val = step.fx3Val
+                        step.note = M8Song.EMPTY; step.instrument = M8Song.EMPTY
+                        step.volume = M8Song.EMPTY; step.fx1Cmd = 0; step.fx1Val = 0
+                        step.fx2Cmd = 0; step.fx2Val = 0; step.fx3Cmd = 0; step.fx3Val = 0
+                    }
                 }
-                cursorX = min(maxX, cursorX + 1)
+                SCREEN_CHAIN -> {
+                    val chain = song.chains[selectedChain.coerceIn(0, 254)]
+                    val row = chain.rows[cursorY]
+                    clipboardChainPhrase = row.phrase; clipboardChainTranspose = row.transpose
+                    row.phrase = M8Song.EMPTY; row.transpose = 0
+                }
+                SCREEN_SONG -> {
+                    clipboardSongChain = song.songGrid[cursorY][cursorX]
+                    song.songGrid[cursorY][cursorX] = M8Song.EMPTY
+                }
+            }
+            return
+        }
+
+        // ======== OPT+arrow: selection ========
+        if (optHeld && arrowPressed) {
+            shiftChordActive = true
+            if (!selectionActive) {
+                selectionActive = true
+                selStartY = cursorY
+                selEndY = cursorY
+            }
+            if (pressed and M8Commands.KEY_DOWN != 0) selEndY = min(15, selEndY + 1)
+            if (pressed and M8Commands.KEY_UP != 0) selEndY = max(0, selEndY - 1)
+            cursorY = selEndY
+            return
+        }
+
+        // ======== EDIT key behavior ========
+        if (pressed and M8Commands.KEY_EDIT != 0) {
+            if (optHeld) {
+                // Handled above
+            } else if (selectionActive) {
+                // EDIT while selection active = copy selection
+                selectionActive = false
+                when (screen) {
+                    SCREEN_PHRASE -> {
+                        val phraseIdx = currentPhrasePerTrack.getOrElse(cursorX) { M8Song.EMPTY }
+                        if (phraseIdx != M8Song.EMPTY && phraseIdx <= 254) {
+                            val step = song.phrases[phraseIdx].steps[cursorY]
+                            clipboardNote = step.note; clipboardInst = step.instrument
+                            clipboardVol = step.volume
+                            clipboardFx1Cmd = step.fx1Cmd; clipboardFx1Val = step.fx1Val
+                            clipboardFx2Cmd = step.fx2Cmd; clipboardFx2Val = step.fx2Val
+                            clipboardFx3Cmd = step.fx3Cmd; clipboardFx3Val = step.fx3Val
+                        }
+                    }
+                    SCREEN_CHAIN -> {
+                        val chain = song.chains[selectedChain.coerceIn(0, 254)]
+                        val row = chain.rows[cursorY]
+                        clipboardChainPhrase = row.phrase; clipboardChainTranspose = row.transpose
+                    }
+                    SCREEN_SONG -> {
+                        clipboardSongChain = song.songGrid[cursorY][cursorX]
+                    }
+                }
+            } else if (editMode) {
+                editMode = false
+            } else {
+                editMode = true
             }
         }
 
-        // Play/Stop
+        // ======== OPT pressed alone: paste ========
+        if (pressed and M8Commands.KEY_OPTION != 0 && !shiftHeld && !editHeld && !arrowPressed) {
+            when (screen) {
+                SCREEN_PHRASE -> {
+                    val phraseIdx = currentPhrasePerTrack.getOrElse(cursorX) { M8Song.EMPTY }
+                    if (phraseIdx != M8Song.EMPTY && phraseIdx <= 254) {
+                        val step = song.phrases[phraseIdx].steps[cursorY]
+                        if (clipboardNote != M8Song.EMPTY || clipboardFx1Cmd != 0) {
+                            step.note = clipboardNote; step.instrument = clipboardInst
+                            step.volume = clipboardVol
+                            step.fx1Cmd = clipboardFx1Cmd; step.fx1Val = clipboardFx1Val
+                            step.fx2Cmd = clipboardFx2Cmd; step.fx2Val = clipboardFx2Val
+                            step.fx3Cmd = clipboardFx3Cmd; step.fx3Val = clipboardFx3Val
+                        }
+                    }
+                }
+                SCREEN_CHAIN -> {
+                    val chain = song.chains[selectedChain.coerceIn(0, 254)]
+                    val row = chain.rows[cursorY]
+                    row.phrase = clipboardChainPhrase; row.transpose = clipboardChainTranspose
+                }
+                SCREEN_SONG -> {
+                    song.songGrid[cursorY][cursorX] = clipboardSongChain
+                }
+            }
+        }
+
+        // ======== Edit mode: value changes with arrows ========
+        if (editMode && arrowPressed) {
+            handleEditModeArrows(pressed, shiftHeld)
+            return
+        }
+
+        // ======== Normal cursor movement ========
+        if (pressed and M8Commands.KEY_UP != 0) cursorY = max(0, cursorY - 1)
+        if (pressed and M8Commands.KEY_DOWN != 0) cursorY = min(15, cursorY + 1)
+        if (pressed and M8Commands.KEY_LEFT != 0) cursorX = max(0, cursorX - 1)
+        if (pressed and M8Commands.KEY_RIGHT != 0) {
+            val maxX = when (screen) {
+                SCREEN_SONG -> 7
+                SCREEN_CHAIN -> 1
+                SCREEN_PHRASE -> 8
+                SCREEN_TABLE -> 7
+                SCREEN_MIXER -> 7
+                SCREEN_INSTRUMENT -> 1
+                SCREEN_FX -> 1
+                SCREEN_CONFIG -> 1
+                SCREEN_PROJECT -> 1
+                else -> 7
+            }
+            cursorX = min(maxX, cursorX + 1)
+        }
+
+        // ======== Play/Stop ========
         if (pressed and M8Commands.KEY_PLAY != 0) {
-            playing = !playing
-            if (playing) playRow = 0
+            if (shiftHeld) {
+                playing = true; playRow = cursorY
+            } else {
+                playing = !playing
+                if (playing) playRow = 0
+            }
         }
 
-        // OPT = context action (copy/select/instrument preview depending on screen)
-        // On real M8, OPT alone doesn't switch screens. OPT+arrow combos are
-        // contextual (e.g. OPT+UP/DN = selection, OPT+EDIT = cut, etc.).
-        // For the emulator we treat OPT as a modifier — no standalone action yet.
-        val optHeld = held and M8Commands.KEY_OPTION != 0
-        if (pressed and M8Commands.KEY_OPTION != 0 && !shiftHeld) {
-            // OPT pressed alone: no screen change. Could trigger selection
-            // mode or instrument preview in a future update.
-        }
-
-        // EDIT = toggle edit mode at cursor position (enter/modify values).
-        // On real M8, EDIT does NOT switch screens — it enters the value
-        // under the cursor for editing, or exits edit mode.
-        if (pressed and M8Commands.KEY_EDIT != 0) {
-            editMode = !editMode
-        }
-
-        // Track shift-chord usage so a pure shift tap (release without chord) can bump octave.
-        if (pressed and M8Commands.KEY_SHIFT != 0) {
-            shiftChordActive = false
-        }
+        // ======== Shift tap = octave bump ========
+        if (pressed and M8Commands.KEY_SHIFT != 0) shiftChordActive = false
         if (released and M8Commands.KEY_SHIFT != 0 && !shiftChordActive && !editMode) {
             octave = (octave % 8) + 1
         }
 
-        // Update selected items based on cursor when navigating song/chain
+        // ======== Update selected items ========
         if (screen == SCREEN_SONG) {
             val chainIdx = song.songGrid[cursorY][cursorX]
             if (chainIdx != M8Song.EMPTY) selectedChain = chainIdx
@@ -315,22 +408,175 @@ class M8Emulator {
             val row = song.chains[selectedChain.coerceIn(0, 254)].rows[cursorY]
             if (row.phrase != M8Song.EMPTY) selectedPhrase = row.phrase
         }
+        if (arrowPressed && !optHeld) selectionActive = false
     }
 
+    /** Handle arrow keys in edit mode — increment/decrement values */
+    private fun handleEditModeArrows(pressed: Int, shiftHeld: Boolean) {
+        when (screen) {
+            SCREEN_PHRASE -> {
+                val phraseIdx = currentPhrasePerTrack.getOrElse(cursorX.coerceAtMost(7)) { M8Song.EMPTY }
+                if (phraseIdx == M8Song.EMPTY || phraseIdx > 254) return
+                val step = song.phrases[phraseIdx].steps[cursorY]
+                when (cursorX) {
+                    0 -> { // Note column
+                        val delta = when {
+                            pressed and M8Commands.KEY_UP != 0 -> if (shiftHeld) 12 else 1
+                            pressed and M8Commands.KEY_DOWN != 0 -> if (shiftHeld) -12 else -1
+                            pressed and M8Commands.KEY_RIGHT != 0 -> 12
+                            pressed and M8Commands.KEY_LEFT != 0 -> -12
+                            else -> 0
+                        }
+                        if (step.note == M8Song.EMPTY) {
+                            step.note = 60 + (octave - 4) * 12
+                        } else if (step.note != M8Song.NOTE_OFF) {
+                            step.note = (step.note + delta).coerceIn(1, 127)
+                        }
+                    }
+                    1 -> step.instrument = editHex(pressed, shiftHeld, step.instrument).coerceIn(0, 127)
+                    2 -> step.volume = editHex(pressed, shiftHeld, step.volume).coerceIn(0, 0xFF)
+                    3 -> step.fx1Cmd = editHex(pressed, shiftHeld, step.fx1Cmd).coerceIn(0, 0xFF)
+                    4 -> step.fx1Val = editHex(pressed, shiftHeld, step.fx1Val).coerceIn(0, 0xFF)
+                    5 -> step.fx2Cmd = editHex(pressed, shiftHeld, step.fx2Cmd).coerceIn(0, 0xFF)
+                    6 -> step.fx2Val = editHex(pressed, shiftHeld, step.fx2Val).coerceIn(0, 0xFF)
+                    7 -> step.fx3Cmd = editHex(pressed, shiftHeld, step.fx3Cmd).coerceIn(0, 0xFF)
+                    8 -> step.fx3Val = editHex(pressed, shiftHeld, step.fx3Val).coerceIn(0, 0xFF)
+                }
+            }
+            SCREEN_CHAIN -> {
+                val chain = song.chains[selectedChain.coerceIn(0, 254)]
+                val row = chain.rows[cursorY]
+                when (cursorX) {
+                    0 -> row.phrase = editHex(pressed, shiftHeld, row.phrase).coerceIn(0, 0xFE)
+                    1 -> {
+                        val delta = when {
+                            pressed and M8Commands.KEY_UP != 0 -> 1
+                            pressed and M8Commands.KEY_DOWN != 0 -> -1
+                            pressed and M8Commands.KEY_RIGHT != 0 -> 12
+                            pressed and M8Commands.KEY_LEFT != 0 -> -12
+                            else -> 0
+                        }
+                        row.transpose = (row.transpose + delta).coerceIn(-128, 127)
+                    }
+                }
+            }
+            SCREEN_SONG -> {
+                val cur = song.songGrid[cursorY][cursorX]
+                song.songGrid[cursorY][cursorX] = editHex(pressed, shiftHeld, cur).coerceIn(0, 0xFE)
+            }
+            SCREEN_TABLE -> {
+                val table = song.tables[selectedTable.coerceIn(0, 255)]
+                val row = table.rows[cursorY]
+                when (cursorX) {
+                    0 -> {
+                        val delta = when {
+                            pressed and M8Commands.KEY_UP != 0 -> 1
+                            pressed and M8Commands.KEY_DOWN != 0 -> -1
+                            else -> 0
+                        }
+                        row.transpose = (row.transpose + delta).coerceIn(-128, 127)
+                    }
+                    1 -> row.volume = editHex(pressed, shiftHeld, row.volume).coerceIn(0, 0xFF)
+                    2 -> row.fx1Cmd = editHex(pressed, shiftHeld, row.fx1Cmd).coerceIn(0, 0xFF)
+                    3 -> row.fx1Val = editHex(pressed, shiftHeld, row.fx1Val).coerceIn(0, 0xFF)
+                    4 -> row.fx2Cmd = editHex(pressed, shiftHeld, row.fx2Cmd).coerceIn(0, 0xFF)
+                    5 -> row.fx2Val = editHex(pressed, shiftHeld, row.fx2Val).coerceIn(0, 0xFF)
+                    6 -> row.fx3Cmd = editHex(pressed, shiftHeld, row.fx3Cmd).coerceIn(0, 0xFF)
+                    7 -> row.fx3Val = editHex(pressed, shiftHeld, row.fx3Val).coerceIn(0, 0xFF)
+                }
+            }
+            SCREEN_MIXER -> {
+                val mx = song.mixer
+                when {
+                    cursorY in 0..7 -> {
+                        val t = cursorY
+                        when (cursorX) {
+                            0 -> mx.trackVolumes[t] = editHex(pressed, shiftHeld, mx.trackVolumes[t]).coerceIn(0, 0xFF)
+                            1 -> mx.trackPans[t] = editHex(pressed, shiftHeld, mx.trackPans[t]).coerceIn(0, 0xFF)
+                            2 -> mx.trackChorusSend[t] = editHex(pressed, shiftHeld, mx.trackChorusSend[t]).coerceIn(0, 0xFF)
+                            3 -> mx.trackDelaySend[t] = editHex(pressed, shiftHeld, mx.trackDelaySend[t]).coerceIn(0, 0xFF)
+                            4 -> mx.trackReverbSend[t] = editHex(pressed, shiftHeld, mx.trackReverbSend[t]).coerceIn(0, 0xFF)
+                        }
+                    }
+                    cursorY == 8 -> mx.masterVolume = editHex(pressed, shiftHeld, mx.masterVolume).coerceIn(0, 0xFF)
+                    cursorY == 9 -> mx.djFilter = editHex(pressed, shiftHeld, mx.djFilter).coerceIn(0, 0xFF)
+                }
+            }
+            SCREEN_INSTRUMENT -> {
+                val inst = instruments[selectedInstrument.coerceIn(0, 7)]
+                if (cursorX == 1) {
+                    val typeParams = inst.getTypeParams()
+                    val sharedParams = inst.getSharedParams()
+                    val allParams = typeParams + sharedParams
+                    if (cursorY in allParams.indices) {
+                        editInstrumentParam(pressed, shiftHeld, inst, cursorY, typeParams.size)
+                    }
+                } else {
+                    if (pressed and M8Commands.KEY_UP != 0) cursorY = max(0, cursorY - 1)
+                    if (pressed and M8Commands.KEY_DOWN != 0) cursorY = min(20, cursorY + 1)
+                }
+            }
+        }
+    }
+
+    /** Edit a hex byte value: UP/DOWN = ±1 (±16 with shift), LEFT/RIGHT = ±16 */
+    private fun editHex(pressed: Int, shiftHeld: Boolean, cur: Int): Int {
+        val v = if (cur == M8Song.EMPTY) 0 else cur
+        val small = if (shiftHeld) 16 else 1
+        val delta = when {
+            pressed and M8Commands.KEY_UP != 0 -> small
+            pressed and M8Commands.KEY_DOWN != 0 -> -small
+            pressed and M8Commands.KEY_RIGHT != 0 -> 0x10
+            pressed and M8Commands.KEY_LEFT != 0 -> -0x10
+            else -> 0
+        }
+        return v + delta
+    }
+
+    /** Edit instrument parameter by row index */
+    private fun editInstrumentParam(pressed: Int, shiftHeld: Boolean, inst: M8Instrument, row: Int, typeParamCount: Int) {
+        val delta = when {
+            pressed and M8Commands.KEY_UP != 0 -> if (shiftHeld) 16 else 1
+            pressed and M8Commands.KEY_DOWN != 0 -> if (shiftHeld) -16 else -1
+            pressed and M8Commands.KEY_RIGHT != 0 -> 16
+            pressed and M8Commands.KEY_LEFT != 0 -> -16
+            else -> 0
+        }
+        if (delta == 0) return
+
+        if (row < typeParamCount) {
+            when (inst.type) {
+                InstrumentType.WAVSYNTH -> when (row) {
+                    0 -> inst.wavSynth.shape = WavShape.fromIndex((inst.wavSynth.shape.ordinal + delta).coerceIn(0, WavShape.entries.size - 1))
+                    1 -> inst.wavSynth.size = (inst.wavSynth.size + delta).coerceIn(0, 0xFF)
+                    2 -> inst.wavSynth.mult = (inst.wavSynth.mult + delta).coerceIn(0, 0xFF)
+                    3 -> inst.wavSynth.warp = (inst.wavSynth.warp + delta).coerceIn(0, 0xFF)
+                    4 -> inst.wavSynth.mirror = (inst.wavSynth.mirror + delta).coerceIn(0, 0xFF)
+                }
+                InstrumentType.FM_SYNTH -> when (row) {
+                    0 -> inst.fmSynth.algorithm = FmAlgorithm.fromIndex((inst.fmSynth.algorithm.ordinal + delta).coerceIn(0, FmAlgorithm.entries.size - 1))
+                }
+                else -> {}
+            }
+        } else {
+            val sharedRow = row - typeParamCount
+            when (sharedRow) {
+                0 -> inst.filter.type = FilterType.fromIndex((inst.filter.type.ordinal + delta).coerceIn(0, FilterType.entries.size - 1))
+                1 -> inst.filter.cutoff = (inst.filter.cutoff + delta).coerceIn(0, 0xFF)
+                2 -> inst.filter.resonance = (inst.filter.resonance + delta).coerceIn(0, 0xFF)
+                3 -> inst.amp.amp = (inst.amp.amp + delta).coerceIn(0, 0xFF)
+                4 -> inst.amp.limiter = LimiterType.fromIndex((inst.amp.limiter.ordinal + delta).coerceIn(0, LimiterType.entries.size - 1))
+                5 -> inst.amp.pan = (inst.amp.pan + delta).coerceIn(0, 0xFF)
+                6 -> inst.amp.dry = (inst.amp.dry + delta).coerceIn(0, 0xFF)
+                7 -> inst.amp.chorusSend = (inst.amp.chorusSend + delta).coerceIn(0, 0xFF)
+                8 -> inst.amp.delaySend = (inst.amp.delaySend + delta).coerceIn(0, 0xFF)
+                9 -> inst.amp.reverbSend = (inst.amp.reverbSend + delta).coerceIn(0, 0xFF)
+            }
+        }
+    }
+
+
     // Shift+Arrow navigates the on-screen P / SCPIT / M cluster.
-    //
-    //   P             ← PROJECT     (top of the column)
-    //   S C P I T     ← SCPIT row   (SONG CHAIN PHRASE INSTR TABLE)
-    //   M             ← MIXER       (bottom of the column; M-row also holds FX, CONFIG)
-    //
-    // Rules:
-    //   SHIFT+UP   from any SCPIT screen → PROJECT (remembers which SCPIT was active)
-    //   SHIFT+DOWN from any SCPIT screen → MIXER
-    //   SHIFT+UP   from MIXER/FX/CONFIG  → last-active SCPIT screen
-    //   SHIFT+DOWN from PROJECT          → last-active SCPIT screen
-    //   SHIFT+LEFT/RIGHT cycles within the current row (SCPIT or MIXER/FX/CONFIG), clamped.
-    //   PROJECT is a single-screen row, so LEFT/RIGHT/UP on it are no-ops.
-    //   MIXER row LEFT/RIGHT cycles MIXER → FX → CONFIG (clamped).
     private val scpitOrder = listOf(
         SCREEN_SONG, SCREEN_CHAIN, SCREEN_PHRASE, SCREEN_INSTRUMENT, SCREEN_TABLE
     )
@@ -377,15 +623,6 @@ class M8Emulator {
         if (next in scpitOrder) lastScpitScreen = next
         screen = next
         editMode = false
-    }
-
-    private fun editNoteValue(delta: Int) {
-        if (screen != SCREEN_PHRASE) return
-        val phraseIdx = currentPhrasePerTrack.getOrElse(cursorX) { M8Song.EMPTY }
-        if (phraseIdx == M8Song.EMPTY || phraseIdx > 254) return
-        val step = song.phrases[phraseIdx].steps[cursorY]
-        if (step.note == M8Song.EMPTY || step.note == M8Song.NOTE_OFF) return
-        step.note = (step.note + delta).coerceIn(1, 127)
     }
 
     // --- Frame rendering ---
