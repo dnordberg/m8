@@ -862,16 +862,17 @@ class M8Emulator {
             cmds.addAll(drawText("SHIFT", rpX + 12, modeY + 1, intArrayOf(255, 255, 255), intArrayOf(60, 60, 160)))
         }
 
-        // Bottom-right status cluster (mirrors real M8):
+        // Bottom-right status cluster:
         //   P            ← project dirty
-        //   SCPIT        ← Song / Chain / Phrase / Instr / Table live indicators
+        //   SCPIT        ← Song / Chain / Phrase / Instr / Table
+        //   MFC          ← Mixer / FX / Config
         //   M            ← MIDI activity
         val statusX = rpX
-        val statusY = HEIGHT - 38
+        val statusY = HEIGHT - 50
 
         cmds.addAll(drawText("P",     statusX,     statusY,          if (screen == SCREEN_PROJECT) cTextBright else cTextDim, cBg))
 
-        // SCPIT letters — show which screen is active in the linear tab strip.
+        // SCPIT letters — top row of screen grid
         val scpitLetters = charArrayOf('S', 'C', 'P', 'I', 'T')
         val scpitScreens = intArrayOf(SCREEN_SONG, SCREEN_CHAIN, SCREEN_PHRASE, SCREEN_INSTRUMENT, SCREEN_TABLE)
         val letterY = statusY + 14
@@ -883,7 +884,19 @@ class M8Emulator {
             cmds.addAll(drawText(scpitLetters[idx].toString(), lx, letterY, color, cBg))
         }
 
-        cmds.addAll(drawText("M",     statusX,     letterY + FONT_H + 6,     if (midiActive) cTextBright else cTextDim, cBg))
+        // MFC letters — bottom row of screen grid (Mixer / FX / Config)
+        val mfcLetters = charArrayOf('M', 'F', 'C')
+        val mfcScreens = intArrayOf(SCREEN_MIXER, SCREEN_FX, SCREEN_CONFIG)
+        val mfcY = letterY + FONT_H + 2
+        for (idx in mfcLetters.indices) {
+            val lx = statusX + idx * 8
+            val scr = mfcScreens[idx]
+            val active = screen == scr
+            val color = if (active) cTextBright else cTextDim
+            cmds.addAll(drawText(mfcLetters[idx].toString(), lx, mfcY, color, cBg))
+        }
+
+        cmds.addAll(drawText("M",     statusX + 40,     mfcY,     if (midiActive) cTextBright else cTextDim, cBg))
 
         return cmds
     }
