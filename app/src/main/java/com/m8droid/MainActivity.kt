@@ -210,6 +210,8 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
                             bitmap = viewModel.connectionManager.display.snapshot(),
                             invalidationTick = displayTick,
                             onScreenTap = { viewModel.setScreen(it) },
+                            onSwipeLeft = { viewModel.nextScreen() },
+                            onSwipeRight = { viewModel.prevScreen() },
                         )
                     }
                     val onKeys: (Int) -> Unit = { keys -> viewModel.setTouchKeys(keys) }
