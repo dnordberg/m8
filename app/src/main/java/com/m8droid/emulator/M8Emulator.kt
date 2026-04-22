@@ -847,6 +847,21 @@ class M8Emulator {
             cmds.add(drawRect(kbX + offset * whiteKeyW - 3, kbY, 5, 11, cKeyBlack))
         }
 
+        // Mode indicator (EDIT / OPT / SHIFT held)
+        val modeY = kbY + kbH + 6
+        val optHeld = lastKeys and M8Commands.KEY_OPTION != 0
+        val shiftHeld = lastKeys and M8Commands.KEY_SHIFT != 0
+        if (editMode) {
+            cmds.add(drawRect(rpX, modeY, 64, 12, intArrayOf(180, 60, 30)))
+            cmds.addAll(drawText("EDIT", rpX + 16, modeY + 1, intArrayOf(255, 255, 255), intArrayOf(180, 60, 30)))
+        } else if (optHeld) {
+            cmds.add(drawRect(rpX, modeY, 64, 12, intArrayOf(40, 120, 60)))
+            cmds.addAll(drawText("OPT", rpX + 20, modeY + 1, intArrayOf(255, 255, 255), intArrayOf(40, 120, 60)))
+        } else if (shiftHeld) {
+            cmds.add(drawRect(rpX, modeY, 64, 12, intArrayOf(60, 60, 160)))
+            cmds.addAll(drawText("SHIFT", rpX + 12, modeY + 1, intArrayOf(255, 255, 255), intArrayOf(60, 60, 160)))
+        }
+
         // Bottom-right status cluster (mirrors real M8):
         //   P            ← project dirty
         //   SCPIT        ← Song / Chain / Phrase / Instr / Table live indicators
