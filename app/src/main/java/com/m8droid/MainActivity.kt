@@ -221,6 +221,10 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
                             onHelp = { showHelpMenu = true },
                             onAcademy = { appMode = AppMode.ACADEMY },
                         )
+                        ScreenTabBar(
+                            currentScreen = viewModel.currentScreen,
+                            onScreenSelected = { viewModel.setScreen(it) },
+                        )
                         // Quest overlay when a quest is active
                         if (academyState == AcademyState.QUEST_ACTIVE && activeQuest != null) {
                             QuestOverlay(

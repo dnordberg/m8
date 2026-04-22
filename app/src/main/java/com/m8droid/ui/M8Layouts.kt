@@ -2,6 +2,7 @@ package com.m8droid.ui
 
 import android.view.HapticFeedbackConstants
 import android.view.View
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -196,6 +197,50 @@ private fun DeviceButton(
                     fontWeight = FontWeight.Bold,
                 )
             }
+        }
+    }
+}
+
+private val TAB_NAMES = arrayOf("SONG", "CHAIN", "PHRASE", "INSTR", "TABLE", "MIXER", "FX", "CONFIG")
+private val TAB_NEON = Color(0xFF64A0DC)
+private val TAB_DIM = Color(0xFF324060)
+private val TAB_ACTIVE_BG = Color(0xFF283F66)
+
+/**
+ * Tappable screen tab bar for touch navigation. Mirrors the M8 header
+ * tabs but as real Compose buttons so users don't need SHIFT+arrow.
+ */
+@Composable
+fun ScreenTabBar(
+    currentScreen: Int,
+    onScreenSelected: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(Color(0xFF0A0F1E))
+            .padding(horizontal = 4.dp, vertical = 2.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+    ) {
+        TAB_NAMES.forEachIndexed { i, name ->
+            val active = i == currentScreen
+            val short = if (active) name else name.take(3)
+            Text(
+                text = short,
+                color = if (active) TAB_NEON else TAB_DIM,
+                fontSize = 11.sp,
+                fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+                fontFamily = FontFamily.Monospace,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .background(
+                        if (active) TAB_ACTIVE_BG else Color.Transparent,
+                        RoundedCornerShape(3.dp),
+                    )
+                    .clickable { onScreenSelected(i) }
+                    .padding(horizontal = 4.dp, vertical = 3.dp),
+            )
         }
     }
 }
