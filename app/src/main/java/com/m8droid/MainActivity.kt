@@ -209,6 +209,7 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
                         M8Screen(
                             bitmap = viewModel.connectionManager.display.snapshot(),
                             invalidationTick = displayTick,
+                            onScreenTap = { viewModel.setScreen(it) },
                         )
                     }
                     val onKeys: (Int) -> Unit = { keys -> viewModel.setTouchKeys(keys) }
@@ -220,10 +221,6 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
                             onSettings = { showSettings = true },
                             onHelp = { showHelpMenu = true },
                             onAcademy = { appMode = AppMode.ACADEMY },
-                        )
-                        ScreenTabBar(
-                            currentScreen = viewModel.currentScreen,
-                            onScreenSelected = { viewModel.setScreen(it) },
                         )
                         // Quest overlay when a quest is active
                         if (academyState == AcademyState.QUEST_ACTIVE && activeQuest != null) {
