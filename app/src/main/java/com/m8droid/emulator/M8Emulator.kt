@@ -848,55 +848,48 @@ class M8Emulator {
         }
 
         // Mode indicator (EDIT / OPT / SHIFT held)
-        val modeY = kbY + kbH + 6
+        val modeY = kbY + kbH + 4
         val optHeld = lastKeys and M8Commands.KEY_OPTION != 0
         val shiftHeld = lastKeys and M8Commands.KEY_SHIFT != 0
         if (editMode) {
-            cmds.add(drawRect(rpX, modeY, 64, 12, intArrayOf(180, 60, 30)))
-            cmds.addAll(drawText("EDIT", rpX + 16, modeY + 1, intArrayOf(255, 255, 255), intArrayOf(180, 60, 30)))
+            cmds.add(drawRect(rpX, modeY, 64, 10, intArrayOf(180, 60, 30)))
+            cmds.addAll(drawText("EDIT", rpX + 16, modeY, intArrayOf(255, 255, 255), intArrayOf(180, 60, 30)))
         } else if (optHeld) {
-            cmds.add(drawRect(rpX, modeY, 64, 12, intArrayOf(40, 120, 60)))
-            cmds.addAll(drawText("OPT", rpX + 20, modeY + 1, intArrayOf(255, 255, 255), intArrayOf(40, 120, 60)))
+            cmds.add(drawRect(rpX, modeY, 64, 10, intArrayOf(40, 120, 60)))
+            cmds.addAll(drawText("OPT", rpX + 20, modeY, intArrayOf(255, 255, 255), intArrayOf(40, 120, 60)))
         } else if (shiftHeld) {
-            cmds.add(drawRect(rpX, modeY, 64, 12, intArrayOf(60, 60, 160)))
-            cmds.addAll(drawText("SHIFT", rpX + 12, modeY + 1, intArrayOf(255, 255, 255), intArrayOf(60, 60, 160)))
+            cmds.add(drawRect(rpX, modeY, 64, 10, intArrayOf(60, 60, 160)))
+            cmds.addAll(drawText("SHIFT", rpX + 12, modeY, intArrayOf(255, 255, 255), intArrayOf(60, 60, 160)))
         }
 
-        // Bottom-right status cluster:
-        //   P            ← project dirty
-        //   SCPIT        ← Song / Chain / Phrase / Instr / Table
-        //   MFC          ← Mixer / FX / Config
-        //   M            ← MIDI activity
-        val statusX = rpX
-        val statusY = HEIGHT - 50
+        // Bottom-right status cluster — navigation grid + MIDI
+        //   P  SCPIT        ← Project + top row
+        //     MFC      M    ← bottom row + MIDI
+        val statusY = HEIGHT - 24
 
-        cmds.addAll(drawText("P",     statusX,     statusY,          if (screen == SCREEN_PROJECT) cTextBright else cTextDim, cBg))
+        cmds.addAll(drawText("P", rpX, statusY, if (screen == SCREEN_PROJECT) cTextBright else cTextDim, cBg))
 
         // SCPIT letters — top row of screen grid
         val scpitLetters = charArrayOf('S', 'C', 'P', 'I', 'T')
         val scpitScreens = intArrayOf(SCREEN_SONG, SCREEN_CHAIN, SCREEN_PHRASE, SCREEN_INSTRUMENT, SCREEN_TABLE)
-        val letterY = statusY + 14
         for (idx in scpitLetters.indices) {
-            val lx = statusX + idx * 8
-            val scr = scpitScreens[idx]
-            val active = screen == scr
-            val color = if (active) cTextBright else cTextDim
-            cmds.addAll(drawText(scpitLetters[idx].toString(), lx, letterY, color, cBg))
+            val lx = rpX + 12 + idx * 8
+            val active = screen == scpitScreens[idx]
+            cmds.addAll(drawText(scpitLetters[idx].toString(), lx, statusY, if (active) cTextBright else cTextDim, cBg))
         }
 
         // MFC letters — bottom row of screen grid (Mixer / FX / Config)
         val mfcLetters = charArrayOf('M', 'F', 'C')
         val mfcScreens = intArrayOf(SCREEN_MIXER, SCREEN_FX, SCREEN_CONFIG)
-        val mfcY = letterY + FONT_H + 2
+        val mfcY = statusY + FONT_H + 2
         for (idx in mfcLetters.indices) {
-            val lx = statusX + idx * 8
-            val scr = mfcScreens[idx]
-            val active = screen == scr
-            val color = if (active) cTextBright else cTextDim
-            cmds.addAll(drawText(mfcLetters[idx].toString(), lx, mfcY, color, cBg))
+            val lx = rpX + 12 + idx * 8
+            val active = screen == mfcScreens[idx]
+            cmds.addAll(drawText(mfcLetters[idx].toString(), lx, mfcY, if (active) cTextBright else cTextDim, cBg))
         }
 
-        cmds.addAll(drawText("M",     statusX + 40,     mfcY,     if (midiActive) cTextBright else cTextDim, cBg))
+        // MIDI indicator
+        cmds.addAll(drawText("M", rpX + 52, mfcY, if (midiActive) cTextBright else cTextDim, cBg))
 
         return cmds
     }
