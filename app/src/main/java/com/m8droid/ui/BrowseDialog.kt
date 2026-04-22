@@ -179,10 +179,15 @@ fun BrowseDialog(
                                 downloading = downloading,
                                 lastDownloaded = lastDownloaded,
                                 loadStatus = loadStatus,
+                                slotCount = slotCount,
                                 onDownload = { viewModel.downloadSelected() },
                                 onDownloadAndLoadSong = {
                                     val it = selected ?: return@DetailPane
                                     viewModel.downloadAndLoadSong(it, onLoadSong)
+                                },
+                                onDownloadAndLoadInstrument = { slot ->
+                                    val it = selected ?: return@DetailPane
+                                    viewModel.downloadAndLoadInstrument(it, slot, onLoadInstrument)
                                 },
                                 onDismissResult = { viewModel.clearLastDownloaded() },
                             )
@@ -521,8 +526,10 @@ private fun DetailPane(
     downloading: Boolean,
     lastDownloaded: com.m8droid.browse.DownloadStore.Entry?,
     loadStatus: String?,
+    slotCount: Int,
     onDownload: () -> Unit,
     onDownloadAndLoadSong: () -> Unit,
+    onDownloadAndLoadInstrument: (slot: Int) -> Unit,
     onDismissResult: () -> Unit,
 ) {
     Column(
@@ -594,28 +601,91 @@ private fun DetailPane(
                     .padding(horizontal = 10.dp, vertical = 4.dp),
             )
         } else {
-            // Songs get a "save + load in one click" action; everything
-            // else still uses plain download-to-SD.
+            // Songs get a "save + load in one click" action; instruments
+            // get a slot picker + save+load; everything else uses plain download.
             val isSong = item.kind == ContentKind.SONG
-            val label = when {
-                downloading && isSong -> "LOADING..."
-                downloading -> "DOWNLOADING..."
-                isSong -> "[SAVE + LOAD]"
-                else -> "[DOWNLOAD]"
-            }
-            Text(
-                text = label,
-                color = M8_GREEN,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace,
-                modifier = Modifier
-                    .border(1.dp, M8_GREEN, RoundedCornerShape(4.dp))
-                    .clickable(enabled = !downloading) {
-                        if (isSong) onDownloadAndLoadSong() else onDownload()
+            val isInst = item.kind == ContentKind.INSTRUMENT
+            when {
+                isSong -> {
+                    val label = if (downloading) "LOADING..." else "[SAVE + LOAD]"
+                    Text(
+                        text = label,
+                        color = M8_GREEN,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier
+                            .border(1.dp, M8_GREEN, RoundedCornerShape(4.dp))
+                            .clickable(enabled = !downloading) { onDownloadAndLoadSong() }
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                    )
+                }
+                isInst -> {
+                    var selectedSlot by remember(item.id) { mutableStateOf(0) }
+                    Text(
+                        text = "SAVE + LOAD INTO SLOT",
+                        color = M8_GREEN,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        repeat(slotCount) { i ->
+                            val active = i == selectedSlot
+                            Box(
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .border(
+                                        1.dp,
+                                        if (active) M8_GREEN else M8_DIM,
+                                        RoundedCornerShape(3.dp),
+                                    )
+                                    .background(
+                                        if (active) M8_GREEN.copy(alpha = 0.2f) else Color.Transparent,
+                                    )
+                                    .clickable { selectedSlot = i },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = i.toString(),
+                                    color = if (active) M8_GREEN else M8_DIM,
+                                    fontSize = 11.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                        }
                     }
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
-            )
+                    Spacer(Modifier.height(8.dp))
+                    val label = if (downloading) "LOADING..." else "[SAVE + LOAD]"
+                    Text(
+                        text = label,
+                        color = M8_GREEN,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier
+                            .border(1.dp, M8_GREEN, RoundedCornerShape(4.dp))
+                            .clickable(enabled = !downloading) { onDownloadAndLoadInstrument(selectedSlot) }
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                    )
+                }
+                else -> {
+                    val label = if (downloading) "DOWNLOADING..." else "[DOWNLOAD]"
+                    Text(
+                        text = label,
+                        color = M8_GREEN,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier
+                            .border(1.dp, M8_GREEN, RoundedCornerShape(4.dp))
+                            .clickable(enabled = !downloading) { onDownload() }
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                    )
+                }
+            }
             if (!loadStatus.isNullOrBlank()) {
                 Spacer(Modifier.height(6.dp))
                 val isError = loadStatus.startsWith("ERROR", ignoreCase = true)

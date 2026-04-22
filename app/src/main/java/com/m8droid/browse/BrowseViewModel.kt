@@ -179,6 +179,33 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     /**
+     * Download a remote .m8i, save it to the SD store, and immediately
+     * parse + load it into a slot. One-click flow for instruments.
+     */
+    fun downloadAndLoadInstrument(
+        item: RemoteItem,
+        slot: Int,
+        apply: (Int, M8Instrument) -> Unit,
+    ) {
+        _downloading.value = true
+        _error.value = null
+        _loadStatus.value = null
+        viewModelScope.launch {
+            val result = runCatching {
+                val bytes = http.getBytes(item.downloadUrl)
+                val entry = withContext(Dispatchers.IO) { store.save(item, bytes) }
+                _lastDownloaded.value = entry
+                _sdEntries.value = store.list().sortedByDescending { it.downloadedAt }
+                val inst = M8iParser.parse(bytes)
+                apply(slot, inst)
+                "LOADED '${inst.name}' -> SLOT $slot"
+            }
+            _loadStatus.value = result.getOrElse { "ERROR: ${it.message ?: "load failed"}" }
+            _downloading.value = false
+        }
+    }
+
+    /**
      * Download a remote .m8s, save it to the SD store, and immediately
      * parse + apply it. This is the "one-click" load flow: the user
      * picks a song in the browser and hears it without a separate
