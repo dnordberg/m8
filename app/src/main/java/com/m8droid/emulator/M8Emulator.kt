@@ -364,8 +364,20 @@ class M8Emulator {
         }
 
         // ======== Normal cursor movement ========
-        if (pressed and M8Commands.KEY_UP != 0) cursorY = max(0, cursorY - 1)
-        if (pressed and M8Commands.KEY_DOWN != 0) cursorY = min(15, cursorY + 1)
+        if (pressed and M8Commands.KEY_UP != 0) {
+            cursorY = max(0, cursorY - 1)
+            // Skip FX section-header gaps
+            if (screen == SCREEN_FX && (cursorY == 4 || cursorY == 12)) cursorY--
+        }
+        if (pressed and M8Commands.KEY_DOWN != 0) {
+            val maxY = when (screen) {
+                SCREEN_FX -> 19
+                else -> 15
+            }
+            cursorY = min(maxY, cursorY + 1)
+            // Skip FX section-header gaps
+            if (screen == SCREEN_FX && (cursorY == 4 || cursorY == 12)) cursorY++
+        }
         if (pressed and M8Commands.KEY_LEFT != 0) cursorX = max(0, cursorX - 1)
         if (pressed and M8Commands.KEY_RIGHT != 0) {
             val maxX = when (screen) {
@@ -516,6 +528,31 @@ class M8Emulator {
                     if (pressed and M8Commands.KEY_DOWN != 0) cursorY = min(20, cursorY + 1)
                 }
             }
+            SCREEN_FX -> {
+                // FX params are rendered with cursorY == line - 2 offset.
+                // Chorus: cursorY 0..3, gap at 4, Delay: cursorY 5..11,
+                // gap at 12, Reverb: cursorY 13..19
+                when (cursorY) {
+                    0 -> song.chorus.modDepth = editHex(pressed, shiftHeld, song.chorus.modDepth).coerceIn(0, 0xFF)
+                    1 -> song.chorus.modFreq = editHex(pressed, shiftHeld, song.chorus.modFreq).coerceIn(0, 0xFF)
+                    2 -> song.chorus.width = editHex(pressed, shiftHeld, song.chorus.width).coerceIn(0, 0xFF)
+                    3 -> song.chorus.reverbSend = editHex(pressed, shiftHeld, song.chorus.reverbSend).coerceIn(0, 0xFF)
+                    5 -> song.delay.filterHP = editHex(pressed, shiftHeld, song.delay.filterHP).coerceIn(0, 0xFF)
+                    6 -> song.delay.filterLP = editHex(pressed, shiftHeld, song.delay.filterLP).coerceIn(0, 0xFF)
+                    7 -> song.delay.timeL = editHex(pressed, shiftHeld, song.delay.timeL).coerceIn(0, 0xFF)
+                    8 -> song.delay.timeR = editHex(pressed, shiftHeld, song.delay.timeR).coerceIn(0, 0xFF)
+                    9 -> song.delay.feedback = editHex(pressed, shiftHeld, song.delay.feedback).coerceIn(0, 0xFF)
+                    10 -> song.delay.width = editHex(pressed, shiftHeld, song.delay.width).coerceIn(0, 0xFF)
+                    11 -> song.delay.reverbSend = editHex(pressed, shiftHeld, song.delay.reverbSend).coerceIn(0, 0xFF)
+                    13 -> song.reverb.filterHP = editHex(pressed, shiftHeld, song.reverb.filterHP).coerceIn(0, 0xFF)
+                    14 -> song.reverb.filterLP = editHex(pressed, shiftHeld, song.reverb.filterLP).coerceIn(0, 0xFF)
+                    15 -> song.reverb.size = editHex(pressed, shiftHeld, song.reverb.size).coerceIn(0, 0xFF)
+                    16 -> song.reverb.damping = editHex(pressed, shiftHeld, song.reverb.damping).coerceIn(0, 0xFF)
+                    17 -> song.reverb.modDepth = editHex(pressed, shiftHeld, song.reverb.modDepth).coerceIn(0, 0xFF)
+                    18 -> song.reverb.modFreq = editHex(pressed, shiftHeld, song.reverb.modFreq).coerceIn(0, 0xFF)
+                    19 -> song.reverb.width = editHex(pressed, shiftHeld, song.reverb.width).coerceIn(0, 0xFF)
+                }
+            }
         }
     }
 
@@ -599,22 +636,22 @@ class M8Emulator {
             pressed and M8Commands.KEY_LEFT != 0 -> when {
                 prev in scpitOrder -> {
                     val i = scpitOrder.indexOf(prev)
-                    scpitOrder[max(0, i - 1)]
+                    if (i == 0) mRowOrder.last() else scpitOrder[i - 1]
                 }
                 prev in mRowOrder -> {
                     val i = mRowOrder.indexOf(prev)
-                    mRowOrder[max(0, i - 1)]
+                    if (i == 0) scpitOrder.last() else mRowOrder[i - 1]
                 }
                 else -> prev
             }
             pressed and M8Commands.KEY_RIGHT != 0 -> when {
                 prev in scpitOrder -> {
                     val i = scpitOrder.indexOf(prev)
-                    scpitOrder[min(scpitOrder.size - 1, i + 1)]
+                    if (i == scpitOrder.size - 1) mRowOrder.first() else scpitOrder[i + 1]
                 }
                 prev in mRowOrder -> {
                     val i = mRowOrder.indexOf(prev)
-                    mRowOrder[min(mRowOrder.size - 1, i + 1)]
+                    if (i == mRowOrder.size - 1) scpitOrder.first() else mRowOrder[i + 1]
                 }
                 else -> prev
             }
