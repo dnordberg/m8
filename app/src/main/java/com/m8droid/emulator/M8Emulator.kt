@@ -516,17 +516,7 @@ class M8Emulator {
             }
             SCREEN_INSTRUMENT -> {
                 val inst = instruments[selectedInstrument.coerceIn(0, 7)]
-                if (cursorX == 1) {
-                    val typeParams = inst.getTypeParams()
-                    val sharedParams = inst.getSharedParams()
-                    val allParams = typeParams + sharedParams
-                    if (cursorY in allParams.indices) {
-                        editInstrumentParam(pressed, shiftHeld, inst, cursorY, typeParams.size)
-                    }
-                } else {
-                    if (pressed and M8Commands.KEY_UP != 0) cursorY = max(0, cursorY - 1)
-                    if (pressed and M8Commands.KEY_DOWN != 0) cursorY = min(20, cursorY + 1)
-                }
+                editInstrumentRow(pressed, shiftHeld, inst, cursorY)
             }
             SCREEN_FX -> {
                 // FX params are rendered with cursorY == line - 2 offset.
@@ -568,6 +558,39 @@ class M8Emulator {
             else -> 0
         }
         return v + delta
+    }
+
+    /** Edit the parameter displayed on the highlighted instrument row. */
+    private fun editInstrumentRow(pressed: Int, shiftHeld: Boolean, inst: M8Instrument, renderedRow: Int) {
+        val delta = when {
+            pressed and M8Commands.KEY_UP != 0 -> if (shiftHeld) 16 else 1
+            pressed and M8Commands.KEY_DOWN != 0 -> if (shiftHeld) -16 else -1
+            pressed and M8Commands.KEY_RIGHT != 0 -> 16
+            pressed and M8Commands.KEY_LEFT != 0 -> -16
+            else -> 0
+        }
+        if (delta == 0) return
+
+        if (renderedRow == 0) {
+            inst.type = InstrumentType.entries[(inst.type.ordinal + delta).coerceIn(0, InstrumentType.entries.lastIndex)]
+            return
+        }
+
+        // renderInstrument() draws TYPE at row 0, NAME at row 1, then a blank separator.
+        // Type-specific params start on rendered row 3. Shared params start after another
+        // separator, so the rendered row must be translated back to the compact param index
+        // used by editInstrumentParam(). Without this mapping, the highlighted SHAPE row
+        // actually edited WARP (or did nothing), which made instrument edit feel broken.
+        val typeParams = inst.getTypeParams()
+        val sharedParams = inst.getSharedParams()
+        val typeStartRow = 3
+        val sharedStartRow = typeStartRow + typeParams.size + 1
+        val compactRow = when (renderedRow) {
+            in typeStartRow until (typeStartRow + typeParams.size) -> renderedRow - typeStartRow
+            in sharedStartRow until (sharedStartRow + sharedParams.size) -> typeParams.size + (renderedRow - sharedStartRow)
+            else -> return
+        }
+        editInstrumentParam(pressed, shiftHeld, inst, compactRow, typeParams.size)
     }
 
     /** Edit instrument parameter by row index */
