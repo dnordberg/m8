@@ -53,6 +53,7 @@ fun BrowseDialog(
     val sdEntries by viewModel.sdEntries.collectAsState()
     val sdSelected by viewModel.sdSelected.collectAsState()
     val loadStatus by viewModel.loadStatus.collectAsState()
+    val previewStatus by viewModel.previewStatus.collectAsState()
     val viewingSd = sourceIndex == viewModel.sdTabIndex
 
     // First-open fetch.
@@ -164,6 +165,7 @@ fun BrowseDialog(
                                 entry = sdSelected,
                                 slotCount = slotCount,
                                 loadStatus = loadStatus,
+                                previewStatus = previewStatus,
                                 onLoad = { slot ->
                                     val e = sdSelected ?: return@SdDetailPane
                                     viewModel.loadInstrumentIntoSlot(e, slot, onLoadInstrument)
@@ -172,6 +174,11 @@ fun BrowseDialog(
                                     val e = sdSelected ?: return@SdDetailPane
                                     viewModel.loadSongFromEntry(e, onLoadSong)
                                 },
+                                onPreviewSample = {
+                                    val e = sdSelected ?: return@SdDetailPane
+                                    viewModel.previewSample(e)
+                                },
+                                onStopPreview = { viewModel.stopSamplePreview() },
                             )
                         } else {
                             DetailPane(
@@ -327,8 +334,11 @@ private fun SdDetailPane(
     entry: DownloadStore.Entry?,
     slotCount: Int,
     loadStatus: String?,
+    previewStatus: String?,
     onLoad: (slot: Int) -> Unit,
     onLoadSong: () -> Unit,
+    onPreviewSample: () -> Unit,
+    onStopPreview: () -> Unit,
 ) {
     var selectedSlot by remember(entry?.id) { mutableStateOf(0) }
     Column(
@@ -427,7 +437,32 @@ private fun SdDetailPane(
                         .padding(horizontal = 10.dp, vertical = 6.dp),
                 )
             }
-            ContentKind.SAMPLE -> NotYetNote("Sample playback needs engine work")
+            ContentKind.SAMPLE -> {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "[PREVIEW]",
+                        color = M8_GREEN,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier
+                            .border(1.dp, M8_GREEN, RoundedCornerShape(4.dp))
+                            .clickable { onPreviewSample() }
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                    )
+                    Text(
+                        text = "[STOP]",
+                        color = M8_DIM,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier
+                            .border(1.dp, M8_DIM, RoundedCornerShape(4.dp))
+                            .clickable { onStopPreview() }
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                    )
+                }
+            }
             ContentKind.PACK -> NotYetNote("Pack unpack not implemented yet")
             else -> NotYetNote("No loader for this type yet")
         }
@@ -438,6 +473,16 @@ private fun SdDetailPane(
             Text(
                 text = loadStatus,
                 color = if (isError) Color(0xFFFF4040) else M8_GREEN,
+                fontSize = 10.sp,
+                fontFamily = FontFamily.Monospace,
+            )
+        }
+        if (!previewStatus.isNullOrBlank()) {
+            Spacer(Modifier.height(6.dp))
+            val isError = previewStatus.startsWith("ERROR", ignoreCase = true)
+            Text(
+                text = previewStatus,
+                color = if (isError) Color(0xFFFF4040) else M8_DIM,
                 fontSize = 10.sp,
                 fontFamily = FontFamily.Monospace,
             )

@@ -7,13 +7,15 @@ import androidx.lifecycle.viewModelScope
 import com.m8droid.emulator.M8Instrument
 import com.m8droid.emulator.M8iParser
 import com.m8droid.emulator.M8sParser
+import com.m8droid.audio.SampleCache
+import com.m8droid.audio.SamplePreviewPlayer
+import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
 
 /**
  * Owns state for the Browse/Download dialog: which source is active,
@@ -25,6 +27,8 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
 
     private val http = HttpClient()
     private val store = DownloadStore(application)
+    private val sampleCache = SampleCache(File(application.filesDir, "m8sd"))
+    private val samplePreviewPlayer = SamplePreviewPlayer()
 
     val sources: List<ContentSource> = listOf(
         GitHubSource(http),
@@ -132,13 +136,41 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
     private val _loadStatus = MutableStateFlow<String?>(null)
     val loadStatus: StateFlow<String?> = _loadStatus.asStateFlow()
 
+    private val _previewStatus = MutableStateFlow<String?>(null)
+    val previewStatus: StateFlow<String?> = _previewStatus.asStateFlow()
+
     fun selectSdEntry(entry: DownloadStore.Entry?) {
         _sdSelected.value = entry
         _loadStatus.value = null
+        _previewStatus.value = null
+    }
+
+    fun previewSample(entry: DownloadStore.Entry) {
+        if (entry.kind != ContentKind.SAMPLE) {
+            _previewStatus.value = "ERROR: not a sample"
+            return
+        }
+        _previewStatus.value = "PREVIEWING ${entry.title}"
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { sampleCache.load(entry.sdPath) }
+            }
+            val sample = result.getOrNull()
+            if (sample == null) {
+                _previewStatus.value = "ERROR: WAV preview failed"
+            } else {
+                samplePreviewPlayer.play(sample)
+                _previewStatus.value = "PLAYING ${entry.sdPath}"
+            }
+        }
+    }
+
+    fun stopSamplePreview() {
+        samplePreviewPlayer.stop()
+        _previewStatus.value = "PREVIEW STOPPED"
     }
 
     /**
-     * Read a downloaded .m8i file, parse it, and hand the resulting
      * M8Instrument to [apply] (typically M8ViewModel.replaceInstrument).
      * Status / errors surface through [loadStatus].
      */

@@ -67,6 +67,7 @@ WAV decode and first-pass sampler voice already exist. Finish the path so sample
 - [x] Add one-shot vs loop mode behavior.
 - [x] Add interpolation to reduce aliasing on transposed samples.
 - [x] Add tests using generated tiny WAV/sample fixtures.
+- [x] Add sample preview in browser.
 
 
 ## Priority 4 — Macrosynth / wavsynth modes
