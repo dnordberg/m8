@@ -8,6 +8,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.m8droid.audio.M8AudioPlayer
 import com.m8droid.audio.NativeSynth
+import com.m8droid.audio.SampleCache
 import com.m8droid.data.ServerConfig
 import com.m8droid.data.ServerSettings
 import com.m8droid.emulator.*
@@ -19,6 +20,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.io.File
 
 /**
  * Local-only M8 emulator ViewModel.
@@ -53,6 +55,7 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
 
     private val emulator = M8Emulator()
     private val synth = M8Synth() // kept for visualization API compat
+    private val sampleCache = SampleCache(File(application.filesDir, "m8sd"))
     private val localAudioPlayer = M8AudioPlayer()
     private val fxEngine = M8FxEngine()
     private var nativeSynthReady = false
@@ -440,6 +443,16 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
+        // Apply instrument presets before triggering notes so sampler params,
+        // envelopes, and sample assignments affect the current row immediately.
+        for (track in 0 until 8) {
+            val data = rowData[track]
+            val instIdx = data[1]
+            if (instIdx in instruments.indices) {
+                configureTrackInstrument(track, instruments[instIdx])
+            }
+        }
+
         if (nativeSynthReady) {
             // Pack notes and volumes into byte arrays for JNI
             val notes = ByteArray(8) { rowData[it][0].toByte() }
@@ -456,15 +469,6 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         if (phraseRow == 0) {
             val notes = rowData.map { it[0] }.joinToString(",")
             Log.d(TAG, "Notes triggered: [$notes]")
-        }
-
-        // Apply instrument presets to synth voices for correct sound
-        for (track in 0 until 8) {
-            val data = rowData[track]
-            val instIdx = data[1]
-            if (instIdx in instruments.indices) {
-                synth.applyInstrument(track, instruments[instIdx])
-            }
         }
     }
 
@@ -493,7 +497,16 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     private fun configureVoicesFromInstruments() {
         for (i in 0 until 8) {
             val inst = instruments.getOrNull(i) ?: continue
-            synth.configureVoice(i, inst)
+            configureTrackInstrument(i, inst)
+        }
+    }
+
+    private fun configureTrackInstrument(track: Int, inst: M8Instrument) {
+        synth.configureVoice(track, inst)
+        if (inst.type == InstrumentType.SAMPLER && inst.sampler.samplePath.isNotBlank()) {
+            synth.loadSample(track, sampleCache.load(inst.sampler.samplePath))
+        } else {
+            synth.loadSample(track, null)
         }
     }
 
@@ -682,7 +695,7 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     fun replaceInstrument(slot: Int, newInst: M8Instrument) {
         if (slot !in instruments.indices) return
         instruments[slot] = newInst
-        runCatching { synth.configureVoice(slot, newInst) }
+        runCatching { configureTrackInstrument(slot, newInst) }
     }
 
     /**

@@ -60,8 +60,8 @@ WAV decode and first-pass sampler voice already exist. Finish the path so sample
 - [x] Generated WAV decoder tests for mono/stereo PCM + unsupported format rejection.
 - [x] Sample metadata model: file path, root note, loop points, one-shot/loop mode.
 - [x] First-pass SAMPLER voice path in `M8Synth` using decoded WAV data.
-- [ ] Wire SAMPLER instruments to sample files in the virtual SD/download store.
-- [ ] Add sample cache to avoid decoding during audio callback.
+- [x] Wire SAMPLER instruments to sample files in the virtual SD/download store.
+- [x] Add sample cache to avoid decoding during audio callback.
 - [x] Add pitch/transpose playback.
 - [x] Add loop-point handling.
 - [x] Add one-shot vs loop mode behavior.
