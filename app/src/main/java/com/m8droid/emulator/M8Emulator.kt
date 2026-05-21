@@ -366,17 +366,16 @@ class M8Emulator {
         // ======== Normal cursor movement ========
         if (pressed and M8Commands.KEY_UP != 0) {
             cursorY = max(0, cursorY - 1)
-            // Skip FX section-header gaps
-            if (screen == SCREEN_FX && (cursorY == 4 || cursorY == 12)) cursorY--
+            normalizeCursorForScreen()
         }
         if (pressed and M8Commands.KEY_DOWN != 0) {
             val maxY = when (screen) {
-                SCREEN_FX -> 19
+                SCREEN_FX -> 21
+                SCREEN_CONFIG -> 6
                 else -> 15
             }
             cursorY = min(maxY, cursorY + 1)
-            // Skip FX section-header gaps
-            if (screen == SCREEN_FX && (cursorY == 4 || cursorY == 12)) cursorY++
+            normalizeCursorForScreen()
         }
         if (pressed and M8Commands.KEY_LEFT != 0) cursorX = max(0, cursorX - 1)
         if (pressed and M8Commands.KEY_RIGHT != 0) {
@@ -516,45 +515,73 @@ class M8Emulator {
             }
             SCREEN_INSTRUMENT -> {
                 val inst = instruments[selectedInstrument.coerceIn(0, 7)]
-                if (cursorX == 1) {
-                    val typeParams = inst.getTypeParams()
-                    val sharedParams = inst.getSharedParams()
-                    val allParams = typeParams + sharedParams
-                    if (cursorY in allParams.indices) {
-                        editInstrumentParam(pressed, shiftHeld, inst, cursorY, typeParams.size)
-                    }
-                } else {
-                    if (pressed and M8Commands.KEY_UP != 0) cursorY = max(0, cursorY - 1)
-                    if (pressed and M8Commands.KEY_DOWN != 0) cursorY = min(20, cursorY + 1)
-                }
+                editInstrumentRow(pressed, shiftHeld, inst, cursorY)
             }
-            SCREEN_FX -> {
-                // FX params are rendered with cursorY == line - 2 offset.
-                // Chorus: cursorY 0..3, gap at 4, Delay: cursorY 5..11,
-                // gap at 12, Reverb: cursorY 13..19
-                when (cursorY) {
-                    0 -> song.chorus.modDepth = editHex(pressed, shiftHeld, song.chorus.modDepth).coerceIn(0, 0xFF)
-                    1 -> song.chorus.modFreq = editHex(pressed, shiftHeld, song.chorus.modFreq).coerceIn(0, 0xFF)
-                    2 -> song.chorus.width = editHex(pressed, shiftHeld, song.chorus.width).coerceIn(0, 0xFF)
-                    3 -> song.chorus.reverbSend = editHex(pressed, shiftHeld, song.chorus.reverbSend).coerceIn(0, 0xFF)
-                    5 -> song.delay.filterHP = editHex(pressed, shiftHeld, song.delay.filterHP).coerceIn(0, 0xFF)
-                    6 -> song.delay.filterLP = editHex(pressed, shiftHeld, song.delay.filterLP).coerceIn(0, 0xFF)
-                    7 -> song.delay.timeL = editHex(pressed, shiftHeld, song.delay.timeL).coerceIn(0, 0xFF)
-                    8 -> song.delay.timeR = editHex(pressed, shiftHeld, song.delay.timeR).coerceIn(0, 0xFF)
-                    9 -> song.delay.feedback = editHex(pressed, shiftHeld, song.delay.feedback).coerceIn(0, 0xFF)
-                    10 -> song.delay.width = editHex(pressed, shiftHeld, song.delay.width).coerceIn(0, 0xFF)
-                    11 -> song.delay.reverbSend = editHex(pressed, shiftHeld, song.delay.reverbSend).coerceIn(0, 0xFF)
-                    13 -> song.reverb.filterHP = editHex(pressed, shiftHeld, song.reverb.filterHP).coerceIn(0, 0xFF)
-                    14 -> song.reverb.filterLP = editHex(pressed, shiftHeld, song.reverb.filterLP).coerceIn(0, 0xFF)
-                    15 -> song.reverb.size = editHex(pressed, shiftHeld, song.reverb.size).coerceIn(0, 0xFF)
-                    16 -> song.reverb.damping = editHex(pressed, shiftHeld, song.reverb.damping).coerceIn(0, 0xFF)
-                    17 -> song.reverb.modDepth = editHex(pressed, shiftHeld, song.reverb.modDepth).coerceIn(0, 0xFF)
-                    18 -> song.reverb.modFreq = editHex(pressed, shiftHeld, song.reverb.modFreq).coerceIn(0, 0xFF)
-                    19 -> song.reverb.width = editHex(pressed, shiftHeld, song.reverb.width).coerceIn(0, 0xFF)
-                }
+            SCREEN_FX -> editFxRow(pressed, shiftHeld, cursorY)
+            SCREEN_CONFIG -> editConfigRow(pressed, shiftHeld, cursorY)
+        }
+    }
+
+    private fun normalizeCursorForScreen() {
+        if (screen == SCREEN_FX) {
+            // FX render maps highlighted params to cursor rows:
+            // chorus 0..3, delay 6..12, reverb 15..21. Rows 4/5 and 13/14 are
+            // visual section gaps/headers, not editable fields.
+            if (cursorY in 4..5) cursorY = if (lastKeys and M8Commands.KEY_UP != 0) 3 else 6
+            if (cursorY in 13..14) cursorY = if (lastKeys and M8Commands.KEY_UP != 0) 12 else 15
+        }
+        if (screen == SCREEN_CONFIG) cursorY = cursorY.coerceIn(0, 6)
+    }
+
+    private fun editFxRow(pressed: Int, shiftHeld: Boolean, renderedRow: Int) {
+        when (renderedRow) {
+            0 -> song.chorus.modDepth = editHex(pressed, shiftHeld, song.chorus.modDepth).coerceIn(0, 0xFF)
+            1 -> song.chorus.modFreq = editHex(pressed, shiftHeld, song.chorus.modFreq).coerceIn(0, 0xFF)
+            2 -> song.chorus.width = editHex(pressed, shiftHeld, song.chorus.width).coerceIn(0, 0xFF)
+            3 -> song.chorus.reverbSend = editHex(pressed, shiftHeld, song.chorus.reverbSend).coerceIn(0, 0xFF)
+            6 -> song.delay.filterHP = editHex(pressed, shiftHeld, song.delay.filterHP).coerceIn(0, 0xFF)
+            7 -> song.delay.filterLP = editHex(pressed, shiftHeld, song.delay.filterLP).coerceIn(0, 0xFF)
+            8 -> song.delay.timeL = editHex(pressed, shiftHeld, song.delay.timeL).coerceIn(0, 0xFF)
+            9 -> song.delay.timeR = editHex(pressed, shiftHeld, song.delay.timeR).coerceIn(0, 0xFF)
+            10 -> song.delay.feedback = editHex(pressed, shiftHeld, song.delay.feedback).coerceIn(0, 0xFF)
+            11 -> song.delay.width = editHex(pressed, shiftHeld, song.delay.width).coerceIn(0, 0xFF)
+            12 -> song.delay.reverbSend = editHex(pressed, shiftHeld, song.delay.reverbSend).coerceIn(0, 0xFF)
+            15 -> song.reverb.filterHP = editHex(pressed, shiftHeld, song.reverb.filterHP).coerceIn(0, 0xFF)
+            16 -> song.reverb.filterLP = editHex(pressed, shiftHeld, song.reverb.filterLP).coerceIn(0, 0xFF)
+            17 -> song.reverb.size = editHex(pressed, shiftHeld, song.reverb.size).coerceIn(0, 0xFF)
+            18 -> song.reverb.damping = editHex(pressed, shiftHeld, song.reverb.damping).coerceIn(0, 0xFF)
+            19 -> song.reverb.modDepth = editHex(pressed, shiftHeld, song.reverb.modDepth).coerceIn(0, 0xFF)
+            20 -> song.reverb.modFreq = editHex(pressed, shiftHeld, song.reverb.modFreq).coerceIn(0, 0xFF)
+            21 -> song.reverb.width = editHex(pressed, shiftHeld, song.reverb.width).coerceIn(0, 0xFF)
+        }
+    }
+
+    private fun editConfigRow(pressed: Int, shiftHeld: Boolean, renderedRow: Int) {
+        when (renderedRow) {
+            1 -> song.tempo = editHex(pressed, shiftHeld, song.tempo).coerceIn(20, 300)
+            2 -> {
+                val delta = signedDelta(pressed, shiftHeld)
+                song.transpose = (song.transpose + delta).coerceIn(-64, 64)
+            }
+            3 -> song.activeScale = (song.activeScale + signedDelta(pressed, shiftHeld)).coerceIn(0, song.scales.lastIndex)
+            4 -> song.quantize = editHex(pressed, shiftHeld, song.quantize).coerceIn(0, 0xFF)
+            5 -> octave = (octave + signedDelta(pressed, shiftHeld)).coerceIn(1, 8)
+            6 -> {
+                val scale = song.scales[song.activeScale]
+                scale.key = (scale.key + signedDelta(pressed, shiftHeld)).floorMod(12)
             }
         }
     }
+
+    private fun signedDelta(pressed: Int, shiftHeld: Boolean): Int = when {
+        pressed and M8Commands.KEY_UP != 0 -> if (shiftHeld) 16 else 1
+        pressed and M8Commands.KEY_DOWN != 0 -> if (shiftHeld) -16 else -1
+        pressed and M8Commands.KEY_RIGHT != 0 -> 1
+        pressed and M8Commands.KEY_LEFT != 0 -> -1
+        else -> 0
+    }
+
+    private fun Int.floorMod(mod: Int): Int = ((this % mod) + mod) % mod
 
     /** Edit a hex byte value: UP/DOWN = ±1 (±16 with shift), LEFT/RIGHT = ±16 */
     private fun editHex(pressed: Int, shiftHeld: Boolean, cur: Int): Int {
@@ -568,6 +595,39 @@ class M8Emulator {
             else -> 0
         }
         return v + delta
+    }
+
+    /** Edit the parameter displayed on the highlighted instrument row. */
+    private fun editInstrumentRow(pressed: Int, shiftHeld: Boolean, inst: M8Instrument, renderedRow: Int) {
+        val delta = when {
+            pressed and M8Commands.KEY_UP != 0 -> if (shiftHeld) 16 else 1
+            pressed and M8Commands.KEY_DOWN != 0 -> if (shiftHeld) -16 else -1
+            pressed and M8Commands.KEY_RIGHT != 0 -> 16
+            pressed and M8Commands.KEY_LEFT != 0 -> -16
+            else -> 0
+        }
+        if (delta == 0) return
+
+        if (renderedRow == 0) {
+            inst.type = InstrumentType.entries[(inst.type.ordinal + delta).coerceIn(0, InstrumentType.entries.lastIndex)]
+            return
+        }
+
+        // renderInstrument() draws TYPE at row 0, NAME at row 1, then a blank separator.
+        // Type-specific params start on rendered row 3. Shared params start after another
+        // separator, so the rendered row must be translated back to the compact param index
+        // used by editInstrumentParam(). Without this mapping, the highlighted SHAPE row
+        // actually edited WARP (or did nothing), which made instrument edit feel broken.
+        val typeParams = inst.getTypeParams()
+        val sharedParams = inst.getSharedParams()
+        val typeStartRow = 3
+        val sharedStartRow = typeStartRow + typeParams.size + 1
+        val compactRow = when (renderedRow) {
+            in typeStartRow until (typeStartRow + typeParams.size) -> renderedRow - typeStartRow
+            in sharedStartRow until (sharedStartRow + sharedParams.size) -> typeParams.size + (renderedRow - sharedStartRow)
+            else -> return
+        }
+        editInstrumentParam(pressed, shiftHeld, inst, compactRow, typeParams.size)
     }
 
     /** Edit instrument parameter by row index */
@@ -592,8 +652,48 @@ class M8Emulator {
                 }
                 InstrumentType.FM_SYNTH -> when (row) {
                     0 -> inst.fmSynth.algorithm = FmAlgorithm.fromIndex((inst.fmSynth.algorithm.ordinal + delta).coerceIn(0, FmAlgorithm.entries.size - 1))
+                    1 -> inst.fmSynth.op1Shape = FmOperatorShape.fromIndex((inst.fmSynth.op1Shape.ordinal + delta).coerceIn(0, FmOperatorShape.entries.size - 1))
+                    2 -> inst.fmSynth.op1Ratio = (inst.fmSynth.op1Ratio + delta).coerceIn(0, 0xFF)
+                    3 -> inst.fmSynth.op1Level = (inst.fmSynth.op1Level + delta).coerceIn(0, 0xFF)
+                    4 -> inst.fmSynth.op1Feedback = (inst.fmSynth.op1Feedback + delta).coerceIn(0, 0xFF)
+                    5 -> inst.fmSynth.op2Shape = FmOperatorShape.fromIndex((inst.fmSynth.op2Shape.ordinal + delta).coerceIn(0, FmOperatorShape.entries.size - 1))
+                    6 -> inst.fmSynth.op2Ratio = (inst.fmSynth.op2Ratio + delta).coerceIn(0, 0xFF)
+                    7 -> inst.fmSynth.op2Level = (inst.fmSynth.op2Level + delta).coerceIn(0, 0xFF)
+                    8 -> inst.fmSynth.op2Feedback = (inst.fmSynth.op2Feedback + delta).coerceIn(0, 0xFF)
+                    9 -> inst.fmSynth.op3Shape = FmOperatorShape.fromIndex((inst.fmSynth.op3Shape.ordinal + delta).coerceIn(0, FmOperatorShape.entries.size - 1))
+                    10 -> inst.fmSynth.op3Ratio = (inst.fmSynth.op3Ratio + delta).coerceIn(0, 0xFF)
+                    11 -> inst.fmSynth.op3Level = (inst.fmSynth.op3Level + delta).coerceIn(0, 0xFF)
+                    12 -> inst.fmSynth.op3Feedback = (inst.fmSynth.op3Feedback + delta).coerceIn(0, 0xFF)
+                    13 -> inst.fmSynth.op4Shape = FmOperatorShape.fromIndex((inst.fmSynth.op4Shape.ordinal + delta).coerceIn(0, FmOperatorShape.entries.size - 1))
+                    14 -> inst.fmSynth.op4Ratio = (inst.fmSynth.op4Ratio + delta).coerceIn(0, 0xFF)
+                    15 -> inst.fmSynth.op4Level = (inst.fmSynth.op4Level + delta).coerceIn(0, 0xFF)
+                    16 -> inst.fmSynth.op4Feedback = (inst.fmSynth.op4Feedback + delta).coerceIn(0, 0xFF)
                 }
-                else -> {}
+                InstrumentType.MACROSYNTH -> when (row) {
+                    0 -> inst.macroSynth.model = (inst.macroSynth.model + delta).coerceIn(0, MacroSynthParams.MODEL_NAMES.lastIndex)
+                    1 -> inst.macroSynth.timbre = (inst.macroSynth.timbre + delta).coerceIn(0, 0xFF)
+                    2 -> inst.macroSynth.color = (inst.macroSynth.color + delta).coerceIn(0, 0xFF)
+                    3 -> inst.macroSynth.degrade = (inst.macroSynth.degrade + delta).coerceIn(0, 0xFF)
+                    4 -> inst.macroSynth.redux = (inst.macroSynth.redux + delta).coerceIn(0, 0xFF)
+                }
+                InstrumentType.HYPERSYNTH -> when (row) {
+                    0 -> inst.hyperSynth.chordBank = (inst.hyperSynth.chordBank + delta).coerceIn(0, HyperSynthParams.CHORD_BANK_NAMES.lastIndex)
+                    1 -> inst.hyperSynth.chord = (inst.hyperSynth.chord + delta).coerceIn(0, 0xFF)
+                    2 -> inst.hyperSynth.shift = (inst.hyperSynth.shift + delta).coerceIn(0, 0xFF)
+                    3 -> inst.hyperSynth.swarm = (inst.hyperSynth.swarm + delta).coerceIn(0, 0xFF)
+                    4 -> inst.hyperSynth.width = (inst.hyperSynth.width + delta).coerceIn(0, 0xFF)
+                    5 -> inst.hyperSynth.subOsc = (inst.hyperSynth.subOsc + delta).coerceIn(0, 0xFF)
+                }
+                InstrumentType.SAMPLER -> when (row) {
+                    // SAMPLE path/name is not hex-editable from the keypad yet; load picker will own it.
+                    1 -> inst.sampler.playMode = (inst.sampler.playMode + signedDelta(pressed, shiftHeld)).coerceIn(0, SamplerParams.PLAY_MODE_NAMES.lastIndex)
+                    2 -> inst.sampler.start = (inst.sampler.start + delta).coerceIn(0, 0xFF)
+                    3 -> inst.sampler.loopStart = (inst.sampler.loopStart + delta).coerceIn(0, 0xFF)
+                    4 -> inst.sampler.length = (inst.sampler.length + delta).coerceIn(0, 0xFF)
+                    5 -> inst.sampler.degrade = (inst.sampler.degrade + delta).coerceIn(0, 0xFF)
+                    6 -> inst.sampler.detune = (inst.sampler.detune + delta).coerceIn(0, 0xFF)
+                }
+                InstrumentType.MIDI_OUT -> {}
             }
         } else {
             val sharedRow = row - typeParamCount

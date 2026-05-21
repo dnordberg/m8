@@ -1,0 +1,26 @@
+name: M8Tracker
+options:
+  bundleIdPrefix: com.m8droid
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.10"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  M8Tracker:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: M8Tracker
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.m8droid.M8Tracker
+        INFOPLIST_FILE: M8Tracker/Info.plist
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SUPPORTS_MACCATALYST: false
+    scheme:
+      testTargets: []
