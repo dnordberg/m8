@@ -155,4 +155,113 @@ class M8EmulatorEditTest {
         emulator.tap(M8Commands.KEY_UP)
         assertEquals(originalLoopStart + 1, inst.sampler.loopStart)
     }
+
+    @Test
+    fun `phrase edit changes note on selected track instead of treating track as field column`() {
+        val emulator = M8Emulator().apply {
+            screen = M8Emulator.SCREEN_PHRASE
+            song.songGrid[0][3] = 0
+            song.chains[0].rows[0].phrase = 3
+            resetPlayheadAndResolve()
+            cursorX = 3 // selected track
+            cursorY = 0 // selected row
+            octave = 4
+        }
+        val selectedTrackStep = emulator.song.phrases[3].steps[0]
+        val neighboringTrackStep = emulator.song.phrases[0].steps[0]
+        selectedTrackStep.note = M8Song.EMPTY
+        selectedTrackStep.fx1Cmd = 0x22
+        neighboringTrackStep.note = 0x31
+
+        emulator.tap(M8Commands.KEY_EDIT)
+        emulator.tap(M8Commands.KEY_UP)
+
+        assertEquals(60, selectedTrackStep.note)
+        assertEquals(0x22, selectedTrackStep.fx1Cmd, "track index 3 must not be misused as FX1 command column")
+        assertEquals(0x31, neighboringTrackStep.note, "editing track 3 must not mutate track 0")
+    }
+
+    @Test
+    fun `phrase right arrow selects field columns before moving to next track`() {
+        val emulator = M8Emulator().apply {
+            screen = M8Emulator.SCREEN_PHRASE
+            cursorX = 0
+            cursorY = 0
+            phraseEditColumn = 0
+            song.songGrid[0][0] = 0
+            song.chains[0].rows[0].phrase = 0
+            resetPlayheadAndResolve()
+        }
+        val step = emulator.song.phrases[0].steps[0]
+        step.instrument = 0x03
+        step.volume = 0x40
+
+        emulator.tap(M8Commands.KEY_RIGHT)
+        assertEquals(0, emulator.cursorX, "first right arrow should stay on selected track")
+        assertEquals(1, emulator.phraseEditColumn, "first right arrow should select instrument column")
+
+        emulator.tap(M8Commands.KEY_EDIT)
+        emulator.tap(M8Commands.KEY_UP)
+        assertEquals(0x04, step.instrument)
+        assertEquals(0x40, step.volume)
+    }
+
+    @Test
+    fun `song edit changes selected track chain cell only`() {
+        val emulator = M8Emulator().apply {
+            screen = M8Emulator.SCREEN_SONG
+            cursorX = 4
+            cursorY = 6
+            song.songGrid[6][4] = M8Song.EMPTY
+            song.songGrid[6][5] = 0x22
+        }
+
+        emulator.tap(M8Commands.KEY_EDIT)
+        emulator.tap(M8Commands.KEY_UP)
+
+        assertEquals(0x01, emulator.song.songGrid[6][4])
+        assertEquals(0x22, emulator.song.songGrid[6][5])
+    }
+
+    @Test
+    fun `chain edit changes phrase and transpose columns separately`() {
+        val emulator = M8Emulator().apply {
+            screen = M8Emulator.SCREEN_CHAIN
+            selectedChain = 2
+            cursorY = 3
+            song.chains[2].rows[3].phrase = M8Song.EMPTY
+            song.chains[2].rows[3].transpose = 0
+        }
+        val row = emulator.song.chains[2].rows[3]
+
+        emulator.cursorX = 0
+        emulator.tap(M8Commands.KEY_EDIT)
+        emulator.tap(M8Commands.KEY_UP)
+        assertEquals(0x01, row.phrase)
+        assertEquals(0, row.transpose)
+
+        emulator.cursorX = 1
+        emulator.tap(M8Commands.KEY_UP)
+        assertEquals(0x01, row.phrase)
+        assertEquals(1, row.transpose)
+    }
+
+    @Test
+    fun `display taps select song chain and phrase cells`() {
+        val emulator = M8Emulator().apply { screen = M8Emulator.SCREEN_SONG }
+        emulator.handleDisplayTap(28 + 2 * 26 + 4, 60 + 5 * 10 + 1)
+        assertEquals(2, emulator.cursorX)
+        assertEquals(5, emulator.cursorY)
+
+        emulator.screen = M8Emulator.SCREEN_CHAIN
+        emulator.handleDisplayTap(70, 43 + 4 * 13)
+        assertEquals(1, emulator.cursorX)
+        assertEquals(4, emulator.cursorY)
+
+        emulator.screen = M8Emulator.SCREEN_PHRASE
+        emulator.handleDisplayTap(20 + 2 * 28 + 26, 38 + 7 * 12)
+        assertEquals(2, emulator.cursorX)
+        assertEquals(7, emulator.cursorY)
+        assertEquals(1, emulator.phraseEditColumn)
+    }
 }

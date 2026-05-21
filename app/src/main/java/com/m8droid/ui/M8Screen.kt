@@ -29,6 +29,7 @@ fun M8Screen(
     modifier: Modifier = Modifier,
     invalidationTick: Int = 0,
     onScreenTap: ((Int) -> Unit)? = null,
+    onDisplayTap: ((Int, Int) -> Unit)? = null,
     onSwipeLeft: (() -> Unit)? = null,
     onSwipeRight: (() -> Unit)? = null,
 ) {
@@ -43,15 +44,17 @@ fun M8Screen(
             .fillMaxWidth()
             .aspectRatio(320f / 240f)
             .then(
-                if (onScreenTap != null) {
-                    Modifier.pointerInput(onScreenTap) {
+                if (onScreenTap != null || onDisplayTap != null) {
+                    Modifier.pointerInput(onScreenTap, onDisplayTap) {
                         detectTapGestures { offset ->
                             val m8X = (offset.x / size.width * 320f).toInt()
                             val m8Y = (offset.y / size.height * 240f).toInt()
                             // Top quarter of display = tap zone for tabs
-                            if (m8Y < 60) {
+                            if (m8Y < 60 && onScreenTap != null) {
                                 val tabIndex = (m8X / 40).coerceIn(0, 7)
                                 onScreenTap(tabIndex)
+                            } else {
+                                onDisplayTap?.invoke(m8X, m8Y)
                             }
                         }
                     }

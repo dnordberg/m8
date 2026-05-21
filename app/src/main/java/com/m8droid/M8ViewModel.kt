@@ -652,6 +652,10 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         emulator.editMode = false
     }
 
+    fun handleDisplayTap(m8X: Int, m8Y: Int) {
+        emulator.handleDisplayTap(m8X, m8Y)
+    }
+
     fun nextScreen() {
         emulator.screen = (emulator.screen + 1) % 8
         emulator.editMode = false

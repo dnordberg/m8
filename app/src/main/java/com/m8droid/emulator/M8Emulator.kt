@@ -83,6 +83,7 @@ class M8Emulator {
     var selectedPhrase = 0
     var selectedInstrument = 0
     var selectedTable = 0
+    var phraseEditColumn = 0 // 0=note,1=inst,2=vol,3/4=FX1 cmd/val,5/6=FX2,7/8=FX3
 
     // Editing
     var editMode = false
@@ -119,6 +120,52 @@ class M8Emulator {
     init {
         song.loadDemoSong()
         resolveCurrentPhrases()
+    }
+
+    /**
+     * Map taps on the 320×240 rendered M8 display to tracker cells. This keeps
+     * phone touch selection in the emulator model instead of inventing a separate
+     * Android-only edit grid.
+     */
+    fun handleDisplayTap(m8X: Int, m8Y: Int) {
+        when (screen) {
+            SCREEN_SONG -> {
+                val trackStartX = 28
+                val trackSpacing = 26
+                val rowStartY = 60
+                val viewOffset = max(0, cursorY - 8)
+                val track = ((m8X - trackStartX) / trackSpacing).coerceIn(0, 7)
+                val row = (viewOffset + ((m8Y - rowStartY) / FONT_H)).coerceIn(0, 255)
+                if (m8X >= trackStartX && m8Y >= rowStartY) {
+                    cursorX = track
+                    cursorY = row
+                    val chainIdx = song.songGrid[cursorY][cursorX]
+                    if (chainIdx != M8Song.EMPTY) selectedChain = chainIdx
+                }
+            }
+            SCREEN_CHAIN -> {
+                val yStart = 16
+                val rowH = FONT_H + 3
+                val row = ((m8Y - (yStart + 14 + rowH)) / rowH).coerceIn(0, 15)
+                if (m8Y >= yStart + 14 + rowH) {
+                    cursorY = row
+                    cursorX = if (m8X >= 58) 1 else 0
+                    val chainRow = song.chains[selectedChain.coerceIn(0, 254)].rows[cursorY]
+                    if (chainRow.phrase != M8Song.EMPTY) selectedPhrase = chainRow.phrase
+                }
+            }
+            SCREEN_PHRASE -> {
+                val trackStartX = 20
+                val trackW = 28
+                val dataStartY = 38
+                if (m8X >= trackStartX && m8Y >= dataStartY) {
+                    val relX = m8X - trackStartX
+                    cursorX = (relX / trackW).coerceIn(0, 7)
+                    cursorY = ((m8Y - dataStartY) / (FONT_H + 2)).coerceIn(0, 15)
+                    phraseEditColumn = if (relX % trackW >= 24) 1 else 0
+                }
+            }
+        }
     }
 
     /**
@@ -377,21 +424,39 @@ class M8Emulator {
             cursorY = min(maxY, cursorY + 1)
             normalizeCursorForScreen()
         }
-        if (pressed and M8Commands.KEY_LEFT != 0) cursorX = max(0, cursorX - 1)
-        if (pressed and M8Commands.KEY_RIGHT != 0) {
-            val maxX = when (screen) {
-                SCREEN_SONG -> 7
-                SCREEN_CHAIN -> 1
-                SCREEN_PHRASE -> 8
-                SCREEN_TABLE -> 7
-                SCREEN_MIXER -> 7
-                SCREEN_INSTRUMENT -> 1
-                SCREEN_FX -> 1
-                SCREEN_CONFIG -> 1
-                SCREEN_PROJECT -> 1
-                else -> 7
+        if (pressed and M8Commands.KEY_LEFT != 0) {
+            if (screen == SCREEN_PHRASE) {
+                if (phraseEditColumn > 0) {
+                    phraseEditColumn--
+                } else {
+                    cursorX = max(0, cursorX - 1)
+                }
+            } else {
+                cursorX = max(0, cursorX - 1)
             }
-            cursorX = min(maxX, cursorX + 1)
+        }
+        if (pressed and M8Commands.KEY_RIGHT != 0) {
+            if (screen == SCREEN_PHRASE) {
+                if (phraseEditColumn < 8) {
+                    phraseEditColumn++
+                } else {
+                    cursorX = min(7, cursorX + 1)
+                    phraseEditColumn = 0
+                }
+            } else {
+                val maxX = when (screen) {
+                    SCREEN_SONG -> 7
+                    SCREEN_CHAIN -> 1
+                    SCREEN_TABLE -> 7
+                    SCREEN_MIXER -> 7
+                    SCREEN_INSTRUMENT -> 1
+                    SCREEN_FX -> 1
+                    SCREEN_CONFIG -> 1
+                    SCREEN_PROJECT -> 1
+                    else -> 7
+                }
+                cursorX = min(maxX, cursorX + 1)
+            }
         }
 
         // ======== Play/Stop ========
@@ -426,10 +491,11 @@ class M8Emulator {
     private fun handleEditModeArrows(pressed: Int, shiftHeld: Boolean) {
         when (screen) {
             SCREEN_PHRASE -> {
-                val phraseIdx = currentPhrasePerTrack.getOrElse(cursorX.coerceAtMost(7)) { M8Song.EMPTY }
+                val track = cursorX.coerceIn(0, 7)
+                val phraseIdx = currentPhrasePerTrack.getOrElse(track) { M8Song.EMPTY }
                 if (phraseIdx == M8Song.EMPTY || phraseIdx > 254) return
                 val step = song.phrases[phraseIdx].steps[cursorY]
-                when (cursorX) {
+                when (phraseEditColumn) {
                     0 -> { // Note column
                         val delta = when {
                             pressed and M8Commands.KEY_UP != 0 -> if (shiftHeld) 12 else 1
@@ -1079,9 +1145,10 @@ class M8Emulator {
         val yStart = 14
 
         // Header: which phrase (from cursor track)
-        val phraseIdx = currentPhrasePerTrack.getOrElse(cursorX) { selectedPhrase }
+        val phraseIdx = currentPhrasePerTrack.getOrElse(cursorX.coerceIn(0, 7)) { selectedPhrase }
             .let { if (it == M8Song.EMPTY) selectedPhrase else it }
-        cmds.addAll(drawText("PHRASE ${M8Song.hex2(phraseIdx)}", 4, yStart, cText, cBg))
+        val fieldName = phraseColumnName(phraseEditColumn)
+        cmds.addAll(drawText("PHRASE ${M8Song.hex2(phraseIdx)} T${cursorX.coerceIn(0, 7) + 1} $fieldName", 4, yStart, cText, cBg))
 
         if (editMode) {
             cmds.addAll(drawText("EDIT", 80, yStart, intArrayOf(255, 100, 100), cBg))
@@ -1157,6 +1224,18 @@ class M8Emulator {
         // Waveform at bottom
         cmds.addAll(renderWaveformBottom())
         return cmds
+    }
+
+    private fun phraseColumnName(column: Int): String = when (column.coerceIn(0, 8)) {
+        0 -> "NOTE"
+        1 -> "INST"
+        2 -> "VOL"
+        3 -> "FX1"
+        4 -> "FX1V"
+        5 -> "FX2"
+        6 -> "FX2V"
+        7 -> "FX3"
+        else -> "FX3V"
     }
 
     // ===== INSTRUMENT screen =====

@@ -210,6 +210,7 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
                             bitmap = viewModel.connectionManager.display.snapshot(),
                             invalidationTick = displayTick,
                             onScreenTap = { viewModel.setScreen(it) },
+                            onDisplayTap = { x, y -> viewModel.handleDisplayTap(x, y) },
                             onSwipeLeft = { viewModel.nextScreen() },
                             onSwipeRight = { viewModel.prevScreen() },
                         )
