@@ -29,7 +29,8 @@ Turn the Android app from an M8-inspired demo/browser into a useful phone-native
 
 - [x] Add pure-Kotlin WAV decoder foundation for PCM WAV files.
 - [x] Add generated WAV decoder tests for mono/stereo PCM + unsupported format rejection.
-- [ ] Add sample metadata model: file path, root note, loop points, one-shot/loop mode.
+- [x] Add sample metadata model: file path, root note, loop points, one-shot/loop mode.
+- [x] Add first-pass SAMPLER voice path in `M8Synth` using decoded WAV data.
 - [ ] Wire SAMPLER instruments to sample files in the virtual SD.
 - [ ] Add pitch/transpose playback.
 - [ ] Add loop-point handling.
@@ -111,8 +112,9 @@ Current `.m8s` parser covers header, song grid, phrases, chains, tables, and gro
 - [x] Wire `M8Synth.applyInstrument` / `configureVoice` into real per-track voice presets instead of no-op stubs.
 - [x] Map WAVSYNTH shape, FM type, filter cutoff/resonance, amp, pan, delay send, and envelope into render behavior.
 - [x] Add synth regression tests proving instrument shape changes audio and pan affects stereo balance.
+- [x] Add sampler voice path using decoded WAV data.
 - [ ] Replace fallback preset mapping with fuller M8 parameter interpretation.
-- [ ] Add sampler voice path using decoded WAV data.
+- [ ] Wire sampler path to virtual SD file lookup.
 - [ ] Add offline render path shared by export/bounce.
 - [ ] Add underrun/latency instrumentation.
 

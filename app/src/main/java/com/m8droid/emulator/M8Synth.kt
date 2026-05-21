@@ -2,6 +2,7 @@ package com.m8droid.emulator
 
 import android.util.Log
 import com.m8droid.audio.M8AudioPlayer
+import com.m8droid.audio.WavDecoder
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
@@ -54,7 +55,7 @@ class M8Synth {
     // ======================== PRESETS ========================
 
     data class Preset(
-        val wave: Int,          // 0=saw,1=pulse,2=sine,3=tri,4=noise,5=fm
+        val wave: Int,          // 0=saw,1=pulse,2=sine,3=tri,4=noise,5=fm,6=sample
         val cutoff: Double,     // 0-1 filter cutoff
         val reso: Double,       // 0-1 filter resonance
         val atkMs: Double,      // attack ms
@@ -114,10 +115,13 @@ class M8Synth {
         // Noise LFSR
         var lfsr = 0x7FFF
         var noiseVal = 0.0
-        var noiseCnt = 0
+
+        // Sampler playback
+        var samplePos = 0.0
 
         fun trigger(f: Double, v: Double) {
             freq = f; vol = v
+            samplePos = 0.0
             envStage = 1; envTime = 0.0; envLevel = 0.0
             fenvLevel = 1.0; fenvTime = 0.0
             noteOn = true; active = true
@@ -197,6 +201,7 @@ class M8Synth {
                     val mod = sin(fmPh * TWO_PI) * safeIdx * envLevel
                     sin((phase + mod) * TWO_PI)
                 }
+                6 -> readSample(track, this)
                 else -> 0.0
             }
 
@@ -224,6 +229,7 @@ class M8Synth {
     // ======================== STATE ========================
 
     private val voicePresets = PRESETS.copyOf()
+    private val trackSamples = arrayOfNulls<WavDecoder.DecodedWav>(8)
     private val voices = Array(8) { Voice(it) }
     private val dlBufL = DoubleArray(DELAY_LEN)
     private val dlBufR = DoubleArray(DELAY_LEN)
@@ -254,6 +260,12 @@ class M8Synth {
     }
 
     fun applyInstrument(trackIndex: Int, instrument: M8Instrument) = configureVoice(trackIndex, instrument)
+
+    fun loadSample(track: Int, sample: WavDecoder.DecodedWav?) {
+        if (track !in 0..7) return
+        trackSamples[track] = sample
+    }
+
     fun getVoiceFreq(track: Int): Double = if (track in 0..7) voices[track].freq else 0.0
 
     fun triggerRow(rowData: Array<IntArray>) {
@@ -401,7 +413,7 @@ class M8Synth {
             InstrumentType.FM_SYNTH -> 5
             InstrumentType.MACROSYNTH -> if (inst.macroSynth.model in 34..37) 4 else 0
             InstrumentType.HYPERSYNTH -> 0
-            InstrumentType.SAMPLER -> fallback.wave
+            InstrumentType.SAMPLER -> 6
             InstrumentType.MIDI_OUT -> fallback.wave
         }
         val env = inst.modulation.env1
@@ -438,6 +450,24 @@ class M8Synth {
     private fun hexToEnvelopeMs(v: Int, minMs: Double, maxMs: Double): Double {
         val x = (v / 255.0).coerceIn(0.0, 1.0)
         return minMs + (maxMs - minMs) * x * x
+    }
+
+    private fun readSample(track: Int, voice: Voice): Double {
+        val sample = trackSamples.getOrNull(track) ?: run {
+            voice.release()
+            return 0.0
+        }
+        val frame = voice.samplePos.toInt()
+        if (frame !in 0 until sample.frameCount) {
+            voice.release()
+            return 0.0
+        }
+        val base = frame * sample.channels
+        var value = sample.samples[base].toDouble()
+        if (sample.channels == 2) value = (value + sample.samples[base + 1]) * 0.5
+        val step = sample.sampleRate.toDouble() / SR
+        voice.samplePos += step
+        return value
     }
 
     /** Cheap soft limiter — no transcendentals. Linear below 0.85, cubic squash above. */

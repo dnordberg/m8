@@ -80,6 +80,37 @@ class M8SynthInstrumentTest {
         assertEquals(0.0, synth.getVoiceFreq(99))
     }
 
+    @Test
+    fun `sampler instrument renders loaded wav sample data`() {
+        val synth = M8Synth()
+        synth.applyInstrument(
+            0,
+            M8Instrument("SAMPLE", InstrumentType.SAMPLER).apply {
+                amp.amp = 0xFF
+                amp.pan = 0x80
+                amp.delaySend = 0x00
+                filter.cutoff = 0xFF
+                modulation.env1 = Envelope(attack = 0x00, decay = 0xFF, sustain = 0xFF, release = 0x40)
+            },
+        )
+        synth.loadSample(
+            0,
+            com.m8droid.audio.WavDecoder.DecodedWav(
+                sampleRate = M8Synth.SAMPLE_RATE,
+                channels = 1,
+                samples = FloatArray(2_000) { if (it % 2 == 0) 0.8f else -0.8f },
+            ),
+        )
+        val row = Array(8) { IntArray(3) }
+        row[0][0] = 60
+        row[0][2] = 255
+
+        synth.triggerRow(row)
+        val pcm = synth.generateChunk()
+
+        assertTrue(peakChannel(pcm, 0) > 0)
+    }
+
     private fun peakChannel(pcm: ByteArray, channel: Int): Int {
         var peak = 0
         var i = channel * 2
