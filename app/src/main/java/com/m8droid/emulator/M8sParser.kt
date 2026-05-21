@@ -7,12 +7,11 @@ import java.nio.ByteOrder
  * Parser for Dirtywave M8 song files (.m8s), version 4.x.
  *
  * Based on the binary layout documented in the m8-files Rust crate
- * (AlexCharlton/m8-files). This parser targets the playback-critical
- * subset: header (tempo/name/transpose), song grid, phrases, chains,
- * and tables. Instrument pool, mixer/FX settings, grooves, scales, EQ,
- * and MIDI mappings are intentionally NOT parsed in this MVP — the
- * emulator falls back to defaults for those so the song can still
- * play. See DECISIONS.md.
+ * (AlexCharlton/m8-files). This parser currently imports the
+ * playback-critical subset: header, tempo/name/transpose/quantize,
+ * song grid, phrases, chains, grooves, and tables. Later passes should
+ * add instrument pool, mixer/FX settings, scales, EQ, and MIDI mappings;
+ * until then [ParsedSong.warnings] surfaces the partial-import caveats.
  */
 object M8sParser {
 
@@ -42,6 +41,12 @@ object M8sParser {
     private const val N_GROOVES = 32
     private const val GROOVE_BYTES = 16
 
+    private val CORE_IMPORT_WARNINGS = listOf(
+        "Instrument pool is not imported yet; existing Android instrument slots stay live.",
+        "Mixer and global FX settings are not imported yet; Android defaults remain active.",
+        "Scale definitions/custom microtuning are not imported yet.",
+    )
+
     // Minimum file size: just large enough to cover the tables block. Real
     // files also have the instrument pool + effects/EQ after, but we want
     // the parser to accept any 4.x song whose core data is present.
@@ -64,6 +69,7 @@ object M8sParser {
         val chains: Array<Chain>,
         val tables: Array<Table>,
         val grooves: Array<Groove>,
+        val warnings: List<String> = CORE_IMPORT_WARNINGS,
     )
 
     fun parse(bytes: ByteArray): ParsedSong {

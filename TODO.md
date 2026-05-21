@@ -41,10 +41,10 @@ This is the biggest demo-to-instrument step. Mirror real M8 firmware behavior; d
 
 `M8sParser` already exists and has tests. Wire it into the emulator/app so real M8 songs can be loaded and played.
 
-- [ ] Add app-level load path from downloaded/local `.m8s` files into emulator state.
-- [ ] Call `M8sParser.parse()` + `M8sParser.applyTo()` from the browser/load workflow.
+- [x] Add app-level load path from downloaded/local `.m8s` files into emulator state.
+- [x] Call `M8sParser.parse()` + `M8sParser.applyTo()` from the browser/load workflow.
 - [ ] Preserve current app state or ask/confirm before replacing active song.
-- [ ] Display load success/failure and partial-import warnings.
+- [x] Display load success/failure and partial-import warnings.
 - [ ] Parse instrument pool.
 - [ ] Parse mixer settings.
 - [ ] Parse global FX settings: chorus, delay, reverb.

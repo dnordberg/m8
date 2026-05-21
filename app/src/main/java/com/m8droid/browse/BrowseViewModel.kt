@@ -204,14 +204,18 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
                 val bytes = withContext(Dispatchers.IO) { File(entry.localPath).readBytes() }
                 val song = M8sParser.parse(bytes)
                 apply(song)
-                "LOADED '${song.header.name}' @ ${song.header.tempo} BPM"
+                songLoadStatus(song)
             }
             _loadStatus.value = result.getOrElse { "ERROR: ${it.message ?: "parse failed"}" }
         }
     }
 
+    private fun songLoadStatus(song: M8sParser.ParsedSong): String {
+        val base = "LOADED '${song.header.name}' @ ${song.header.tempo} BPM"
+        return if (song.warnings.isEmpty()) base else base + "\nWARN: " + song.warnings.joinToString(" | ")
+    }
+
     /**
-     * Download a remote .m8i, save it to the SD store, and immediately
      * parse + load it into a slot. One-click flow for instruments.
      */
     fun downloadAndLoadInstrument(
@@ -258,7 +262,7 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
                 _sdEntries.value = store.list().sortedByDescending { it.downloadedAt }
                 val song = M8sParser.parse(bytes)
                 apply(song)
-                "LOADED '${song.header.name}' @ ${song.header.tempo} BPM"
+                songLoadStatus(song)
             }
             _loadStatus.value = result.getOrElse { "ERROR: ${it.message ?: "load failed"}" }
             _downloading.value = false

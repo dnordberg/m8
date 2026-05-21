@@ -1,6 +1,7 @@
 package com.m8droid.emulator
 
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -35,6 +36,15 @@ class M8sParserTest {
 
         assertEquals(5, song.grooves[0].ticks[0])
         assertEquals(7, song.grooves[0].ticks[1])
+    }
+
+    @Test
+    fun `parsed song exposes partial import warnings for unsupported pools`() {
+        val parsed = M8sParser.parse(minimalV4Song())
+
+        assertTrue(parsed.warnings.any { it.contains("instrument", ignoreCase = true) })
+        assertTrue(parsed.warnings.any { it.contains("mixer", ignoreCase = true) })
+        assertTrue(parsed.warnings.any { it.contains("scale", ignoreCase = true) })
     }
 
     private fun minimalV4Song(): ByteArray {
