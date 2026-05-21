@@ -67,6 +67,7 @@ class M8Synth {
         val fmIdx: Double = 0.0,
         val dlSend: Double = 0.0,  // delay send
         val pan: Double = 0.5,
+        val amp: Double = 1.0,
     )
 
     private val PRESETS = arrayOf(
@@ -91,7 +92,7 @@ class M8Synth {
         var vol = 1.0
         var active = false
         var noteOn = false
-        val p get() = PRESETS[track]
+        val p get() = voicePresets[track]
 
         // ADSR state
         var envStage = 0  // 0=off 1=atk 2=dec 3=sus 4=rel
@@ -222,6 +223,7 @@ class M8Synth {
 
     // ======================== STATE ========================
 
+    private val voicePresets = PRESETS.copyOf()
     private val voices = Array(8) { Voice(it) }
     private val dlBufL = DoubleArray(DELAY_LEN)
     private val dlBufR = DoubleArray(DELAY_LEN)
@@ -246,8 +248,12 @@ class M8Synth {
 
     // ======================== PUBLIC API ========================
 
-    fun configureVoice(track: Int, inst: M8Instrument) {}
-    fun applyInstrument(trackIndex: Int, instrument: M8Instrument) {}
+    fun configureVoice(track: Int, inst: M8Instrument) {
+        if (track !in 0..7) return
+        voicePresets[track] = presetFromInstrument(inst, PRESETS[track])
+    }
+
+    fun applyInstrument(trackIndex: Int, instrument: M8Instrument) = configureVoice(trackIndex, instrument)
     fun getVoiceFreq(track: Int): Double = if (track in 0..7) voices[track].freq else 0.0
 
     fun triggerRow(rowData: Array<IntArray>) {
@@ -290,8 +296,8 @@ class M8Synth {
                 val s = voices[t].gen(i)
                 if (s == 0.0) continue
 
-                val tVol = if (mx != null) mx.trackVolumes[t] / 255.0 else 0.85
-                val pan = if (mx != null) mx.trackPans[t] / 255.0 else PRESETS[t].pan
+                val tVol = if (mx != null) mx.trackVolumes[t] / 255.0 else voicePresets[t].amp
+                val pan = if (mx != null) mx.trackPans[t] / 255.0 else voicePresets[t].pan
                 val scaled = s * tVol
                 val pL = cos(pan * PI * 0.5)
                 val pR = sin(pan * PI * 0.5)
@@ -300,7 +306,7 @@ class M8Synth {
                 mixL += sL; mixR += sR
 
                 // Delay send
-                val ds = PRESETS[t].dlSend
+                val ds = voicePresets[t].dlSend
                 if (ds > 0.0) { dlInL += sL * ds; dlInR += sR * ds }
 
                 val pk = abs(scaled)
@@ -380,6 +386,58 @@ class M8Synth {
     fun getSwingDelaySamples(row: Int, bpm: Int): Int {
         if (row % 2 == 0 || swingAmount <= 0.0) return 0
         return (SR * 60.0 / (bpm * 4.0) * swingAmount).toInt()
+    }
+
+    private fun presetFromInstrument(inst: M8Instrument, fallback: Preset): Preset {
+        val wave = when (inst.type) {
+            InstrumentType.WAVSYNTH -> when (inst.wavSynth.shape) {
+                WavShape.SAW -> 0
+                WavShape.PULSE_12, WavShape.PULSE_25, WavShape.PULSE_50, WavShape.PULSE_75 -> 1
+                WavShape.SINE -> 2
+                WavShape.TRIANGLE -> 3
+                WavShape.NOISE, WavShape.NOISE_PITCH -> 4
+                WavShape.OVERFLOW -> 0
+            }
+            InstrumentType.FM_SYNTH -> 5
+            InstrumentType.MACROSYNTH -> if (inst.macroSynth.model in 34..37) 4 else 0
+            InstrumentType.HYPERSYNTH -> 0
+            InstrumentType.SAMPLER -> fallback.wave
+            InstrumentType.MIDI_OUT -> fallback.wave
+        }
+        val env = inst.modulation.env1
+        val attackMs = hexToEnvelopeMs(env.attack, minMs = 0.5, maxMs = 1_500.0)
+        val decayMs = hexToEnvelopeMs(env.decay, minMs = 5.0, maxMs = 2_500.0)
+        val releaseMs = hexToEnvelopeMs(env.release, minMs = 5.0, maxMs = 3_000.0)
+        val sustain = (env.sustain / 255.0).coerceIn(0.0, 1.0)
+        val fm = inst.fmSynth
+        return fallback.copy(
+            wave = wave,
+            cutoff = (inst.filter.cutoff / 255.0).coerceIn(0.0, 1.0),
+            reso = (inst.filter.resonance / 255.0).coerceIn(0.0, 1.0),
+            atkMs = attackMs,
+            decMs = decayMs,
+            sus = sustain,
+            relMs = releaseMs,
+            filtEnv = ((inst.modulation.env2.amount - 0x80) / 127.0).coerceIn(0.0, 1.0),
+            pw = wavPulseWidth(inst.wavSynth.shape),
+            fmRatio = max(1.0, fm.op2Ratio.toDouble()),
+            fmIdx = (fm.op2Level / 255.0 * 5.0).coerceIn(0.0, 5.0),
+            dlSend = (inst.amp.delaySend / 255.0).coerceIn(0.0, 1.0),
+            pan = (inst.amp.pan / 255.0).coerceIn(0.0, 1.0),
+            amp = (inst.amp.amp / 255.0).coerceIn(0.0, 1.0),
+        )
+    }
+
+    private fun wavPulseWidth(shape: WavShape): Double = when (shape) {
+        WavShape.PULSE_12 -> 0.125
+        WavShape.PULSE_25 -> 0.25
+        WavShape.PULSE_75 -> 0.75
+        else -> 0.5
+    }
+
+    private fun hexToEnvelopeMs(v: Int, minMs: Double, maxMs: Double): Double {
+        val x = (v / 255.0).coerceIn(0.0, 1.0)
+        return minMs + (maxMs - minMs) * x * x
     }
 
     /** Cheap soft limiter — no transcendentals. Linear below 0.85, cubic squash above. */

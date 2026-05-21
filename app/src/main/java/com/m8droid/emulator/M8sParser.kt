@@ -39,6 +39,8 @@ object M8sParser {
     private const val CHAIN_BYTES = 16 * 2            // 32, 16 rows × 2
     private const val N_TABLES = 256
     private const val TABLE_BYTES = 16 * 8            // 128, 16 rows × 8
+    private const val N_GROOVES = 32
+    private const val GROOVE_BYTES = 16
 
     // Minimum file size: just large enough to cover the tables block. Real
     // files also have the instrument pool + effects/EQ after, but we want
@@ -61,6 +63,7 @@ object M8sParser {
         val phrases: Array<Phrase>,
         val chains: Array<Chain>,
         val tables: Array<Table>,
+        val grooves: Array<Groove>,
     )
 
     fun parse(bytes: ByteArray): ParsedSong {
@@ -82,11 +85,12 @@ object M8sParser {
         }
 
         val songGrid = parseSongGrid(bytes)
+        val grooves = Array(N_GROOVES) { i -> parseGroove(bytes, OFFSET_GROOVE + i * GROOVE_BYTES) }
         val phrases = Array(N_PHRASES) { i -> parsePhrase(bytes, OFFSET_PHRASES + i * PHRASE_BYTES) }
         val chains = Array(N_CHAINS) { i -> parseChain(bytes, OFFSET_CHAINS + i * CHAIN_BYTES) }
         val tables = Array(N_TABLES) { i -> parseTable(bytes, OFFSET_TABLES + i * TABLE_BYTES) }
 
-        return ParsedSong(header, songGrid, phrases, chains, tables)
+        return ParsedSong(header, songGrid, phrases, chains, tables, grooves)
     }
 
     private fun parseHeader(bytes: ByteArray): Header {
@@ -122,6 +126,16 @@ object M8sParser {
             }
         }
         return out
+    }
+
+    private fun parseGroove(bytes: ByteArray, offset: Int): Groove {
+        val groove = Groove()
+        var p = offset
+        for (i in 0 until 16) {
+            val ticks = bytes[p++].toInt() and 0xFF
+            groove.ticks[i] = if (ticks == 0) 6 else ticks
+        }
+        return groove
     }
 
     private fun parsePhrase(bytes: ByteArray, offset: Int): Phrase {
@@ -209,6 +223,11 @@ object M8sParser {
                 dst[r].phrase = src[r].phrase
                 dst[r].transpose = src[r].transpose
             }
+        }
+        for (i in 0 until N_GROOVES) {
+            val src = parsed.grooves[i].ticks
+            val dst = song.grooves[i].ticks
+            for (s in 0 until 16) dst[s] = src[s]
         }
         for (i in 0 until N_TABLES) {
             val src = parsed.tables[i].rows
