@@ -77,19 +77,62 @@ class M8EmulatorEditTest {
     }
 
     @Test
-    fun `fx edit uses same rendered cursor rows as highlighted values`() {
-        val emulator = M8Emulator().apply {
-            screen = M8Emulator.SCREEN_FX
-            cursorY = 6 // DELAY / FILTER HP as rendered
+    fun `fx edit changes exactly the highlighted rendered row`() {
+        fun assertFxRow(row: Int, readTarget: (M8Emulator) -> Int, readNext: ((M8Emulator) -> Int)? = null) {
+            val emulator = M8Emulator().apply {
+                screen = M8Emulator.SCREEN_FX
+                cursorY = row
+                song.chorus.modDepth = 0x40
+                song.chorus.modFreq = 0x40
+                song.chorus.width = 0x40
+                song.chorus.reverbSend = 0x40
+                song.delay.filterHP = 0x40
+                song.delay.filterLP = 0x40
+                song.delay.timeL = 0x40
+                song.delay.timeR = 0x40
+                song.delay.feedback = 0x40
+                song.delay.width = 0x40
+                song.delay.reverbSend = 0x40
+                song.reverb.filterHP = 0x40
+                song.reverb.filterLP = 0x40
+                song.reverb.size = 0x40
+                song.reverb.damping = 0x40
+                song.reverb.modDepth = 0x40
+                song.reverb.modFreq = 0x40
+                song.reverb.width = 0x40
+            }
+            val originalTarget = readTarget(emulator)
+            val originalNext = readNext?.invoke(emulator)
+
+            emulator.tap(M8Commands.KEY_EDIT)
+            emulator.tap(M8Commands.KEY_UP)
+
+            assertEquals(originalTarget + 1, readTarget(emulator), "cursorY=$row should edit highlighted row")
+            if (readNext != null) {
+                assertEquals(originalNext, readNext.invoke(emulator), "cursorY=$row must not edit row underneath")
+            }
         }
-        val originalHp = emulator.song.delay.filterHP
-        val originalLp = emulator.song.delay.filterLP
 
-        emulator.tap(M8Commands.KEY_EDIT)
-        emulator.tap(M8Commands.KEY_UP)
+        assertFxRow(0, { it.song.chorus.modDepth }, { it.song.chorus.modFreq })
+        assertFxRow(1, { it.song.chorus.modFreq }, { it.song.chorus.width })
+        assertFxRow(2, { it.song.chorus.width }, { it.song.chorus.reverbSend })
+        assertFxRow(3, { it.song.chorus.reverbSend }, { it.song.delay.filterHP })
 
-        assertEquals(originalHp + 1, emulator.song.delay.filterHP)
-        assertEquals(originalLp, emulator.song.delay.filterLP)
+        assertFxRow(6, { it.song.delay.filterHP }, { it.song.delay.filterLP })
+        assertFxRow(7, { it.song.delay.filterLP }, { it.song.delay.timeL })
+        assertFxRow(8, { it.song.delay.timeL }, { it.song.delay.timeR })
+        assertFxRow(9, { it.song.delay.timeR }, { it.song.delay.feedback })
+        assertFxRow(10, { it.song.delay.feedback }, { it.song.delay.width })
+        assertFxRow(11, { it.song.delay.width }, { it.song.delay.reverbSend })
+        assertFxRow(12, { it.song.delay.reverbSend }, { it.song.reverb.filterHP })
+
+        assertFxRow(15, { it.song.reverb.filterHP }, { it.song.reverb.filterLP })
+        assertFxRow(16, { it.song.reverb.filterLP }, { it.song.reverb.size })
+        assertFxRow(17, { it.song.reverb.size }, { it.song.reverb.damping })
+        assertFxRow(18, { it.song.reverb.damping }, { it.song.reverb.modDepth })
+        assertFxRow(19, { it.song.reverb.modDepth }, { it.song.reverb.modFreq })
+        assertFxRow(20, { it.song.reverb.modFreq }, { it.song.reverb.width })
+        assertFxRow(21, { it.song.reverb.width })
     }
 
     @Test
