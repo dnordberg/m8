@@ -85,13 +85,7 @@ class M8SynthInstrumentTest {
         val synth = M8Synth()
         synth.applyInstrument(
             0,
-            M8Instrument("SAMPLE", InstrumentType.SAMPLER).apply {
-                amp.amp = 0xFF
-                amp.pan = 0x80
-                amp.delaySend = 0x00
-                filter.cutoff = 0xFF
-                modulation.env1 = Envelope(attack = 0x00, decay = 0xFF, sustain = 0xFF, release = 0x40)
-            },
+            samplerInstrument(),
         )
         synth.loadSample(
             0,
@@ -109,6 +103,76 @@ class M8SynthInstrumentTest {
         val pcm = synth.generateChunk()
 
         assertTrue(peakChannel(pcm, 0) > 0)
+    }
+
+    @Test
+    fun `sampler pitch follows played note instead of fixed file rate`() {
+        val synth = M8Synth()
+        synth.applyInstrument(0, samplerInstrument())
+        synth.loadSample(
+            0,
+            com.m8droid.audio.WavDecoder.DecodedWav(
+                sampleRate = M8Synth.SAMPLE_RATE,
+                channels = 1,
+                samples = FloatArray(8_000) { 0.5f },
+            ),
+        )
+        val row = Array(8) { IntArray(3) }
+        row[0][2] = 255
+
+        row[0][0] = 60
+        synth.triggerRow(row)
+        synth.generateChunk()
+        val c4Pos = synth.getSamplePosition(0)
+
+        synth.allNotesOff()
+        row[0][0] = 72
+        synth.triggerRow(row)
+        synth.generateChunk()
+        val c5Pos = synth.getSamplePosition(0)
+
+        assertTrue(c5Pos > c4Pos * 1.9, "C5 should advance sample playback about twice as fast as C4; C4=$c4Pos C5=$c5Pos")
+    }
+
+    @Test
+    fun `sampler forward loop wraps between loop start and length`() {
+        val synth = M8Synth()
+        synth.applyInstrument(
+            0,
+            samplerInstrument().apply {
+                sampler.playMode = 2 // FWDLOOP
+                sampler.loopStart = 0x40
+                sampler.length = 0x80
+            },
+        )
+        synth.loadSample(
+            0,
+            com.m8droid.audio.WavDecoder.DecodedWav(
+                sampleRate = M8Synth.SAMPLE_RATE,
+                channels = 1,
+                samples = FloatArray(1_000) { 0.4f },
+            ),
+        )
+        val row = Array(8) { IntArray(3) }
+        row[0][0] = 60
+        row[0][2] = 255
+
+        synth.triggerRow(row)
+        repeat(4) { synth.generateChunk() }
+
+        assertTrue(synth.isVoiceActive(0), "looped sampler voice should stay active after passing sample end")
+        assertTrue(synth.getSamplePosition(0) in 250.0..510.0, "loop should wrap inside loop window, pos=${synth.getSamplePosition(0)}")
+    }
+
+    private fun samplerInstrument() = M8Instrument("SAMPLE", InstrumentType.SAMPLER).apply {
+        amp.amp = 0xFF
+        amp.pan = 0x80
+        amp.delaySend = 0x00
+        filter.cutoff = 0xFF
+        sampler.start = 0x00
+        sampler.length = 0xFF
+        sampler.detune = 0x80
+        modulation.env1 = Envelope(attack = 0x00, decay = 0xFF, sustain = 0xFF, release = 0x40)
     }
 
     private fun peakChannel(pcm: ByteArray, channel: Int): Int {

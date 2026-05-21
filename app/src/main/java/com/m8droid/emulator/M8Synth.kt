@@ -118,10 +118,12 @@ class M8Synth {
 
         // Sampler playback
         var samplePos = 0.0
+        var sampleInitialized = false
 
         fun trigger(f: Double, v: Double) {
             freq = f; vol = v
             samplePos = 0.0
+            sampleInitialized = false
             envStage = 1; envTime = 0.0; envLevel = 0.0
             fenvLevel = 1.0; fenvTime = 0.0
             noteOn = true; active = true
@@ -230,6 +232,7 @@ class M8Synth {
 
     private val voicePresets = PRESETS.copyOf()
     private val trackSamples = arrayOfNulls<WavDecoder.DecodedWav>(8)
+    private val trackSamplers = Array(8) { SamplerParams() }
     private val voices = Array(8) { Voice(it) }
     private val dlBufL = DoubleArray(DELAY_LEN)
     private val dlBufR = DoubleArray(DELAY_LEN)
@@ -257,6 +260,7 @@ class M8Synth {
     fun configureVoice(track: Int, inst: M8Instrument) {
         if (track !in 0..7) return
         voicePresets[track] = presetFromInstrument(inst, PRESETS[track])
+        trackSamplers[track] = inst.sampler.copy()
     }
 
     fun applyInstrument(trackIndex: Int, instrument: M8Instrument) = configureVoice(trackIndex, instrument)
@@ -267,6 +271,8 @@ class M8Synth {
     }
 
     fun getVoiceFreq(track: Int): Double = if (track in 0..7) voices[track].freq else 0.0
+    fun getSamplePosition(track: Int): Double = if (track in 0..7) voices[track].samplePos else 0.0
+    fun isVoiceActive(track: Int): Boolean = track in 0..7 && voices[track].active
 
     fun triggerRow(rowData: Array<IntArray>) {
         for (t in 0 until min(8, rowData.size)) {
@@ -457,16 +463,63 @@ class M8Synth {
             voice.release()
             return 0.0
         }
-        val frame = voice.samplePos.toInt()
-        if (frame !in 0 until sample.frameCount) {
-            voice.release()
-            return 0.0
+        val sampler = trackSamplers[track]
+        val startFrame = samplerFrame(sampler.start, sample.frameCount)
+        val endFrame = max(startFrame + 1, samplerFrame(sampler.length, sample.frameCount))
+            .coerceAtMost(sample.frameCount)
+        val loopStart = samplerFrame(sampler.loopStart, sample.frameCount).coerceIn(startFrame, endFrame - 1)
+        val looping = sampler.playMode == 2 || sampler.playMode == 3 || sampler.playMode == 4 || sampler.playMode == 5 || sampler.playMode == 6
+
+        if (!voice.sampleInitialized) {
+            voice.samplePos = startFrame.toDouble()
+            voice.sampleInitialized = true
         }
-        val base = frame * sample.channels
+
+        if (voice.samplePos >= endFrame) {
+            if (looping) {
+                val loopLen = max(1.0, endFrame - loopStart.toDouble())
+                voice.samplePos = loopStart + ((voice.samplePos - loopStart) % loopLen)
+            } else {
+                voice.release()
+                return 0.0
+            }
+        }
+
+        val frame = voice.samplePos.toInt().coerceIn(startFrame, endFrame - 1)
+        val frac = voice.samplePos - frame
+        val nextFrame = when {
+            frame + 1 < endFrame -> frame + 1
+            looping -> loopStart
+            else -> frame
+        }
+        var value = sampleAt(sample, frame) * (1.0 - frac) + sampleAt(sample, nextFrame) * frac
+
+        if (sampler.degrade > 0) {
+            val levels = max(2.0, 256.0 - sampler.degrade.toDouble()).toInt()
+            value = kotlin.math.round(value * levels) / levels
+        }
+
+        val baseStep = sample.sampleRate.toDouble() / SR
+        val noteRatio = (voice.freq / noteToFreq(60)).coerceIn(0.125, 8.0)
+        val detuneRatio = 2.0.pow(((sampler.detune - 0x80) / 128.0) / 12.0)
+        voice.samplePos += baseStep * noteRatio * detuneRatio
+
+        if (voice.samplePos >= endFrame && looping) {
+            val loopLen = max(1.0, endFrame - loopStart.toDouble())
+            voice.samplePos = loopStart + ((voice.samplePos - loopStart) % loopLen)
+        }
+
+        return value
+    }
+
+    private fun samplerFrame(hex: Int, frameCount: Int): Int =
+        ((hex.coerceIn(0, 0xFF) / 255.0) * max(0, frameCount - 1)).toInt()
+
+    private fun sampleAt(sample: WavDecoder.DecodedWav, frame: Int): Double {
+        val safeFrame = frame.coerceIn(0, sample.frameCount - 1)
+        val base = safeFrame * sample.channels
         var value = sample.samples[base].toDouble()
         if (sample.channels == 2) value = (value + sample.samples[base + 1]) * 0.5
-        val step = sample.sampleRate.toDouble() / SR
-        voice.samplePos += step
         return value
     }
 

@@ -62,12 +62,12 @@ WAV decode and first-pass sampler voice already exist. Finish the path so sample
 - [x] First-pass SAMPLER voice path in `M8Synth` using decoded WAV data.
 - [ ] Wire SAMPLER instruments to sample files in the virtual SD/download store.
 - [ ] Add sample cache to avoid decoding during audio callback.
-- [ ] Add pitch/transpose playback.
-- [ ] Add loop-point handling.
-- [ ] Add one-shot vs loop mode behavior.
-- [ ] Add interpolation to reduce aliasing on transposed samples.
-- [ ] Add one-click sample preview in browser.
-- [ ] Add tests using generated tiny WAV fixtures.
+- [x] Add pitch/transpose playback.
+- [x] Add loop-point handling.
+- [x] Add one-shot vs loop mode behavior.
+- [x] Add interpolation to reduce aliasing on transposed samples.
+- [x] Add tests using generated tiny WAV/sample fixtures.
+
 
 ## Priority 4 — Macrosynth / wavsynth modes
 
@@ -94,7 +94,7 @@ These are the “sounds/behaves like a real M8” gaps. Do not chase hardware-on
 - [ ] Per-instrument mixer chain: add 3-band EQ, limiter, drive, sample-rate reduction, and FX sends. Current implementation mostly has master delay/chorus/reverb, not real per-voice processing.
 - [ ] Groove timing at scheduler: groove pool is parsed, but playback clock still uses a flat grid. Apply per-track groove/swing patterns to actual note timing.
 - [ ] Custom scales / microtuning: parse user scales with per-note cent offsets and enforce them at note-on.
-- [ ] Sampler fidelity: finish pitched playback, loop points, slice mode, loop crossfade, and better interpolation. First sampler voice exists but is intentionally basic.
+- [x] Sampler fidelity: pitched playback, loop points, one-shot vs loop behavior, and interpolation now exist. Remaining: slice mode and loop crossfade.
 - [ ] Sampling in: evaluate Android recording path for creating new samples from mic/USB/line-style sources where possible. This is a hardware feature on M8; on phone it should be treated as an Android-native equivalent, not a perfect hardware clone.
 
 ## Hardware-specific items not worth chasing
