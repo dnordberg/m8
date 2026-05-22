@@ -72,6 +72,8 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     val currentScreen: Int get() = emulator.screen
     private var emulatorRenderJob: Job? = null
     private var audioThread: Thread? = null
+    private var samplesUntilNextFxTick = 0
+    private var fxTickInRow = 0
 
     // Use the emulator's song data model (shared state for display + audio)
     private val song get() = emulator.song
@@ -322,6 +324,8 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
                         if (!wasPlaying) {
                             wasPlaying = true
                             samplesUntilNextRow = 0
+                            samplesUntilNextFxTick = 0
+                            fxTickInRow = 0
                             songRow = 0
                             chainRow = 0
                             phraseRow = 0
@@ -340,6 +344,8 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
                             val swingDelay =
                                 synth.getSwingDelaySamples(nextPhraseRow, bpm)
                             samplesUntilNextRow = rowDurationSamples + swingDelay
+                            fxTickInRow = 0
+                            samplesUntilNextFxTick = fxTickDurationSamples(samplesUntilNextRow)
 
                             advanceSequencer()
                         }
@@ -348,6 +354,11 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
                                   else synth.generateChunk()
                         localAudioPlayer.write(pcm)
                         samplesUntilNextRow -= M8Synth.CHUNK_SAMPLES
+                        samplesUntilNextFxTick -= M8Synth.CHUNK_SAMPLES
+                        while (samplesUntilNextFxTick <= 0 && samplesUntilNextRow > 0) {
+                            processRuntimeFxTick()
+                            samplesUntilNextFxTick += fxTickDurationSamples(rowDurationSamples)
+                        }
                     } else {
                         if (wasPlaying) {
                             wasPlaying = false
@@ -355,6 +366,8 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
                             else synth.allNotesOff()
                             fxEngine.reset()
                             samplesUntilNextRow = 0
+                            samplesUntilNextFxTick = 0
+                            fxTickInRow = 0
                         }
                         // Write silence — just zeros
                         localAudioPlayer.write(ByteArray(M8Synth.CHUNK_SAMPLES * 2 * 2))
@@ -377,6 +390,30 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         }, "M8SynthThread").apply {
             priority = Thread.MAX_PRIORITY
             start()
+        }
+    }
+
+    private fun fxTickDurationSamples(rowDurationSamples: Int): Int = (rowDurationSamples / 6).coerceAtLeast(M8Synth.CHUNK_SAMPLES)
+
+    private fun processRuntimeFxTick() {
+        fxTickInRow++
+        if (fxTickInRow <= 0) return
+        for (track in 0 until 8) {
+            val tickResult = fxEngine.processTick(track, fxTickInRow)
+            if (tickResult.releaseNote) {
+                if (nativeSynthReady) {
+                    val notes = ByteArray(8) { if (it == track) M8Synth.NOTE_OFF.toByte() else 0 }
+                    val vols = ByteArray(8)
+                    NativeSynth.triggerRow(notes, vols)
+                } else {
+                    synth.releaseTrack(track)
+                }
+                if (midiOutHeld[track] >= 0) {
+                    midiEngine.sendNoteOff(track, midiOutHeld[track])
+                    midiOutHeld[track] = -1
+                    markMidiActivity()
+                }
+            }
         }
     }
 

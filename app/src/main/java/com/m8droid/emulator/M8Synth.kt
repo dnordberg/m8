@@ -305,6 +305,13 @@ class M8Synth {
     fun getSamplePosition(track: Int): Double = if (track in 0..7) voices[track].samplePos else 0.0
     fun isVoiceActive(track: Int): Boolean = track in 0..7 && voices[track].active
 
+    fun releaseTrack(track: Int) {
+        if (track !in 0..7) return
+        voices[track].noteOn = false
+        voices[track].envStage = 0
+        voices[track].active = false
+    }
+
     fun triggerRow(rowData: Array<IntArray>) {
         for (t in 0 until min(8, rowData.size)) {
             val note = rowData[t][0]

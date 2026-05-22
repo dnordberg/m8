@@ -74,6 +74,20 @@ class M8SynthInstrumentTest {
     }
 
     @Test
+    fun `releaseTrack releases active voice for tick fx kill`() {
+        val synth = M8Synth()
+        val row = Array(8) { IntArray(3) }
+        row[0][0] = 60
+        row[0][2] = 255
+        synth.triggerRow(row)
+        assertTrue(synth.isVoiceActive(0))
+
+        synth.releaseTrack(0)
+
+        assertTrue(!synth.isVoiceActive(0))
+    }
+
+    @Test
     fun `track indices outside eight voices are ignored`() {
         val synth = M8Synth()
         synth.applyInstrument(99, M8Instrument("IGNORED"))
