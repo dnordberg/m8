@@ -41,6 +41,7 @@ fun SettingsDialog(
     var layout by remember(currentSettings) { mutableStateOf(currentSettings.buttonLayout) }
     var gamepad by remember(currentSettings) { mutableStateOf(currentSettings.gamepadEnabled) }
     var keyboard by remember(currentSettings) { mutableStateOf(currentSettings.keyboardEnabled) }
+    var hexEditor by remember(currentSettings) { mutableStateOf(currentSettings.hexEditorEnabled) }
 
     fun buildSettings(): ServerSettings = ServerSettings(
         host = host.trim(),
@@ -49,6 +50,7 @@ fun SettingsDialog(
         buttonLayout = layout,
         gamepadEnabled = gamepad,
         keyboardEnabled = keyboard,
+        hexEditorEnabled = hexEditor,
     )
 
     Box(
@@ -106,6 +108,12 @@ fun SettingsDialog(
                 label = "KEYBOARD INPUT",
                 checked = keyboard,
                 onChange = { keyboard = it },
+            )
+
+            ToggleRow(
+                label = "TOUCH HEX EDITOR",
+                checked = hexEditor,
+                onChange = { hexEditor = it },
             )
 
             Text(

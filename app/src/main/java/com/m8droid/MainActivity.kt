@@ -217,8 +217,8 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
                     }
                     val onKeys: (Int) -> Unit = { keys -> viewModel.setTouchKeys(keys) }
                     val keyState by viewModel.keyState.collectAsState()
-                    val showHexEntry = remember(displayTick) {
-                        viewModel.isEditMode && viewModel.canEnterHexDigit
+                    val showHexEntry = remember(displayTick, serverSettings.hexEditorEnabled) {
+                        serverSettings.hexEditorEnabled && viewModel.isEditMode && viewModel.canEnterHexDigit
                     }
                     Column(modifier = Modifier.fillMaxSize()) {
                         AppHeaderBar(
