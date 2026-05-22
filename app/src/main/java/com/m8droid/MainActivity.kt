@@ -15,7 +15,8 @@ import androidx.compose.material3.*
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.*
-import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -158,10 +159,11 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
     val lastEval by academyVm.lastEvaluation.collectAsState()
     val serverSettings by viewModel.serverSettings.collectAsState()
 
-    // Track tutorial state changes with displayTick (recomposes at ~30fps)
-    val tutorialActive = remember(displayTick) { tutorial.active }
-    val tutorialPaused = remember(displayTick) { tutorial.paused }
-    val tutorialComplete = remember(displayTick) { tutorial.isComplete }
+    // Tutorial fields are Compose state; read them directly so overlay controls
+    // refresh immediately even when the display tick is paused or unchanged.
+    val tutorialActive = tutorial.active
+    val tutorialPaused = tutorial.paused
+    val tutorialComplete = tutorial.isComplete
 
     // Auto-check tutorial completion on each frame
     LaunchedEffect(displayTick) {
@@ -300,6 +302,13 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
                 onStop = { tutorial.stop() },
                 onSkip = { tutorial.skip() },
                 onPrevious = { tutorial.previousStep() },
+                onPressHint = { keyMask ->
+                    scope.launch {
+                        viewModel.setTouchKeys(keyMask)
+                        delay(90)
+                        viewModel.setTouchKeys(0)
+                    }
+                },
             )
         }
 

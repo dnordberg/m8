@@ -43,8 +43,10 @@ fun TutorialOverlay(
     onStop: () -> Unit,
     onSkip: () -> Unit,
     onPrevious: () -> Unit,
+    onPressHint: (Int) -> Unit,
 ) {
     val step = tutorial.currentStep ?: return
+    val stepButtonMask = tutorial.currentStepButtonMask
 
     Box(
         modifier = Modifier.fillMaxSize(),
@@ -142,14 +144,22 @@ fun TutorialOverlay(
             // Button hint
             if (step.buttonHint != null) {
                 Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "> ${step.buttonHint}",
-                    color = cHint,
-                    fontSize = 11.sp,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
+                Row(
                     modifier = Modifier.padding(horizontal = 12.dp),
-                )
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        text = "> ${step.buttonHint}",
+                        color = cHint,
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    if (stepButtonMask != null) {
+                        TutorialButton("PRESS") { onPressHint(stepButtonMask) }
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(8.dp))
