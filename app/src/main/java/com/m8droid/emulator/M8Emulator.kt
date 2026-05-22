@@ -183,6 +183,20 @@ class M8Emulator {
         }
     }
 
+    fun handleDisplayLongPress(m8X: Int, m8Y: Int): Boolean {
+        if (!isEditableDisplayCell(m8X, m8Y)) return false
+        handleDisplayTap(m8X, m8Y)
+        editMode = true
+        return true
+    }
+
+    private fun isEditableDisplayCell(m8X: Int, m8Y: Int): Boolean = when (screen) {
+        SCREEN_SONG -> m8X >= 28 && m8Y >= 60
+        SCREEN_CHAIN -> m8Y >= 43
+        SCREEN_PHRASE -> m8X >= 20 && m8Y >= 38
+        else -> false
+    }
+
     /**
      * Enter one hex digit into the currently selected rendered hex cell. This is
      * the emulator-core seam used by phone touch controls: the first digit writes

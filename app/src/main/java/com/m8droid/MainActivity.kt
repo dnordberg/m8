@@ -213,6 +213,7 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
                             invalidationTick = displayTick,
                             onScreenTap = { viewModel.setScreen(it) },
                             onDisplayTap = { x, y -> viewModel.handleDisplayTap(x, y) },
+                            onDisplayLongPress = { x, y -> viewModel.handleDisplayLongPress(x, y) },
                             onSwipeLeft = { viewModel.nextScreen() },
                             onSwipeRight = { viewModel.prevScreen() },
                         )

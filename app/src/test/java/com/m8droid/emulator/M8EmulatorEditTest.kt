@@ -266,6 +266,37 @@ class M8EmulatorEditTest {
     }
 
     @Test
+    fun `long press display selects phrase note cell and enters edit mode`() {
+        val emulator = M8Emulator().apply {
+            screen = M8Emulator.SCREEN_PHRASE
+            editMode = false
+        }
+
+        assertEquals(true, emulator.handleDisplayLongPress(20 + 3 * 28 + 4, 38 + 9 * 12))
+
+        assertEquals(true, emulator.editMode)
+        assertEquals(3, emulator.cursorX)
+        assertEquals(9, emulator.cursorY)
+        assertEquals(0, emulator.phraseEditColumn)
+    }
+
+    @Test
+    fun `long press ignores non-cell display areas`() {
+        val emulator = M8Emulator().apply {
+            screen = M8Emulator.SCREEN_SONG
+            editMode = false
+            cursorX = 4
+            cursorY = 7
+        }
+
+        assertEquals(false, emulator.handleDisplayLongPress(10, 20))
+
+        assertEquals(false, emulator.editMode)
+        assertEquals(4, emulator.cursorX)
+        assertEquals(7, emulator.cursorY)
+    }
+
+    @Test
     fun `song accepts touch hex digit entry into selected chain cell`() {
         val emulator = M8Emulator().apply {
             screen = M8Emulator.SCREEN_SONG

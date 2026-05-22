@@ -806,6 +806,8 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         emulator.handleDisplayTap(m8X, m8Y)
     }
 
+    fun handleDisplayLongPress(m8X: Int, m8Y: Int): Boolean = emulator.handleDisplayLongPress(m8X, m8Y)
+
     fun enterHexDigit(digit: Int): Boolean = emulator.enterHexDigit(digit)
 
     fun enterNoteFromPicker(semitone: Int): Boolean = emulator.enterNoteFromPicker(semitone)

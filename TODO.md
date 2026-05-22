@@ -31,7 +31,7 @@ This is the biggest demo-to-instrument step. Mirror real M8 firmware behavior; d
 - [x] Implement note entry in PHRASE rows using current octave/key/scale.
 - [x] Implement instrument, volume, and FX column editing in PHRASE rows.
 - [ ] Add phone-friendly value input overlay only where it maps cleanly to real M8 edit semantics.
-- [ ] Add long-press cell edit affordance.
+- [x] Add long-press cell edit affordance.
 - [x] Add sticky Shift/Edit/Option modes.
 - [x] Add mini piano / note picker overlay for phrase note entry.
 - [ ] Add haptic feedback for edit confirmation and navigation.
