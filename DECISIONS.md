@@ -43,19 +43,21 @@ Implemented in `M8sParser.kt`. Reference: `AlexCharlton/m8-files`
 from that same repo's `examples/songs/`).
 
 **Parsed (playback-critical):** header (version, tempo, transpose,
-quantize, name), song grid (256×8), phrases (255×16 steps, 9 bytes
-each: note/vel/inst/3×FX), chains (255×16 rows), tables (256×16
-rows), grooves (32×16), and the full **instrument pool at `0x13A3E`**
-(128 slots × 215-byte body, parsed by reusing `M8iParser.parseBodyAt`).
-The emulator instrument array expanded from 8 to 128 to match real M8
-hardware capacity so phrase steps referencing instruments above slot 7
-no longer fall back to the previous track configuration.
+quantize, name, song key), song grid (256×8), phrases (255×16 steps,
+9 bytes each: note/vel/inst/3×FX), chains (255×16 rows), tables
+(256×16 rows), grooves (32×16), mixer settings, global chorus/delay/reverb
+settings, scale enable maps + names, and the full **instrument pool at
+`0x13A3E`** (128 slots × 215-byte body, parsed by reusing
+`M8iParser.parseBodyAt`). The emulator instrument array expanded from
+8 to 128 to match real M8 hardware capacity so phrase steps referencing
+instruments above slot 7 no longer fall back to the previous track
+configuration.
 
-**Not parsed (deferred):** mixer settings, effects/EQ, scales, MIDI
-mappings, directory. The instrument-pool warning is gone from
-`ParsedSong.warnings`; partial-file warnings ("Instrument pool not
-present" / "truncated") surface only when a file actually lacks the
-block.
+**Not parsed (deferred):** MIDI mappings, directory, V4 delay/reverb
+HP/LP cutoff locations, chorus width, and per-note scale microtuning cent
+offsets. The instrument-pool warning is gone from `ParsedSong.warnings`;
+partial-file warnings ("Instrument pool not present" / "truncated")
+surface only when a file actually lacks the block.
 
 **Version support:** V4.x only (`major == 4`). 4.0 and 4.1 share
 offsets for everything we read. Older versions rejected.
@@ -111,9 +113,9 @@ checked in, ready for a future test phase.
 
 ## Deferred / not done (explicitly)
 
-- Mixer/global FX/scale settings in `.m8s` (instrument pool now loads,
-  but the song's per-track mix and global FX don't yet)
-- Sample playback in the audio engine (samples download but are
-  silent)
+- V4 delay/reverb HP/LP cutoff locations and chorus width are still unknown;
+  imported FX preserve existing destination defaults for those fields.
+- Scale microtuning cent offsets are parsed around but not represented/applied
+  yet; scale enable maps, names, and song key now load.
 - SD delete/rename — downloads accumulate indefinitely
 - Older firmware version support in `.m8i` parser

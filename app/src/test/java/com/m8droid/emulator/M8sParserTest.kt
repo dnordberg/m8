@@ -1,6 +1,7 @@
 package com.m8droid.emulator
 
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.nio.ByteBuffer
@@ -208,6 +209,61 @@ class M8sParserTest {
     }
 
     @Test
+    fun `parses V4 scale definitions from scale block`() {
+        val bytes = v4SongWithScaleBlock()
+        val scale = 0x1AA7E + 2 * 42
+        // Enable C, D, F, G, A for a pentatonic-style custom scale.
+        ByteBuffer.wrap(bytes, scale, 2).order(ByteOrder.LITTLE_ENDIAN).putShort(0x02A5.toShort())
+        // Offsets are two bytes per note in the upstream layout. The current
+        // emulator scale model only carries enabled semitones, so these bytes
+        // are skipped while preserving the block stride.
+        bytes[scale + 2 + 4 * 2] = 1
+        bytes[scale + 2 + 4 * 2 + 1] = 25
+        "PHONEPENTA".toByteArray(Charsets.US_ASCII).copyInto(bytes, scale + 26)
+
+        val parsed = M8sParser.parse(bytes)
+        val parsedScale = parsed.scales[2]
+
+        assertEquals("PHONEPENTA", parsedScale.name)
+        assertTrue(parsedScale.intervals[0])
+        assertFalse(parsedScale.intervals[1])
+        assertTrue(parsedScale.intervals[2])
+        assertFalse(parsedScale.intervals[3])
+        assertTrue(parsedScale.intervals[5])
+        assertTrue(parsedScale.intervals[7])
+        assertTrue(parsedScale.intervals[9])
+        assertFalse(parsedScale.intervals[11])
+    }
+
+    @Test
+    fun `applyTo writes parsed scales and song key into mutable song`() {
+        val bytes = v4SongWithScaleBlock()
+        bytes[187] = 9 // song key read by m8-files after MidiSettings, before mixer padding
+        val scale = 0x1AA7E + 1 * 42
+        ByteBuffer.wrap(bytes, scale, 2).order(ByteOrder.LITTLE_ENDIAN).putShort(0x02B5.toShort())
+        "LOADSCALE".toByteArray(Charsets.US_ASCII).copyInto(bytes, scale + 26)
+
+        val parsed = M8sParser.parse(bytes)
+        val song = M8Song()
+        song.scales[1].name = "OLD"
+        song.scales[1].key = 0
+
+        M8sParser.applyTo(parsed, song)
+
+        assertEquals("LOADSCALE", song.scales[1].name)
+        assertEquals(9, song.scales[1].key)
+        assertTrue(song.scales[1].intervals[0])
+        assertFalse(song.scales[1].intervals[1])
+        assertTrue(song.scales[1].intervals[2])
+        assertTrue(song.scales[1].intervals[4])
+        assertTrue(song.scales[1].intervals[5])
+        assertFalse(song.scales[1].intervals[6])
+        assertTrue(song.scales[1].intervals[7])
+        assertFalse(song.scales[1].intervals[8])
+        assertFalse(song.scales[1].intervals[11])
+    }
+
+    @Test
     fun `instrument pool fills 128 placeholders when file truncates before pool`() {
         val parsed = M8sParser.parse(minimalV4Song())
         assertEquals(128, parsed.instruments.size)
@@ -284,5 +340,11 @@ class M8sParserTest {
         val size = maxOf(instrumentEnd, fxEnd)
         val base = minimalV4Song()
         return base.copyOf(size)
+    }
+
+    private fun v4SongWithScaleBlock(): ByteArray {
+        val scaleEnd = 0x1AA7E + 16 * 42
+        val base = minimalV4Song()
+        return base.copyOf(scaleEnd)
     }
 }

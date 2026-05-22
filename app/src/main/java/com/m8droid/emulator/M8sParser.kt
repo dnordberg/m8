@@ -46,7 +46,20 @@ object M8sParser {
     private const val POS_TEMPO = POS_TRANSPOSE + 1   // 143 (f32 LE)
     private const val POS_QUANTIZE = POS_TEMPO + 4    // 147
     private const val POS_NAME = POS_QUANTIZE + 1     // 148 (12 bytes)
+    // Global song key is read by m8-files after MidiSettings and before the
+    // 18-byte padding that precedes the mixer block.
+    private const val POS_KEY = 187
     private const val NAME_LEN = 12
+
+    // Scale definitions. m8-files V4_OFFSETS.scale = 0x1AA7E. Each scale is
+    // read as: u16 enable bitmap, 12×2 bytes of semitone/cents offsets, then
+    // a 16-byte name (42 bytes total; upstream's SIZE constant is stale, but
+    // Scale::from_reader consumes this layout). Our current model carries the
+    // bitmap + name; cent offsets remain a documented parity gap until the
+    // synth/note path supports them.
+    private const val OFFSET_SCALES = 0x1AA7E
+    private const val N_SCALES = 16
+    private const val SCALE_BYTES = 42
 
     private const val SONG_GRID_BYTES = 2048          // 256 rows × 8 tracks
     private const val N_PHRASES = 255
@@ -65,7 +78,7 @@ object M8sParser {
         // positions and the exact new offsets aren't yet known. Until they
         // are, those four fields keep the destination song's existing values.
         "Delay and reverb HP/LP filter cutoff are not imported on V4.x; using current defaults.",
-        "Scale definitions/custom microtuning are not imported yet.",
+        "Scale microtuning cent offsets are not imported yet; scale enable maps and names are imported.",
     )
 
     // Minimum file size: cover the tables block. The instrument pool sits
@@ -83,6 +96,7 @@ object M8sParser {
         val tempo: Int,
         val transpose: Int,
         val quantize: Int,
+        val key: Int,
     )
 
     /**
@@ -126,6 +140,11 @@ object M8sParser {
         val reverbWidth: Int,
     )
 
+    data class ParsedScale(
+        val name: String,
+        val intervals: BooleanArray,
+    )
+
     class ParsedSong(
         val header: Header,
         val songGrid: Array<IntArray>,
@@ -143,6 +162,7 @@ object M8sParser {
         val instruments: Array<M8Instrument>,
         val mixer: ParsedMixer,
         val fx: ParsedFx,
+        val scales: Array<ParsedScale>,
         val warnings: List<String> = DEFERRED_IMPORT_WARNINGS,
     )
 
@@ -172,9 +192,10 @@ object M8sParser {
         val (instruments, instrumentWarnings) = parseInstrumentPool(bytes, header)
         val mixer = parseMixer(bytes)
         val fx = parseFx(bytes)
+        val scales = parseScales(bytes)
 
         val warnings = DEFERRED_IMPORT_WARNINGS + instrumentWarnings
-        return ParsedSong(header, songGrid, phrases, chains, tables, grooves, instruments, mixer, fx, warnings)
+        return ParsedSong(header, songGrid, phrases, chains, tables, grooves, instruments, mixer, fx, scales, warnings)
     }
 
     /**
@@ -276,6 +297,29 @@ object M8sParser {
         )
     }
 
+    private fun parseScales(bytes: ByteArray): Array<ParsedScale> {
+        if (bytes.size < OFFSET_SCALES + N_SCALES * SCALE_BYTES) {
+            return Array(N_SCALES) { i -> defaultParsedScale(i) }
+        }
+        return Array(N_SCALES) { i -> parseScale(bytes, OFFSET_SCALES + i * SCALE_BYTES, i) }
+    }
+
+    private fun parseScale(bytes: ByteArray, offset: Int, index: Int): ParsedScale {
+        val map = ByteBuffer.wrap(bytes, offset, 2).order(ByteOrder.LITTLE_ENDIAN).short.toInt() and 0xFFFF
+        val intervals = BooleanArray(12) { note -> ((map shr note) and 0x1) == 1 }
+        val nameOffset = offset + 2 + 12 * 2
+        val nameBytes = bytes.copyOfRange(nameOffset, nameOffset + 16)
+        val end = nameBytes.indexOfFirst { it == 0.toByte() }
+            .let { if (it == -1) nameBytes.size else it }
+        val name = String(nameBytes, 0, end, Charsets.US_ASCII).trim().ifBlank { defaultParsedScale(index).name }
+        return ParsedScale(name, intervals)
+    }
+
+    private fun defaultParsedScale(index: Int): ParsedScale {
+        val scale = M8Song().scales[index.coerceIn(0, 15)]
+        return ParsedScale(scale.name, scale.intervals.copyOf())
+    }
+
     /**
      * Parse the 128-entry instrument pool. Each slot is a 215-byte body
      * identical in layout to the .m8i instrument body — the song header
@@ -335,13 +379,14 @@ object M8sParser {
             .float
         val tempo = tempoF.toInt().coerceIn(40, 300)
         val quantize = bytes[POS_QUANTIZE].toInt() and 0xFF
+        val key = bytes[POS_KEY].toInt() and 0xFF
 
         val nameBytes = bytes.copyOfRange(POS_NAME, POS_NAME + NAME_LEN)
         val end = nameBytes.indexOfFirst { it == 0.toByte() }
             .let { if (it == -1) nameBytes.size else it }
         val name = String(nameBytes, 0, end, Charsets.US_ASCII).trim()
 
-        return Header(major, minor, patch, name, tempo, transpose, quantize)
+        return Header(major, minor, patch, name, tempo, transpose, quantize, key)
     }
 
     private fun parseSongGrid(bytes: ByteArray): Array<IntArray> {
@@ -485,6 +530,7 @@ object M8sParser {
         }
         applyMixer(parsed.mixer, song.mixer)
         applyFx(parsed.fx, song)
+        applyScales(parsed.scales, parsed.header.key, song)
     }
 
     /**
@@ -530,5 +576,17 @@ object M8sParser {
         song.reverb.modDepth = src.reverbModDepth
         song.reverb.modFreq = src.reverbModFreq
         song.reverb.width = src.reverbWidth
+    }
+
+    private fun applyScales(src: Array<ParsedScale>, songKey: Int, song: M8Song) {
+        val key = songKey.coerceIn(0, 11)
+        val count = minOf(src.size, song.scales.size)
+        for (i in 0 until count) {
+            val parsed = src[i]
+            val dst = song.scales[i]
+            dst.name = parsed.name
+            dst.key = key
+            for (n in 0 until 12) dst.intervals[n] = parsed.intervals[n]
+        }
     }
 }

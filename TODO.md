@@ -47,9 +47,9 @@ This is the biggest demo-to-instrument step. Mirror real M8 firmware behavior; d
 - [ ] Preserve current app state or ask/confirm before replacing active song.
 - [x] Display load success/failure and partial-import warnings.
 - [x] Parse instrument pool — 128 slots at `0x13A3E`, 215 bytes each, reusing `M8iParser.parseBodyAt`. Emulator instrument array expanded from 8 to 128 (named demo presets at 0–7, empty placeholders at 8–127). BrowseDialog picker stays capped at 8.
-- [ ] Parse mixer settings.
-- [ ] Parse global FX settings: chorus, delay, reverb.
-- [ ] Parse scale definitions and active scale.
+- [x] Parse mixer settings.
+- [x] Parse global FX settings: chorus, delay, reverb. Caveat: V4 delay/reverb HP/LP cutoff and chorus width locations are not documented by upstream; existing defaults are preserved.
+- [x] Parse scale definitions and song key. Caveat: enable maps and names are imported; microtuning cent offsets remain a parity gap until the note/synth path can represent them.
 - [ ] Add V4.0/V4.1 offset tests against real-world fixture files.
 - [ ] Add integration test proving loaded song grid/chain/phrase data reaches `M8Emulator.song`.
 
