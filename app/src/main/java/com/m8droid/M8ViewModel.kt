@@ -75,6 +75,8 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     private var samplesUntilNextFxTick = 0
     private var fxTickInRow = 0
     private var lastTriggeredRowData = Array(8) { track -> intArrayOf(0, track, 0, 0, 0) }
+    private var pendingPhraseHop = -1
+    private var pendingSongHop = -1
 
     // Use the emulator's song data model (shared state for display + audio)
     private val song get() = emulator.song
@@ -512,6 +514,12 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
                         // Replace with empty (continue) row data for this track
                         rowData[track] = intArrayOf(0, track, 0, 0, 0)
                     }
+                    if (fxResult.hopToRow >= 0 && pendingPhraseHop < 0) {
+                        pendingPhraseHop = fxResult.hopToRow.coerceIn(0, 15)
+                    }
+                    if (fxResult.songHopToRow >= 0 && pendingSongHop < 0) {
+                        pendingSongHop = fxResult.songHopToRow.coerceIn(0, 255)
+                    }
                     if (fxResult.tempoChange > 0) {
                         song.tempo = fxResult.tempoChange
                         emulator.bpm = song.tempo
@@ -609,6 +617,23 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
      * chainRow overflows (all chains exhausted) -> advance songRow.
      */
     private fun advanceSequencer() {
+        if (pendingSongHop >= 0) {
+            previousSongRow = songRow
+            songRow = pendingSongHop.coerceIn(0, 255)
+            chainRow = 0
+            phraseRow = 0
+            pendingSongHop = -1
+            pendingPhraseHop = -1
+            syncEmulatorPosition()
+            return
+        }
+        if (pendingPhraseHop >= 0) {
+            phraseRow = pendingPhraseHop.coerceIn(0, 15)
+            pendingPhraseHop = -1
+            syncEmulatorPosition()
+            return
+        }
+
         phraseRow++
 
         if (phraseRow >= 16) {

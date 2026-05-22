@@ -167,6 +167,7 @@ class M8FxEngine {
     data class FxResult(
         var skipNote: Boolean = false,      // Don't trigger the note (e.g., CHA failed)
         var hopToRow: Int = -1,             // HOP target row (-1 = no hop)
+        var songHopToRow: Int = -1,         // SNG target song row (-1 = no song hop)
         var tempoChange: Int = -1,          // New tempo (-1 = no change)
         var transposeChange: Int = Int.MIN_VALUE,
         var noteOffset: Int = 0,            // Random note offset
@@ -264,6 +265,9 @@ class M8FxEngine {
                 }
                 FX_HOP -> {
                     result.hopToRow = value and 0x0F
+                }
+                FX_SNG -> {
+                    result.songHopToRow = value.coerceIn(0, 255)
                 }
                 FX_CHA -> {
                     val chance = value / 255.0

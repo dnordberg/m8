@@ -75,6 +75,38 @@ class M8FxEngineTest {
     }
 
     @Test
+    fun `HOP command exposes phrase row jump target`() {
+        val engine = M8FxEngine()
+        val step = PhraseStep(
+            note = 60,
+            instrument = 0,
+            volume = 0x7F,
+            fx1Cmd = M8FxEngine.FX_HOP,
+            fx1Val = 0x0A,
+        )
+
+        val result = engine.processStepFx(track = 0, step = step, currentTick = 0, baseNote = 60)
+
+        assertEquals(10, result.hopToRow)
+    }
+
+    @Test
+    fun `SNG command exposes song row jump target`() {
+        val engine = M8FxEngine()
+        val step = PhraseStep(
+            note = 60,
+            instrument = 0,
+            volume = 0x7F,
+            fx1Cmd = M8FxEngine.FX_SNG,
+            fx1Val = 0x12,
+        )
+
+        val result = engine.processStepFx(track = 0, step = step, currentTick = 0, baseNote = 60)
+
+        assertEquals(0x12, result.songHopToRow)
+    }
+
+    @Test
     fun `KIL command reports note release once kill tick is reached`() {
         val engine = M8FxEngine()
         val step = PhraseStep(
