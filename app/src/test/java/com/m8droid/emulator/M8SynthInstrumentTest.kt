@@ -164,6 +164,46 @@ class M8SynthInstrumentTest {
         assertTrue(synth.getSamplePosition(0) in 250.0..510.0, "loop should wrap inside loop window, pos=${synth.getSamplePosition(0)}")
     }
 
+    @Test
+    fun `hypersynth renders distinct detuned oscillator stack`() {
+        val saw = renderInstrument(
+            stableInstrument("SAW", InstrumentType.WAVSYNTH).apply {
+                wavSynth.shape = WavShape.SAW
+            },
+        )
+        val hyper = renderInstrument(
+            stableInstrument("HYPER", InstrumentType.HYPERSYNTH).apply {
+                hyperSynth.swarm = 0x90
+                hyperSynth.width = 0xFF
+                hyperSynth.subOsc = 0x40
+            },
+        )
+
+        assertNotEquals(saw.toList(), hyper.toList())
+        assertTrue(peakChannel(hyper, 0) > 0)
+        assertTrue(peakChannel(hyper, 1) > 0)
+    }
+
+    @Test
+    fun `macrosynth model changes rendered output`() {
+        val csaw = renderInstrument(
+            stableInstrument("CSAW", InstrumentType.MACROSYNTH).apply {
+                macroSynth.model = 0
+                macroSynth.timbre = 0x40
+                macroSynth.color = 0xC0
+            },
+        )
+        val squareSub = renderInstrument(
+            stableInstrument("SQUARE_SUB", InstrumentType.MACROSYNTH).apply {
+                macroSynth.model = 5
+                macroSynth.timbre = 0x40
+                macroSynth.color = 0xC0
+            },
+        )
+
+        assertNotEquals(csaw.toList(), squareSub.toList())
+    }
+
     private fun samplerInstrument() = M8Instrument("SAMPLE", InstrumentType.SAMPLER).apply {
         amp.amp = 0xFF
         amp.pan = 0x80
@@ -172,6 +212,25 @@ class M8SynthInstrumentTest {
         sampler.start = 0x00
         sampler.length = 0xFF
         sampler.detune = 0x80
+        modulation.env1 = Envelope(attack = 0x00, decay = 0xFF, sustain = 0xFF, release = 0x40)
+    }
+
+    private fun renderInstrument(instrument: M8Instrument): ByteArray {
+        val synth = M8Synth()
+        val row = Array(8) { IntArray(3) }
+        row[0][0] = 60
+        row[0][2] = 255
+        synth.applyInstrument(0, instrument)
+        synth.triggerRow(row)
+        return synth.generateChunk().copyOf()
+    }
+
+    private fun stableInstrument(name: String, type: InstrumentType) = M8Instrument(name, type).apply {
+        amp.amp = 0xFF
+        amp.pan = 0x80
+        amp.delaySend = 0x00
+        filter.cutoff = 0xFF
+        filter.resonance = 0x00
         modulation.env1 = Envelope(attack = 0x00, decay = 0xFF, sustain = 0xFF, release = 0x40)
     }
 

@@ -78,17 +78,17 @@ Make the synth sound more like M8, not just a generic synth. The current Kotlin 
 - [ ] Define a single parameter mapping table from `M8Instrument` to audible engine params.
 - [ ] Replace fallback preset mapping with fuller M8 parameter interpretation.
 - [ ] Expand WAVSYNTH oscillator shapes and wavetable behavior.
-- [ ] Add MacroSynth modes where possible: supersaw, chord, swarm/cloud, noise/formant-like modes.
+- [x] Add first-pass MacroSynth modes where possible: CSAW, morph/saw-square/sine-triangle, square/saw sub, triple saw/square, and noise/drum-like models.
 - [ ] Improve FM algorithm/operator mapping beyond current simple type mapping.
-- [ ] Add golden-ish synth tests for oscillator mode changes, envelope changes, filter changes, and stereo pan.
+- [x] Add golden-ish synth tests for oscillator mode changes, envelope changes, filter changes, and stereo pan.
 - [ ] Add comparison fixtures or documented expected behavior against real M8 where available.
 
 ## Priority 4B — M8 parity gaps to track explicitly
 
 These are the “sounds/behaves like a real M8” gaps. Do not chase hardware-only items unless they map cleanly to Android.
 
-- [ ] MACROSYNTH / Mutable Instruments-style models: add M8 character engines such as CSAW, MORPH, SAW/SQUARE/TRIPLE variants, SQUARE_SUB, SAW_SYNC, etc. Current synth is PolyBLEP basics + simple 2-op FM; these macro models are not present.
-- [ ] HYPERSYNTH: implement 8-detuned-oscillator supersaw behavior with spread/detune controls.
+- [x] MACROSYNTH / Mutable Instruments-style models: first-pass CSAW, morph/saw-square/sine-triangle, square/saw sub, triple saw/square, and noise/drum-like mappings are present. Remaining: deeper Braids parity/formant/chord engines.
+- [x] HYPERSYNTH: first-pass 8-detuned-oscillator supersaw behavior with chord intervals, swarm/detune, shift, and sub-osc controls.
 - [ ] Runtime per-step FX command engine: parser reads three FX bytes per step, but the playback side of commands like `V`, `P`, `A`, `T`, `R`, `O`, `H`, `K`, `X`, `Y`, etc. is mostly unwired. This is required for arp, retrig, slide, hop, kill, parameter locks, and M8-style programmability.
 - [ ] Modulation block: parse and apply 2 envelopes + 2 LFOs with assignable destinations. `DECISIONS.md` says this was explicitly skipped in both `.m8i` and `.m8s`; without it, downloaded instruments are static snapshots.
 - [ ] MIDI OUT: support each track driving external synths on its own channel + CCs. This is a bigger M8 hardware-user use case than MIDI input.

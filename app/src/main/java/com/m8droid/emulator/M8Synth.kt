@@ -55,7 +55,7 @@ class M8Synth {
     // ======================== PRESETS ========================
 
     data class Preset(
-        val wave: Int,          // 0=saw,1=pulse,2=sine,3=tri,4=noise,5=fm,6=sample
+        val wave: Int,          // 0=saw,1=pulse,2=sine,3=tri,4=noise,5=fm,6=sample,7=hyper,8=macro
         val cutoff: Double,     // 0-1 filter cutoff
         val reso: Double,       // 0-1 filter resonance
         val atkMs: Double,      // attack ms
@@ -204,6 +204,8 @@ class M8Synth {
                     sin((phase + mod) * TWO_PI)
                 }
                 6 -> readSample(track, this)
+                7 -> readHyperSynth(track, phase)
+                8 -> readMacroSynth(track, phase, phInc)
                 else -> 0.0
             }
 
@@ -233,6 +235,8 @@ class M8Synth {
     private val voicePresets = PRESETS.copyOf()
     private val trackSamples = arrayOfNulls<WavDecoder.DecodedWav>(8)
     private val trackSamplers = Array(8) { SamplerParams() }
+    private val trackMacroSynths = Array(8) { MacroSynthParams() }
+    private val trackHyperSynths = Array(8) { HyperSynthParams() }
     private val voices = Array(8) { Voice(it) }
     private val dlBufL = DoubleArray(DELAY_LEN)
     private val dlBufR = DoubleArray(DELAY_LEN)
@@ -261,6 +265,8 @@ class M8Synth {
         if (track !in 0..7) return
         voicePresets[track] = presetFromInstrument(inst, PRESETS[track])
         trackSamplers[track] = inst.sampler.copy()
+        trackMacroSynths[track] = inst.macroSynth.copy()
+        trackHyperSynths[track] = inst.hyperSynth.copy()
     }
 
     fun applyInstrument(trackIndex: Int, instrument: M8Instrument) = configureVoice(trackIndex, instrument)
@@ -417,8 +423,8 @@ class M8Synth {
                 WavShape.OVERFLOW -> 0
             }
             InstrumentType.FM_SYNTH -> 5
-            InstrumentType.MACROSYNTH -> if (inst.macroSynth.model in 34..37) 4 else 0
-            InstrumentType.HYPERSYNTH -> 0
+            InstrumentType.MACROSYNTH -> 8
+            InstrumentType.HYPERSYNTH -> 7
             InstrumentType.SAMPLER -> 6
             InstrumentType.MIDI_OUT -> fallback.wave
         }
@@ -456,6 +462,94 @@ class M8Synth {
     private fun hexToEnvelopeMs(v: Int, minMs: Double, maxMs: Double): Double {
         val x = (v / 255.0).coerceIn(0.0, 1.0)
         return minMs + (maxMs - minMs) * x * x
+    }
+
+    private fun readHyperSynth(track: Int, ph: Double): Double {
+        val h = trackHyperSynths[track]
+        val swarm = (h.swarm / 255.0).coerceIn(0.0, 1.0)
+        val spreadCents = 2.0 + swarm * 42.0
+        val shift = (h.shift / 255.0).coerceIn(0.0, 1.0)
+        val sub = (h.subOsc / 255.0).coerceIn(0.0, 1.0)
+        val intervals = hyperIntervals(h.chordBank, h.chord, shift)
+        val detunes = doubleArrayOf(-1.0, -0.55, -0.2, 0.0, 0.16, 0.43, 0.78, 1.0)
+        var sum = 0.0
+        for (i in detunes.indices) {
+            val cents = detunes[i] * spreadCents
+            val ratio = 2.0.pow((intervals[i % intervals.size] + cents / 100.0) / 12.0)
+            val p = (ph * ratio + i * 0.137) % 1.0
+            sum += 2.0 * p - 1.0
+        }
+        if (sub > 0.0) sum += sin(ph * 0.5 * TWO_PI) * sub * 2.0
+        return (sum / (8.0 + sub * 2.0)).coerceIn(-1.0, 1.0)
+    }
+
+    private fun hyperIntervals(bank: Int, chord: Int, shift: Double): DoubleArray {
+        val base = when (bank.coerceIn(0, HyperSynthParams.CHORD_BANK_NAMES.lastIndex)) {
+            1 -> doubleArrayOf(0.0, 3.0, 7.0, 10.0)
+            2 -> doubleArrayOf(0.0, 2.0, 7.0, 12.0)
+            3 -> doubleArrayOf(0.0, 5.0, 7.0, 12.0)
+            4 -> doubleArrayOf(0.0, 4.0, 7.0, 10.0)
+            5 -> doubleArrayOf(0.0, 4.0, 7.0, 11.0)
+            6 -> doubleArrayOf(0.0, 3.0, 7.0, 10.0)
+            7 -> doubleArrayOf(0.0, 3.0, 6.0, 9.0)
+            8 -> doubleArrayOf(0.0, 4.0, 8.0, 12.0)
+            9 -> doubleArrayOf(0.0, 7.0, 12.0, 19.0)
+            else -> doubleArrayOf(0.0, 4.0, 7.0, 12.0)
+        }
+        val octave = ((chord and 0x0F) % 3) * 12.0
+        return DoubleArray(4) { i -> base[i] + octave * shift }
+    }
+
+    private fun readMacroSynth(track: Int, ph: Double, phInc: Double): Double {
+        val m = trackMacroSynths[track]
+        val timbre = (m.timbre / 255.0).coerceIn(0.0, 1.0)
+        val color = (m.color / 255.0).coerceIn(0.0, 1.0)
+        var value = when (m.model.coerceIn(0, MacroSynthParams.MODEL_NAMES.lastIndex)) {
+            0 -> { // CSAW: animated saw/pulse blend
+                val saw = polySaw(ph, phInc)
+                val pulse = polyPulse(ph, phInc, 0.2 + timbre * 0.6)
+                saw * (1.0 - color) + pulse * color
+            }
+            1, 2, 3 -> { // Morph / saw-square / sine-triangle families
+                val a = if (m.model == 3) sin(ph * TWO_PI) else polySaw(ph, phInc)
+                val b = if (m.model == 3) 4.0 * abs(ph - 0.5) - 1.0 else polyPulse(ph, phInc, 0.5)
+                a * (1.0 - timbre) + b * timbre
+            }
+            5 -> { // SQUARE SUB
+                polyPulse(ph, phInc, 0.5) * (0.7 + color * 0.2) + sin(ph * 0.5 * TWO_PI) * (0.15 + timbre * 0.35)
+            }
+            6 -> { // SAW SUB
+                polySaw(ph, phInc) * 0.75 + sin(ph * 0.5 * TWO_PI) * (0.1 + timbre * 0.4)
+            }
+            9 -> { // TRIPLE SAW
+                (polySaw(ph, phInc) + polySaw((ph * 1.005 + 0.17) % 1.0, phInc) + polySaw((ph * 0.995 + 0.31) % 1.0, phInc)) / 3.0
+            }
+            10 -> { // TRIPLE SQUARE
+                (polyPulse(ph, phInc, 0.45) + polyPulse((ph * 1.003 + 0.23) % 1.0, phInc, 0.5) + polyPulse((ph * 0.997 + 0.41) % 1.0, phInc, 0.55)) / 3.0
+            }
+            in 34..37, 42, 43 -> { // drum/noise-like models
+                val bit = ((sin((ph * (97.0 + timbre * 400.0)) * TWO_PI) * 43758.5453) % 1.0)
+                (bit * 2.0 - 1.0) * (0.5 + color * 0.5)
+            }
+            else -> polySaw(ph, phInc) * (1.0 - timbre * 0.5) + sin((ph * (1.0 + color * 3.0)) * TWO_PI) * timbre * 0.5
+        }
+        if (m.redux > 0) {
+            val levels = max(2.0, 256.0 - m.redux.toDouble()).toInt()
+            value = kotlin.math.round(value * levels) / levels
+        }
+        return value.coerceIn(-1.0, 1.0)
+    }
+
+    private fun polySaw(ph: Double, phInc: Double): Double {
+        val p = ph % 1.0
+        return (2.0 * p - 1.0) - polyBlep(p, phInc)
+    }
+
+    private fun polyPulse(ph: Double, phInc: Double, pw: Double): Double {
+        val p = ph % 1.0
+        val width = pw.coerceIn(0.05, 0.95)
+        val naive = if (p < width) 1.0 else -1.0
+        return naive + polyBlep(p, phInc) - polyBlep((p - width + 1.0) % 1.0, phInc)
     }
 
     private fun readSample(track: Int, voice: Voice): Double {
