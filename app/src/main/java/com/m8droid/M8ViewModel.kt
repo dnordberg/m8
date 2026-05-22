@@ -15,6 +15,7 @@ import com.m8droid.emulator.*
 import com.m8droid.academy.data.EmulatorEventRepository
 import com.m8droid.academy.data.EmulatorSnapshot
 import com.m8droid.midi.MidiEngine
+import com.m8droid.input.StickyKeyLatch
 import com.m8droid.network.ConnectionManager
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -727,6 +728,9 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     // so the on-screen controls can light up in response to keyboard input.
     private var touchKeys = 0
     private var keyboardKeys = 0
+    private val stickyTouchKeys = StickyKeyLatch()
+    private val _stickyKeyState = MutableStateFlow(0)
+    val stickyKeyState: StateFlow<Int> = _stickyKeyState
     private val _keyState = MutableStateFlow(0)
     val keyState: StateFlow<Int> = _keyState
 
@@ -740,8 +744,20 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         dispatchKeys()
     }
 
+    fun toggleStickyTouchKey(key: Int) {
+        stickyTouchKeys.toggle(key)
+        _stickyKeyState.value = stickyTouchKeys.mask
+        dispatchKeys()
+    }
+
+    fun clearStickyTouchKeys() {
+        stickyTouchKeys.clear()
+        _stickyKeyState.value = 0
+        dispatchKeys()
+    }
+
     private fun dispatchKeys() {
-        val keys = touchKeys or keyboardKeys
+        val keys = stickyTouchKeys.applyTo(touchKeys) or keyboardKeys
         _keyState.value = keys
         // Detect OPT+EDIT+SHIFT held simultaneously (like on real hardware)
         if (keys and COMBO_MASK == COMBO_MASK) {

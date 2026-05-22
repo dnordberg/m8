@@ -21,6 +21,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.m8droid.data.ButtonLayout
 import com.m8droid.input.KeyMapper
+import com.m8droid.input.StickyKeyLatch
+import com.m8droid.protocol.M8Commands
 import com.m8droid.academy.AcademyState
 import com.m8droid.academy.AcademyViewModel
 import com.m8droid.academy.AppMode
@@ -217,6 +219,7 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
                     }
                     val onKeys: (Int) -> Unit = { keys -> viewModel.setTouchKeys(keys) }
                     val keyState by viewModel.keyState.collectAsState()
+                    val stickyKeyState by viewModel.stickyKeyState.collectAsState()
                     val showHexEntry = remember(displayTick, serverSettings.hexEditorEnabled) {
                         serverSettings.hexEditorEnabled && viewModel.isEditMode && viewModel.canEnterHexDigit
                     }
@@ -244,6 +247,14 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
                                 ButtonLayout.BEST -> M8BestLayout(onKeyStateChanged = onKeys, screenContent = screen, externalKeyMask = keyState)
                                 ButtonLayout.FULL_DEVICE -> M8FullDeviceLayout(onKeyStateChanged = onKeys, screenContent = screen, externalKeyMask = keyState)
                             }
+                            StickyModifierBar(
+                                stickyMask = stickyKeyState,
+                                onToggle = { viewModel.toggleStickyTouchKey(it) },
+                                onClear = { viewModel.clearStickyTouchKeys() },
+                                modifier = Modifier
+                                    .align(Alignment.TopStart)
+                                    .padding(8.dp),
+                            )
                             if (showHexEntry) {
                                 HexEntryPad(
                                     modifier = Modifier
@@ -363,5 +374,67 @@ private fun HexEntryPad(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun StickyModifierBar(
+    stickyMask: Int,
+    onToggle: (Int) -> Unit,
+    onClear: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        color = Color(0xCC05080C),
+        shape = MaterialTheme.shapes.small,
+        tonalElevation = 4.dp,
+        shadowElevation = 4.dp,
+    ) {
+        Row(
+            modifier = Modifier
+                .border(1.dp, Color(0xFF304458), MaterialTheme.shapes.small)
+                .padding(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            StickyModifierButton("OPT", M8Commands.KEY_OPTION, stickyMask, onToggle)
+            StickyModifierButton("EDIT", M8Commands.KEY_EDIT, stickyMask, onToggle)
+            StickyModifierButton("SHIFT", M8Commands.KEY_SHIFT, stickyMask, onToggle)
+            if (stickyMask and StickyKeyLatch.MODIFIER_MASK != 0) {
+                Button(
+                    onClick = onClear,
+                    modifier = Modifier.height(30.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF2A1A1A),
+                        contentColor = Color(0xFFFFB0B0),
+                    ),
+                ) {
+                    Text("CLR", fontSize = 11.sp)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StickyModifierButton(
+    label: String,
+    key: Int,
+    stickyMask: Int,
+    onToggle: (Int) -> Unit,
+) {
+    val active = stickyMask and key != 0
+    Button(
+        onClick = { onToggle(key) },
+        modifier = Modifier.height(30.dp),
+        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = if (active) Color(0xFF2E5F9A) else Color(0xFF172332),
+            contentColor = if (active) Color.White else Color(0xFFB8CDE0),
+        ),
+    ) {
+        Text(label, fontSize = 11.sp)
     }
 }
