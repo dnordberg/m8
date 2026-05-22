@@ -477,25 +477,9 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
             Log.d(TAG, "triggerCurrentRow: songRow=$songRow chainRow=$chainRow phraseRow=$phraseRow tempo=${song.tempo}")
         }
 
-        val rowData = Array(8) { track ->
-            val chainIdx = song.songGrid[songRow][track]
-            if (chainIdx == M8Song.EMPTY || chainIdx > 254) {
-                // No chain on this track — send empty (note=0 means "continue")
-                intArrayOf(0, track, 0, 0, 0)
-            } else {
-                val chain = song.chains[chainIdx]
-                val chainEntry = chain.rows[chainRow.coerceIn(0, 15)]
-                val phraseIdx = chainEntry.phrase
-                val transpose = chainEntry.transpose
-
-                if (phraseIdx == M8Song.EMPTY || phraseIdx > 254) {
-                    intArrayOf(0, track, 0, 0, 0)
-                } else {
-                    val step = song.phrases[phraseIdx].steps[phraseRow.coerceIn(0, 15)]
-                    stepToIntArray(step, track, transpose)
-                }
-            }
-        }
+        // Pure resolution lives on the emulator so touch edits, scheduler triggers,
+        // and previews all share one path. FX side effects below still belong here.
+        val rowData = emulator.resolveRowDataAt(songRow, chainRow, phraseRow)
 
         // Process FX commands before triggering
         for (track in 0 until 8) {
@@ -575,23 +559,6 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
             val notes = rowData.map { it[0] }.joinToString(",")
             Log.d(TAG, "Notes triggered: [$notes]")
         }
-    }
-
-    /**
-     * Convert a PhraseStep to the IntArray format the synth expects:
-     * intArrayOf(note, instrument, volume, fx1Cmd, fx2Cmd)
-     */
-    private fun stepToIntArray(step: PhraseStep, track: Int, transpose: Int): IntArray {
-        val note = when (step.note) {
-            M8Song.EMPTY -> 0   // Empty = continue (synth interprets 0 as "keep playing")
-            M8Song.NOTE_OFF -> M8Synth.NOTE_OFF  // Note off -> synth's NOTE_OFF (0xFF)
-            else -> (step.note + transpose).coerceIn(1, 127)  // Apply chain transpose
-        }
-        val instrument = if (step.instrument == M8Song.EMPTY) track else step.instrument
-        val volume = if (step.volume == M8Song.EMPTY) 0xCC else step.volume
-        val fx1 = step.fx1Cmd
-        val fx2 = step.fx2Cmd
-        return intArrayOf(note, instrument, volume, fx1, fx2)
     }
 
     /**
@@ -810,7 +777,14 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
 
     fun enterHexDigit(digit: Int): Boolean = emulator.enterHexDigit(digit)
 
-    fun enterNoteFromPicker(semitone: Int): Boolean = emulator.enterNoteFromPicker(semitone)
+    fun enterNoteFromPicker(semitone: Int): Boolean {
+        val midi = emulator.enterNoteFromPickerWithResult(semitone)
+        if (midi < 0) return false
+        // Audition the written note immediately so the picker behaves like pressing a
+        // key in EDIT mode on real M8 — note entry and audible feedback in one tap.
+        previewNote(emulator.cursorX.coerceIn(0, 7), midi)
+        return true
+    }
 
     fun nextScreen() {
         emulator.screen = (emulator.screen + 1) % 8
@@ -876,6 +850,45 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         emulator.playRow = emulator.cursorY
         phraseRow = emulator.cursorY
         samplesUntilNextRow = 0
+    }
+
+    /**
+     * Audition a single note on [track] through the currently configured instrument,
+     * without engaging the sequencer. Used by the mini-piano picker so phrase note
+     * entry produces immediate sound — the same intent as pressing a key in EDIT
+     * mode on real M8 hardware. [instrument] defaults to the track's own slot.
+     */
+    fun previewNote(track: Int, note: Int, velocity: Int = 0xCC, instrument: Int = track) {
+        if (track !in 0..7) return
+        val safeNote = note.coerceIn(1, 127)
+        val safeInst = if (instrument in instruments.indices) instrument else track
+        triggerRuntimeTrack(track, safeNote, safeInst, velocity)
+    }
+
+    /**
+     * One-shot preview of the row under the user's cursor in PHRASE/CHAIN/SONG
+     * screens, resolved against the current scheduler position for song/chain
+     * context. Mirrors `triggerCurrentRow` minus FX side effects so editing flows
+     * can "play this row" without committing to ongoing playback.
+     *
+     * Returns the resolved row data so tests can verify what was about to sound.
+     */
+    fun previewRowAtCursor(): Array<IntArray> {
+        val cursorPhraseRow = emulator.cursorY.coerceIn(0, 15)
+        val rowData = emulator.resolveRowDataAt(songRow, chainRow, cursorPhraseRow)
+        for (t in 0 until 8) {
+            val instIdx = rowData[t][1]
+            if (instIdx in instruments.indices) configureTrackInstrument(t, instruments[instIdx])
+        }
+        if (nativeSynthReady) {
+            val notes = ByteArray(8) { rowData[it][0].toByte() }
+            val vols = ByteArray(8) { rowData[it][2].toByte() }
+            NativeSynth.triggerRow(notes, vols)
+        } else {
+            synth.triggerRow(rowData)
+        }
+        broadcastMidiRow(rowData)
+        return rowData
     }
 
     override fun onCleared() {

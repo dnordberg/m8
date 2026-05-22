@@ -380,4 +380,144 @@ class M8EmulatorEditTest {
         assertEquals(false, emulator.enterHexDigit(0x09), "transpose column is signed decimal, not a hex cell")
         assertEquals(7, emulator.song.chains[2].rows[4].transpose)
     }
+
+    // Audibility: the scheduler reads from the same M8Song the touch handlers mutate,
+    // via emulator.resolveRowDataAt. These tests guard that bridge so an edit can never
+    // silently fail to reach the synth.
+
+    @Test
+    fun `phrase note picker edit reaches resolved synth row data`() {
+        val emulator = M8Emulator().apply {
+            screen = M8Emulator.SCREEN_PHRASE
+            // Track 2 plays chain 0 → phrase 4; cursor on row 6 of phrase 4.
+            song.songGrid[0][2] = 0
+            song.chains[0].rows[0].phrase = 4
+            song.chains[0].rows[0].transpose = 0
+            resetPlayheadAndResolve()
+            cursorX = 2
+            cursorY = 6
+            phraseEditColumn = 0
+            octave = 4
+        }
+        // Picker semitone 7 at octave 4 → MIDI 67.
+        assertEquals(true, emulator.enterNoteFromPicker(7))
+
+        val rowData = emulator.resolveRowDataAt(0, 0, 6)
+        assertEquals(67, rowData[2][0], "edited note must reach synth row data on the same track")
+        assertEquals(0, rowData[0][0], "neighboring track must remain silent")
+    }
+
+    @Test
+    fun `phrase hex edit on instrument column reaches resolved synth row data`() {
+        val emulator = M8Emulator().apply {
+            screen = M8Emulator.SCREEN_PHRASE
+            song.songGrid[0][3] = 0
+            song.chains[0].rows[0].phrase = 2
+            resetPlayheadAndResolve()
+            cursorX = 3
+            cursorY = 4
+            phraseEditColumn = 0
+            octave = 4
+        }
+        // Pre-seed a real note so the row produces an audible trigger.
+        emulator.song.phrases[2].steps[4].note = 60
+
+        // EDIT+UP on the instrument column changes the instrument index for track 3 row 4.
+        emulator.cursorY = 4
+        emulator.tap(M8Commands.KEY_RIGHT) // select instrument column
+        val before = emulator.song.phrases[2].steps[4].instrument
+        emulator.tap(M8Commands.KEY_EDIT)
+        emulator.tap(M8Commands.KEY_UP)
+        val after = emulator.song.phrases[2].steps[4].instrument
+        assertNotEquals(before, after, "instrument edit must mutate the step")
+
+        val rowData = emulator.resolveRowDataAt(0, 0, 4)
+        assertEquals(after, rowData[3][1], "edited instrument index must reach resolved synth row data")
+        assertEquals(60, rowData[3][0], "note must still resolve audibly")
+    }
+
+    @Test
+    fun `chain transpose edit is applied to resolved note`() {
+        val emulator = M8Emulator().apply {
+            screen = M8Emulator.SCREEN_CHAIN
+            selectedChain = 1
+            song.songGrid[0][0] = 1
+            song.chains[1].rows[0].phrase = 5
+            song.chains[1].rows[0].transpose = 0
+            song.phrases[5].steps[0].note = 60
+            resetPlayheadAndResolve()
+        }
+        val baseline = emulator.resolveRowDataAt(0, 0, 0)
+        assertEquals(60, baseline[0][0])
+
+        // Move cursor to transpose column, EDIT+UP once.
+        emulator.cursorY = 0
+        emulator.cursorX = 1
+        emulator.tap(M8Commands.KEY_EDIT)
+        emulator.tap(M8Commands.KEY_UP)
+
+        val shifted = emulator.resolveRowDataAt(0, 0, 0)
+        assertEquals(61, shifted[0][0], "chain transpose must apply at resolution time, not edit time")
+    }
+
+    @Test
+    fun `note off and empty notes translate to synth sentinels in resolved row data`() {
+        val emulator = M8Emulator().apply {
+            song.songGrid[0][0] = 0
+            song.chains[0].rows[0].phrase = 0
+            resetPlayheadAndResolve()
+        }
+        emulator.song.phrases[0].steps[0].note = M8Song.NOTE_OFF
+        emulator.song.phrases[0].steps[1].note = M8Song.EMPTY
+        emulator.song.phrases[0].steps[2].note = 64
+
+        val r0 = emulator.resolveRowDataAt(0, 0, 0)
+        val r1 = emulator.resolveRowDataAt(0, 0, 1)
+        val r2 = emulator.resolveRowDataAt(0, 0, 2)
+        assertEquals(M8Emulator.SYNTH_NOTE_OFF, r0[0][0], "NOTE_OFF must surface as synth-side 0xFF")
+        assertEquals(0, r1[0][0], "EMPTY must surface as 0 (continue)")
+        assertEquals(64, r2[0][0])
+    }
+
+    @Test
+    fun `picker returns resolved midi note so callers can audition without recomputing octave math`() {
+        val emulator = M8Emulator().apply {
+            screen = M8Emulator.SCREEN_PHRASE
+            song.songGrid[0][1] = 0
+            song.chains[0].rows[0].phrase = 0
+            resetPlayheadAndResolve()
+            cursorX = 1
+            cursorY = 2
+            phraseEditColumn = 0
+            octave = 5
+        }
+        // C at octave 5 → 60 + (5-4)*12 + 0 = 72.
+        assertEquals(72, emulator.enterNoteFromPickerWithResult(0))
+        assertEquals(72, emulator.song.phrases[0].steps[2].note)
+
+        // Out-of-range semitone returns -1 and does not mutate.
+        emulator.song.phrases[0].steps[2].note = 50
+        assertEquals(-1, emulator.enterNoteFromPickerWithResult(99))
+        assertEquals(50, emulator.song.phrases[0].steps[2].note)
+
+        // Wrong column (instrument) returns -1 even with a valid semitone.
+        emulator.phraseEditColumn = 1
+        assertEquals(-1, emulator.enterNoteFromPickerWithResult(3))
+    }
+
+    @Test
+    fun `song hex entry on empty track resolves to silent row data`() {
+        val emulator = M8Emulator().apply {
+            screen = M8Emulator.SCREEN_SONG
+            // Leave songGrid[0][4] as M8Song.EMPTY by default to confirm silent track.
+            song.songGrid[0][2] = 0
+            song.chains[0].rows[0].phrase = 0
+            song.phrases[0].steps[0].note = 60
+            resetPlayheadAndResolve()
+        }
+        val rowData = emulator.resolveRowDataAt(0, 0, 0)
+        assertEquals(60, rowData[2][0], "active track resolves the seeded note")
+        assertEquals(0, rowData[4][0], "track with no chain resolves to a silent row")
+        assertEquals(0, rowData[4][2], "and zero volume so the synth treats it as continue")
+    }
 }

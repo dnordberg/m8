@@ -48,6 +48,10 @@ class M8Emulator {
         // Screens shown in the top tab header / OPT+EDIT cycle. PROJECT is
         // reachable only via Shift+Up and is intentionally kept out of the tab row.
         val SCREEN_NAMES = arrayOf("SONG", "CHAIN", "PHRASE", "INSTR", "TABLE", "MIXER", "FX", "CONFIG")
+
+        // Synth-side note-off sentinel mirrored here so the emulator can produce
+        // row data without taking a hard dependency on M8Synth in tests.
+        const val SYNTH_NOTE_OFF = 0xFF
     }
 
     // --- Data model ---
@@ -240,11 +244,20 @@ class M8Emulator {
 
     fun canEnterNoteFromPicker(): Boolean = currentPhraseNoteStep() != null
 
-    fun enterNoteFromPicker(semitone: Int): Boolean {
-        if (semitone !in 0..11) return false
-        val step = currentPhraseNoteStep() ?: return false
-        step.note = (60 + (octave - 4) * 12 + semitone).coerceIn(1, 127)
-        return true
+    fun enterNoteFromPicker(semitone: Int): Boolean = enterNoteFromPickerWithResult(semitone) >= 0
+
+    /**
+     * Write a picker semitone into the current phrase note cell and return the
+     * resulting MIDI note (0–127), or -1 if no editable note cell is selected.
+     * Callers that want to audition the note can read the return value instead
+     * of recomputing octave/semitone math.
+     */
+    fun enterNoteFromPickerWithResult(semitone: Int): Int {
+        if (semitone !in 0..11) return -1
+        val step = currentPhraseNoteStep() ?: return -1
+        val midi = (60 + (octave - 4) * 12 + semitone).coerceIn(1, 127)
+        step.note = midi
+        return midi
     }
 
     private fun currentPhraseNoteStep(): PhraseStep? {
@@ -283,6 +296,48 @@ class M8Emulator {
     }
 
     // --- Public interface for synth ---
+
+    /**
+     * Resolve the current sequencer position (song row → chain row → phrase row)
+     * into per-track row data in the format the synth consumes:
+     * `intArrayOf(note, instrument, volume, fx1Cmd, fx2Cmd)`.
+     *
+     * Applies chain transpose and the EMPTY/NOTE_OFF storage-to-synth translation
+     * (EMPTY note → 0 "continue", NOTE_OFF → 0xFF, otherwise transposed MIDI note).
+     * Falls back to the per-track instrument index when [PhraseStep.instrument] is
+     * EMPTY and to 0xCC velocity when [PhraseStep.volume] is EMPTY.
+     *
+     * Does NOT apply per-step FX side effects — those live in the FX engine and the
+     * ViewModel's audio-thread loop. This is the pure read of the model so that
+     * touch edits, scheduler triggers, and previews share one resolution path.
+     */
+    fun resolveRowDataAt(songRow: Int, chainRow: Int, phraseRow: Int): Array<IntArray> {
+        val sRow = songRow.coerceIn(0, 255)
+        val cRow = chainRow.coerceIn(0, 15)
+        val pRow = phraseRow.coerceIn(0, 15)
+        return Array(8) { track ->
+            val chainIdx = song.songGrid[sRow][track]
+            if (chainIdx == M8Song.EMPTY || chainIdx > 254) {
+                intArrayOf(0, track, 0, 0, 0)
+            } else {
+                val chainEntry = song.chains[chainIdx].rows[cRow]
+                val phraseIdx = chainEntry.phrase
+                if (phraseIdx == M8Song.EMPTY || phraseIdx > 254) {
+                    intArrayOf(0, track, 0, 0, 0)
+                } else {
+                    val step = song.phrases[phraseIdx].steps[pRow]
+                    val note = when (step.note) {
+                        M8Song.EMPTY -> 0
+                        M8Song.NOTE_OFF -> SYNTH_NOTE_OFF
+                        else -> (step.note + chainEntry.transpose).coerceIn(1, 127)
+                    }
+                    val instrument = if (step.instrument == M8Song.EMPTY) track else step.instrument
+                    val volume = if (step.volume == M8Song.EMPTY) 0xCC else step.volume
+                    intArrayOf(note, instrument, volume, step.fx1Cmd, step.fx2Cmd)
+                }
+            }
+        }
+    }
 
     /**
      * Get the active phrase data for the current play position.
