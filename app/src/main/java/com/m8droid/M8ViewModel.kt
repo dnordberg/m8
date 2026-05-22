@@ -74,6 +74,7 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     private var audioThread: Thread? = null
     private var samplesUntilNextFxTick = 0
     private var fxTickInRow = 0
+    private var lastTriggeredRowData = Array(8) { track -> intArrayOf(0, track, 0, 0, 0) }
 
     // Use the emulator's song data model (shared state for display + audio)
     private val song get() = emulator.song
@@ -401,20 +402,62 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         for (track in 0 until 8) {
             val tickResult = fxEngine.processTick(track, fxTickInRow)
             if (tickResult.releaseNote) {
-                if (nativeSynthReady) {
-                    val notes = ByteArray(8) { if (it == track) M8Synth.NOTE_OFF.toByte() else 0 }
-                    val vols = ByteArray(8)
-                    NativeSynth.triggerRow(notes, vols)
-                } else {
-                    synth.releaseTrack(track)
-                }
-                if (midiOutHeld[track] >= 0) {
-                    midiEngine.sendNoteOff(track, midiOutHeld[track])
-                    midiOutHeld[track] = -1
-                    markMidiActivity()
+                releaseRuntimeTrack(track)
+            }
+            if (tickResult.delayedNote >= 0) {
+                triggerRuntimeTrack(
+                    track = track,
+                    note = tickResult.delayedNote,
+                    instrument = tickResult.delayedInstrument,
+                    volume = tickResult.delayedVolume,
+                )
+            } else if (tickResult.retrigger) {
+                val row = lastTriggeredRowData[track]
+                if (row[0] > 0 && row[0] != M8Synth.NOTE_OFF) {
+                    triggerRuntimeTrack(
+                        track = track,
+                        note = row[0],
+                        instrument = row[1],
+                        volume = row[2],
+                    )
                 }
             }
         }
+    }
+
+    private fun releaseRuntimeTrack(track: Int) {
+        if (nativeSynthReady) {
+            val notes = ByteArray(8) { if (it == track) M8Synth.NOTE_OFF.toByte() else 0 }
+            val vols = ByteArray(8)
+            NativeSynth.triggerRow(notes, vols)
+        } else {
+            synth.releaseTrack(track)
+        }
+        if (midiOutHeld[track] >= 0) {
+            midiEngine.sendNoteOff(track, midiOutHeld[track])
+            midiOutHeld[track] = -1
+            markMidiActivity()
+        }
+    }
+
+    private fun triggerRuntimeTrack(track: Int, note: Int, instrument: Int, volume: Int) {
+        val inst = instruments.getOrNull(instrument)
+        if (inst != null) configureTrackInstrument(track, inst)
+        val safeVolume = volume.coerceIn(0, 0xFF)
+        if (nativeSynthReady) {
+            val notes = ByteArray(8) { if (it == track) note.toByte() else 0 }
+            val vols = ByteArray(8) { if (it == track) safeVolume.toByte() else 0 }
+            NativeSynth.triggerRow(notes, vols)
+        } else {
+            synth.triggerRow(Array(8) { t ->
+                if (t == track) intArrayOf(note, instrument, safeVolume, 0, 0)
+                else intArrayOf(0, t, 0, 0, 0)
+            })
+        }
+        if (midiOutHeld[track] >= 0) midiEngine.sendNoteOff(track, midiOutHeld[track])
+        midiEngine.sendNoteOn(track, note, safeVolume)
+        midiOutHeld[track] = note
+        markMidiActivity()
     }
 
     /**
@@ -501,6 +544,7 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
                 configureTrackInstrument(track, instruments[instIdx])
             }
         }
+        lastTriggeredRowData = Array(8) { track -> rowData[track].copyOf() }
 
         if (nativeSynthReady) {
             // Pack notes and volumes into byte arrays for JNI

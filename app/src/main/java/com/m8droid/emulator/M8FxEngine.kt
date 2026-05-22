@@ -373,12 +373,18 @@ class M8FxEngine {
     data class TickResult(
         val retrigger: Boolean = false,
         val releaseNote: Boolean = false,
+        val delayedNote: Int = -1,
+        val delayedInstrument: Int = -1,
+        val delayedVolume: Int = -1,
     )
 
     fun processTick(track: Int, tick: Int): TickResult {
         val state = trackStates[track]
         var retrigger = false
         var releaseNote = false
+        var delayedNote = -1
+        var delayedInstrument = -1
+        var delayedVolume = -1
 
         // Kill
         if (state.killTick >= 0 && tick >= state.killTick) {
@@ -399,11 +405,22 @@ class M8FxEngine {
         if (state.delayTicks > 0) {
             state.delayTicks--
             if (state.delayTicks == 0) {
-                retrigger = true
+                delayedNote = state.delayedNote
+                delayedInstrument = state.delayedInst
+                delayedVolume = state.delayedVol
+                state.delayedNote = -1
+                state.delayedInst = -1
+                state.delayedVol = -1
             }
         }
 
-        return TickResult(retrigger = retrigger, releaseNote = releaseNote)
+        return TickResult(
+            retrigger = retrigger,
+            releaseNote = releaseNote,
+            delayedNote = delayedNote,
+            delayedInstrument = delayedInstrument,
+            delayedVolume = delayedVolume,
+        )
     }
 
     /** Reset all track states */
