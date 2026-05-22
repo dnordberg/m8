@@ -24,7 +24,7 @@ object M8iParser {
     class ParseException(message: String) : Exception(message)
 
     private const val HEADER_SIZE = 14
-    private const val BODY_SIZE = 215
+    const val BODY_SIZE = 215
     private const val MIN_SIZE = HEADER_SIZE + BODY_SIZE
 
     // Kind enum values on byte 0 of the instrument body.
@@ -50,6 +50,21 @@ object M8iParser {
             // Be lenient — still try to parse, just warn via exception on failure.
         }
         val body = bytes.copyOfRange(HEADER_SIZE, HEADER_SIZE + BODY_SIZE)
+        return parseBody(body, header)
+    }
+
+    /**
+     * Parse a bare 215-byte instrument body (no .m8i file header) using the
+     * supplied version. Used by M8sParser when reading the instrument pool out
+     * of a .m8s song file — the song header carries the version, individual
+     * instrument bodies do not. [offset] is the start of the body within
+     * [bytes]; the slice is read in place so we don't allocate per slot.
+     */
+    fun parseBodyAt(bytes: ByteArray, offset: Int, header: Header): M8Instrument {
+        if (offset < 0 || offset + BODY_SIZE > bytes.size) {
+            throw ParseException("Body slice out of range: $offset..${offset + BODY_SIZE} of ${bytes.size}")
+        }
+        val body = bytes.copyOfRange(offset, offset + BODY_SIZE)
         return parseBody(body, header)
     }
 

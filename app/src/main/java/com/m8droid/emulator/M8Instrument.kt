@@ -358,8 +358,26 @@ class M8Instrument(
     )
 
     companion object {
-        /** Create default instruments matching M8 demo presets */
-        fun createDefaults(): Array<M8Instrument> = arrayOf(
+        /**
+         * Real M8 hardware holds 128 instrument slots; the .m8s instrument pool
+         * sits in a 128-entry block. Expose that capacity here so phrase steps
+         * that reference instrument > 7 (common in real-world fixtures) resolve
+         * to a real M8Instrument instead of falling back to the previous
+         * track configuration. The first 8 slots get the named Android demo
+         * presets; the remaining 120 slots are empty WavSynth placeholders.
+         */
+        const val SLOT_COUNT = 128
+
+        /** Create the full 128-slot instrument pool with named defaults at 0..7. */
+        fun createDefaults(): Array<M8Instrument> {
+            val named = createNamedDefaults()
+            return Array(SLOT_COUNT) { i ->
+                named.getOrNull(i) ?: M8Instrument("---", InstrumentType.WAVSYNTH)
+            }
+        }
+
+        /** Just the named Android demo presets, in display order. */
+        private fun createNamedDefaults(): Array<M8Instrument> = arrayOf(
             // 0: Lead - Pulse wave
             M8Instrument("LEAD", InstrumentType.WAVSYNTH).apply {
                 wavSynth = WavSynthParams(WavShape.PULSE_50, 0x80, 0x01, 0x00, 0x00)

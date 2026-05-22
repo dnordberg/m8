@@ -36,6 +36,14 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
 
     companion object {
         private const val TAG = "M8ViewModel"
+
+        /**
+         * BrowseDialog renders one button per slot. The emulator now holds the
+         * full 128-slot M8 instrument pool, but the on-screen picker is a phone
+         * affordance — 128 buttons would be unusable. Songs loaded from .m8s
+         * still populate all 128 slots internally; this only caps the picker UI.
+         */
+        const val INSTRUMENT_PICKER_SLOT_COUNT = 8
     }
 
     private val fontBitmap = try {
@@ -801,8 +809,8 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         emulator.bpm = song.tempo
     }
 
-    /** Number of instrument slots the emulator exposes. */
-    val instrumentSlotCount: Int get() = instruments.size
+    /** Number of instrument slots the BrowseDialog's "load .m8i into slot" picker renders. */
+    val instrumentSlotCount: Int get() = INSTRUMENT_PICKER_SLOT_COUNT
 
     /**
      * Replace the instrument at [slot] with a newly-parsed M8Instrument
@@ -817,18 +825,20 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
 
     /**
      * Replace the playing song with the data in [parsed]. Mutates the
-     * emulator's live M8Song (since it's held as a val) and rewinds the
-     * sequencer to row 0 so the new song starts from the top.
-     *
-     * Intentionally does NOT touch instruments — the .m8s parser is
-     * playback-core only (grid/phrases/chains/tables/tempo). Existing
-     * instrument slots stay live so steps with instrument references
-     * still produce sound. See DECISIONS.md.
+     * emulator's live M8Song (since it's held as a val), rewinds the
+     * sequencer to row 0, and installs the song's instrument pool into
+     * the 128 emulator slots so phrase steps that reference instruments
+     * > 7 use the timbres the song author intended rather than whatever
+     * was last live on each track.
      */
     fun replaceSong(parsed: M8sParser.ParsedSong) {
         val wasPlaying = emulator.playing
         emulator.playing = false
         M8sParser.applyTo(parsed, song)
+        val installed = M8sParser.applyInstruments(parsed.instruments, instruments)
+        // Reapply the first 8 voices so the synth picks up new samplers/envelopes
+        // immediately; per-row instrument resolution handles the rest on the fly.
+        configureVoicesFromInstruments()
         emulator.bpm = song.tempo
         songRow = 0
         chainRow = 0
@@ -842,7 +852,7 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
             emulator.playing = true
             emulator.playRow = 0
         }
-        Log.i(TAG, "Loaded song '${song.name}' @ ${song.tempo} BPM")
+        Log.i(TAG, "Loaded song '${song.name}' @ ${song.tempo} BPM with $installed instrument slots")
     }
 
     fun playFromCursor() {

@@ -22,6 +22,7 @@ object M8sParser {
     private const val OFFSET_PHRASES = 0xAEE
     private const val OFFSET_CHAINS = 0x9A5E
     private const val OFFSET_TABLES = 0xBA3E
+    private const val OFFSET_INSTRUMENTS = 0x13A3E
 
     // Header field positions (relative to file start, after the 14-byte
     // version block). directory(128) starts at 14.
@@ -40,17 +41,20 @@ object M8sParser {
     private const val TABLE_BYTES = 16 * 8            // 128, 16 rows × 8
     private const val N_GROOVES = 32
     private const val GROOVE_BYTES = 16
+    private const val N_INSTRUMENTS = 128
+    private const val INSTRUMENT_BYTES = M8iParser.BODY_SIZE   // 215 — same body as .m8i, no per-slot header
 
-    private val CORE_IMPORT_WARNINGS = listOf(
-        "Instrument pool is not imported yet; existing Android instrument slots stay live.",
+    private val DEFERRED_IMPORT_WARNINGS = listOf(
         "Mixer and global FX settings are not imported yet; Android defaults remain active.",
         "Scale definitions/custom microtuning are not imported yet.",
     )
 
-    // Minimum file size: just large enough to cover the tables block. Real
-    // files also have the instrument pool + effects/EQ after, but we want
-    // the parser to accept any 4.x song whose core data is present.
+    // Minimum file size: cover the tables block. The instrument pool sits
+    // right after; older or truncated files without a full pool still load
+    // with the playback-core fields and warnings indicating which slots
+    // were missing.
     private const val MIN_SIZE = OFFSET_TABLES + N_TABLES * TABLE_BYTES
+    private const val FULL_POOL_END = OFFSET_INSTRUMENTS + N_INSTRUMENTS * INSTRUMENT_BYTES
 
     data class Header(
         val major: Int,
@@ -69,7 +73,15 @@ object M8sParser {
         val chains: Array<Chain>,
         val tables: Array<Table>,
         val grooves: Array<Groove>,
-        val warnings: List<String> = CORE_IMPORT_WARNINGS,
+        /**
+         * Up to 128 instruments parsed from the song's instrument pool (offset
+         * 0x13A3E). Slots not present in the file (e.g. truncated files) and
+         * slots whose kind byte is 0xFF (empty) come through as [M8Instrument]
+         * placeholders with name "---" so callers don't need null-checks.
+         * Always 128 entries.
+         */
+        val instruments: Array<M8Instrument>,
+        val warnings: List<String> = DEFERRED_IMPORT_WARNINGS,
     )
 
     fun parse(bytes: ByteArray): ParsedSong {
@@ -95,8 +107,55 @@ object M8sParser {
         val phrases = Array(N_PHRASES) { i -> parsePhrase(bytes, OFFSET_PHRASES + i * PHRASE_BYTES) }
         val chains = Array(N_CHAINS) { i -> parseChain(bytes, OFFSET_CHAINS + i * CHAIN_BYTES) }
         val tables = Array(N_TABLES) { i -> parseTable(bytes, OFFSET_TABLES + i * TABLE_BYTES) }
+        val (instruments, instrumentWarnings) = parseInstrumentPool(bytes, header)
 
-        return ParsedSong(header, songGrid, phrases, chains, tables, grooves)
+        val warnings = DEFERRED_IMPORT_WARNINGS + instrumentWarnings
+        return ParsedSong(header, songGrid, phrases, chains, tables, grooves, instruments, warnings)
+    }
+
+    /**
+     * Parse the 128-entry instrument pool. Each slot is a 215-byte body
+     * identical in layout to the .m8i instrument body — the song header
+     * carries the version, individual slots do not. Truncated files (no pool
+     * at all, or a partial pool) yield placeholder instruments for the missing
+     * slots plus a warning so the caller can surface it.
+     */
+    private fun parseInstrumentPool(
+        bytes: ByteArray,
+        header: Header,
+    ): Pair<Array<M8Instrument>, List<String>> {
+        val emptyInst = { M8Instrument("---", InstrumentType.WAVSYNTH) }
+        if (bytes.size < OFFSET_INSTRUMENTS + INSTRUMENT_BYTES) {
+            return Array(N_INSTRUMENTS) { emptyInst() } to listOf(
+                "Instrument pool not present in this file; emulator defaults remain active.",
+            )
+        }
+
+        val iHeader = M8iParser.Header(header.major, header.minor, header.patch)
+        var failed = 0
+        var loaded = 0
+        val available = ((bytes.size - OFFSET_INSTRUMENTS) / INSTRUMENT_BYTES).coerceAtMost(N_INSTRUMENTS)
+        val pool = Array(N_INSTRUMENTS) { i ->
+            if (i >= available) return@Array emptyInst()
+            val offset = OFFSET_INSTRUMENTS + i * INSTRUMENT_BYTES
+            try {
+                val inst = M8iParser.parseBodyAt(bytes, offset, iHeader)
+                loaded++
+                inst
+            } catch (t: Throwable) {
+                failed++
+                emptyInst()
+            }
+        }
+
+        val warnings = mutableListOf<String>()
+        if (available < N_INSTRUMENTS) {
+            warnings += "Instrument pool truncated: only $available of $N_INSTRUMENTS slots present in file."
+        }
+        if (failed > 0) {
+            warnings += "$failed instrument slot(s) failed to parse; placeholders used."
+        }
+        return pool to warnings
     }
 
     private fun parseHeader(bytes: ByteArray): Header {
@@ -189,6 +248,18 @@ object M8sParser {
             row.fx3Val = bytes[p++].toInt() and 0xFF
         }
         return t
+    }
+
+    /**
+     * Copy the parsed instrument pool into [destination] in place, capped at
+     * `min(parsed.size, destination.size)`. The emulator holds the instrument
+     * array as a val; the ViewModel can't reassign it, so we copy slot by slot.
+     * Returns the number of slots copied.
+     */
+    fun applyInstruments(parsed: Array<M8Instrument>, destination: Array<M8Instrument>): Int {
+        val n = minOf(parsed.size, destination.size)
+        for (i in 0 until n) destination[i] = parsed[i]
+        return n
     }
 
     /**

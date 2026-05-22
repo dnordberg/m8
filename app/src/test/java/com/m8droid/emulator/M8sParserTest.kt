@@ -47,6 +47,59 @@ class M8sParserTest {
         assertTrue(parsed.warnings.any { it.contains("scale", ignoreCase = true) })
     }
 
+    @Test
+    fun `instrument pool fills 128 placeholders when file truncates before pool`() {
+        val parsed = M8sParser.parse(minimalV4Song())
+        assertEquals(128, parsed.instruments.size)
+        assertTrue(
+            parsed.instruments.all { it.name == "---" },
+            "missing-pool slots should be empty placeholder instruments",
+        )
+    }
+
+    @Test
+    fun `instrument pool parses real V4 song fixture`() {
+        val bytes = javaClass.classLoader!!.getResourceAsStream("m8songs/CMDMAPPING_4_0.m8s")!!
+            .use { it.readBytes() }
+
+        val parsed = M8sParser.parse(bytes)
+
+        assertEquals(128, parsed.instruments.size)
+        // CMDMAPPING_4_0 has a single WavSynth in slot 0 and empty slots elsewhere.
+        assertEquals(InstrumentType.WAVSYNTH, parsed.instruments[0].type)
+        assertEquals("---", parsed.instruments[1].name, "slot 1 should be empty in this fixture")
+        assertTrue(
+            parsed.warnings.none { it.contains("Instrument pool", ignoreCase = true) },
+            "complete pool should not emit truncation warnings",
+        )
+    }
+
+    @Test
+    fun `applyInstruments copies parsed pool into destination`() {
+        val parsed = M8sParser.parse(minimalV4Song())
+        val destination = M8Instrument.createDefaults()
+        val first = parsed.instruments[0]
+
+        val copied = M8sParser.applyInstruments(parsed.instruments, destination)
+
+        assertEquals(destination.size, copied)
+        // The destination slot 0 now references the parsed slot 0 instance.
+        assertTrue(destination[0] === first, "instrument copy should share the parsed slot reference")
+    }
+
+    @Test
+    fun `M8Instrument createDefaults exposes the full 128-slot M8 pool`() {
+        val defaults = M8Instrument.createDefaults()
+        assertEquals(M8Instrument.SLOT_COUNT, defaults.size)
+        assertEquals(128, defaults.size)
+        // First 8 are the named Android demo presets.
+        assertEquals("LEAD", defaults[0].name)
+        assertEquals("FX", defaults[7].name)
+        // Remaining slots are empty placeholders so out-of-range references don't fall back.
+        assertEquals("---", defaults[8].name)
+        assertEquals("---", defaults[127].name)
+    }
+
     private fun minimalV4Song(): ByteArray {
         val bytes = ByteArray(0xBA3E + 256 * 128)
         "M8VERSION".toByteArray(Charsets.US_ASCII).copyInto(bytes, 0)

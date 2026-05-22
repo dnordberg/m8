@@ -45,17 +45,17 @@ from that same repo's `examples/songs/`).
 **Parsed (playback-critical):** header (version, tempo, transpose,
 quantize, name), song grid (256×8), phrases (255×16 steps, 9 bytes
 each: note/vel/inst/3×FX), chains (255×16 rows), tables (256×16
-rows).
+rows), grooves (32×16), and the full **instrument pool at `0x13A3E`**
+(128 slots × 215-byte body, parsed by reusing `M8iParser.parseBodyAt`).
+The emulator instrument array expanded from 8 to 128 to match real M8
+hardware capacity so phrase steps referencing instruments above slot 7
+no longer fall back to the previous track configuration.
 
-**Not parsed (deferred):** instrument pool at `0x13A3E`, mixer
-settings, effects/EQ, grooves, scales, MIDI mappings, directory.
-Consequence: a loaded song plays against the emulator's *existing*
-default instrument slots — phrase steps that reference instrument N
-still produce sound, but not the timbre the author intended.
-Following up means porting `M8iParser` per-subtype body parsing to
-the `.m8s` instrument block. Scope cut because the user explicitly
-OK'd "few hundred lines," and a full instrument-pool parser roughly
-doubles that.
+**Not parsed (deferred):** mixer settings, effects/EQ, scales, MIDI
+mappings, directory. The instrument-pool warning is gone from
+`ParsedSong.warnings`; partial-file warnings ("Instrument pool not
+present" / "truncated") surface only when a file actually lacks the
+block.
 
 **Version support:** V4.x only (`major == 4`). 4.0 and 4.1 share
 offsets for everything we read. Older versions rejected.
@@ -97,8 +97,13 @@ checked in, ready for a future test phase.
 
 ## Emulator integration
 
-- **8 instrument slots** in the UI slot picker. Matches the emulator's
-  simplified slot count, not real M8 hardware's capacity.
+- **128 internal instrument slots** in `emulator.instruments` to match
+  real M8 hardware capacity. The named Android demo presets sit at
+  slots 0–7; slots 8–127 are empty WavSynth placeholders that get
+  replaced when an `.m8s` instrument pool loads.
+- **BrowseDialog `.m8i` slot picker still caps at 8** (via
+  `M8ViewModel.INSTRUMENT_PICKER_SLOT_COUNT`). 128 buttons on a phone
+  is unusable; the picker is a phone affordance, not a real M8 surface.
 - **`replaceInstrument` reconfigures the synth voice immediately** on
   load, audible on next note-on. No undo.
 - **Song / Sample / Pack show "not yet implemented"** in the detail
@@ -106,8 +111,8 @@ checked in, ready for a future test phase.
 
 ## Deferred / not done (explicitly)
 
-- `.m8s` instrument pool parsing (grid + notes load, but timbre
-  comes from the emulator's default instruments, not the song's)
+- Mixer/global FX/scale settings in `.m8s` (instrument pool now loads,
+  but the song's per-track mix and global FX don't yet)
 - Sample playback in the audio engine (samples download but are
   silent)
 - SD delete/rename — downloads accumulate indefinitely

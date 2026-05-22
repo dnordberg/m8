@@ -46,7 +46,7 @@ This is the biggest demo-to-instrument step. Mirror real M8 firmware behavior; d
 - [x] Call `M8sParser.parse()` + `M8sParser.applyTo()` from the browser/load workflow.
 - [ ] Preserve current app state or ask/confirm before replacing active song.
 - [x] Display load success/failure and partial-import warnings.
-- [ ] Parse instrument pool.
+- [x] Parse instrument pool — 128 slots at `0x13A3E`, 215 bytes each, reusing `M8iParser.parseBodyAt`. Emulator instrument array expanded from 8 to 128 (named demo presets at 0–7, empty placeholders at 8–127). BrowseDialog picker stays capped at 8.
 - [ ] Parse mixer settings.
 - [ ] Parse global FX settings: chorus, delay, reverb.
 - [ ] Parse scale definitions and active scale.
