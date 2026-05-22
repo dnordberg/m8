@@ -264,4 +264,47 @@ class M8EmulatorEditTest {
         assertEquals(7, emulator.cursorY)
         assertEquals(1, emulator.phraseEditColumn)
     }
+
+    @Test
+    fun `song accepts touch hex digit entry into selected chain cell`() {
+        val emulator = M8Emulator().apply {
+            screen = M8Emulator.SCREEN_SONG
+            song.songGrid[5][2] = M8Song.EMPTY
+            song.songGrid[5][3] = 0x44
+        }
+
+        emulator.handleDisplayTap(28 + 2 * 26 + 4, 60 + 5 * 10 + 1)
+        assertEquals(true, emulator.enterHexDigit(0x0A))
+        assertEquals(0x0A, emulator.song.songGrid[5][2])
+        assertEquals(0x44, emulator.song.songGrid[5][3])
+
+        assertEquals(true, emulator.enterHexDigit(0x05))
+        assertEquals(0xA5, emulator.song.songGrid[5][2])
+        assertEquals(0xA5, emulator.selectedChain)
+    }
+
+    @Test
+    fun `chain accepts touch hex digit entry into selected phrase cell only`() {
+        val emulator = M8Emulator().apply {
+            screen = M8Emulator.SCREEN_CHAIN
+            selectedChain = 2
+            song.chains[2].rows[4].phrase = M8Song.EMPTY
+            song.chains[2].rows[4].transpose = 7
+        }
+
+        emulator.handleDisplayTap(28, 43 + 4 * 13)
+        assertEquals(0, emulator.cursorX)
+        assertEquals(true, emulator.enterHexDigit(0x0C))
+        assertEquals(0x0C, emulator.song.chains[2].rows[4].phrase)
+        assertEquals(7, emulator.song.chains[2].rows[4].transpose)
+
+        assertEquals(true, emulator.enterHexDigit(0x03))
+        assertEquals(0xC3, emulator.song.chains[2].rows[4].phrase)
+        assertEquals(0xC3, emulator.selectedPhrase)
+
+        emulator.handleDisplayTap(70, 43 + 4 * 13)
+        assertEquals(1, emulator.cursorX)
+        assertEquals(false, emulator.enterHexDigit(0x09), "transpose column is signed decimal, not a hex cell")
+        assertEquals(7, emulator.song.chains[2].rows[4].transpose)
+    }
 }

@@ -26,8 +26,8 @@ This is the biggest demo-to-instrument step. Mirror real M8 firmware behavior; d
 - [x] Add regression tests for CHAIN screen phrase and transpose entry.
 - [x] Add regression tests for PHRASE screen note/instrument/volume/FX entry.
 - [x] Implement touch-driven cell selection for SONG/CHAIN/PHRASE screens.
-- [ ] Implement touch-driven hex entry for SONG cells.
-- [ ] Implement touch-driven hex entry for CHAIN cells.
+- [x] Implement touch-driven hex entry for SONG cells.
+- [x] Implement touch-driven hex entry for CHAIN cells.
 - [x] Implement note entry in PHRASE rows using current octave/key/scale.
 - [x] Implement instrument, volume, and FX column editing in PHRASE rows.
 - [ ] Add phone-friendly value input overlay only where it maps cleanly to real M8 edit semantics.

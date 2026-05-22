@@ -70,6 +70,8 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
 
     // Expose emulator screen for tutorial context
     val currentScreen: Int get() = emulator.screen
+    val isEditMode: Boolean get() = emulator.editMode
+    val canEnterHexDigit: Boolean get() = emulator.canEnterHexDigit()
     private var emulatorRenderJob: Job? = null
     private var audioThread: Thread? = null
     private var samplesUntilNextFxTick = 0
@@ -786,6 +788,8 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     fun handleDisplayTap(m8X: Int, m8Y: Int) {
         emulator.handleDisplayTap(m8X, m8Y)
     }
+
+    fun enterHexDigit(digit: Int): Boolean = emulator.enterHexDigit(digit)
 
     fun nextScreen() {
         emulator.screen = (emulator.screen + 1) % 8

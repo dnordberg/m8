@@ -217,6 +217,9 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
                     }
                     val onKeys: (Int) -> Unit = { keys -> viewModel.setTouchKeys(keys) }
                     val keyState by viewModel.keyState.collectAsState()
+                    val showHexEntry = remember(displayTick) {
+                        viewModel.isEditMode && viewModel.canEnterHexDigit
+                    }
                     Column(modifier = Modifier.fillMaxSize()) {
                         AppHeaderBar(
                             subtitle = if (academyState == AcademyState.QUEST_ACTIVE) "QUEST" else "CLASSIC",
@@ -240,6 +243,14 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
                             when (serverSettings.buttonLayout) {
                                 ButtonLayout.BEST -> M8BestLayout(onKeyStateChanged = onKeys, screenContent = screen, externalKeyMask = keyState)
                                 ButtonLayout.FULL_DEVICE -> M8FullDeviceLayout(onKeyStateChanged = onKeys, screenContent = screen, externalKeyMask = keyState)
+                            }
+                            if (showHexEntry) {
+                                HexEntryPad(
+                                    modifier = Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .padding(bottom = 8.dp),
+                                    onDigit = { viewModel.enterHexDigit(it) },
+                                )
                             }
                         }
                     }
@@ -308,6 +319,48 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
         // Tutorial complete auto-stop
         if (tutorialActive && tutorialComplete) {
             tutorial.stop()
+        }
+    }
+}
+
+@Composable
+private fun HexEntryPad(
+    modifier: Modifier = Modifier,
+    onDigit: (Int) -> Unit,
+) {
+    Surface(
+        modifier = modifier,
+        color = Color(0xEE05080C),
+        shape = MaterialTheme.shapes.medium,
+        tonalElevation = 6.dp,
+        shadowElevation = 6.dp,
+    ) {
+        Column(
+            modifier = Modifier
+                .border(1.dp, Color(0xFF3B5268), MaterialTheme.shapes.medium)
+                .padding(8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text("HEX", color = Color(0xFF9BB7D0), fontSize = 11.sp)
+            listOf("0123", "4567", "89AB", "CDEF").forEach { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    row.forEach { ch ->
+                        val digit = ch.digitToInt(16)
+                        Button(
+                            onClick = { onDigit(digit) },
+                            modifier = Modifier.size(width = 42.dp, height = 34.dp),
+                            contentPadding = PaddingValues(0.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF172332),
+                                contentColor = Color(0xFFE9F5FF),
+                            ),
+                        ) {
+                            Text(ch.toString(), fontSize = 15.sp)
+                        }
+                    }
+                }
+            }
         }
     }
 }

@@ -87,6 +87,15 @@ class M8Emulator {
 
     // Editing
     var editMode = false
+    private var pendingHexEntryTarget: HexEntryTarget? = null
+    private var pendingHexHighNibble: Int? = null
+
+    private data class HexEntryTarget(
+        val screen: Int,
+        val selectedChain: Int,
+        val cursorX: Int,
+        val cursorY: Int,
+    )
 
     // External waveform data from synth (set by ViewModel)
     var liveWaveformData: ByteArray? = null
@@ -139,6 +148,8 @@ class M8Emulator {
                 if (m8X >= trackStartX && m8Y >= rowStartY) {
                     cursorX = track
                     cursorY = row
+                    pendingHexEntryTarget = null
+                    pendingHexHighNibble = null
                     val chainIdx = song.songGrid[cursorY][cursorX]
                     if (chainIdx != M8Song.EMPTY) selectedChain = chainIdx
                 }
@@ -150,6 +161,8 @@ class M8Emulator {
                 if (m8Y >= yStart + 14 + rowH) {
                     cursorY = row
                     cursorX = if (m8X >= 58) 1 else 0
+                    pendingHexEntryTarget = null
+                    pendingHexHighNibble = null
                     val chainRow = song.chains[selectedChain.coerceIn(0, 254)].rows[cursorY]
                     if (chainRow.phrase != M8Song.EMPTY) selectedPhrase = chainRow.phrase
                 }
@@ -163,9 +176,52 @@ class M8Emulator {
                     cursorX = (relX / trackW).coerceIn(0, 7)
                     cursorY = ((m8Y - dataStartY) / (FONT_H + 2)).coerceIn(0, 15)
                     phraseEditColumn = if (relX % trackW >= 24) 1 else 0
+                    pendingHexEntryTarget = null
+                    pendingHexHighNibble = null
                 }
             }
         }
+    }
+
+    /**
+     * Enter one hex digit into the currently selected rendered hex cell. This is
+     * the emulator-core seam used by phone touch controls: the first digit writes
+     * 0x0N for immediate visual feedback, the second digit completes 0xNN.
+     */
+    fun canEnterHexDigit(): Boolean = currentHexEntryTarget() != null
+
+    fun enterHexDigit(digit: Int): Boolean {
+        if (digit !in 0..0x0F) return false
+        val target = currentHexEntryTarget() ?: return false
+        val high = if (pendingHexEntryTarget == target) pendingHexHighNibble else null
+        val value = if (high == null) digit else ((high shl 4) or digit).coerceAtMost(0xFE)
+
+        when (screen) {
+            SCREEN_SONG -> {
+                song.songGrid[cursorY.coerceIn(0, 255)][cursorX.coerceIn(0, 7)] = value
+                selectedChain = value
+            }
+            SCREEN_CHAIN -> {
+                val row = song.chains[selectedChain.coerceIn(0, 254)].rows[cursorY.coerceIn(0, 15)]
+                row.phrase = value
+                selectedPhrase = value
+            }
+            else -> return false
+        }
+
+        pendingHexEntryTarget = if (high == null) target else null
+        pendingHexHighNibble = if (high == null) digit else null
+        return true
+    }
+
+    private fun currentHexEntryTarget(): HexEntryTarget? = when (screen) {
+        SCREEN_SONG -> HexEntryTarget(screen, -1, cursorX.coerceIn(0, 7), cursorY.coerceIn(0, 255))
+        SCREEN_CHAIN -> if (cursorX == 0) {
+            HexEntryTarget(screen, selectedChain.coerceIn(0, 254), cursorX, cursorY.coerceIn(0, 15))
+        } else {
+            null
+        }
+        else -> null
     }
 
     /**
