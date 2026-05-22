@@ -71,8 +71,8 @@ class M8sParserTest {
         bytes[mx + 10] = 0x55                       // chorus_volume
         bytes[mx + 11] = 0x66                       // delay_volume
         bytes[mx + 12] = 0x77                       // reverb_volume
-        // 13 bytes of analog/usb input mixer (offsets 13..25 within block) — skipped.
-        bytes[mx + 26] = 0xA5.toByte()              // dj_filter
+        // 12 bytes of analog/usb input mixer (offsets 13..24 within block) — skipped.
+        bytes[mx + 25] = 0xA5.toByte()              // dj_filter
 
         val parsed = M8sParser.parse(bytes)
 
@@ -181,7 +181,7 @@ class M8sParserTest {
         bytes[mx + 2] = 0x40   // track 0 volume
         bytes[mx + 9] = 0x90.toByte()   // track 7 volume
         bytes[mx + 10] = 0x88.toByte()  // chorus
-        bytes[mx + 26] = 0x80.toByte()  // dj_filter (centred)
+        bytes[mx + 25] = 0x80.toByte()  // dj_filter (centred)
         val parsed = M8sParser.parse(bytes)
 
         // Seed the destination with non-default pans/sends to verify reset.
@@ -274,20 +274,61 @@ class M8sParserTest {
     }
 
     @Test
-    fun `instrument pool parses real V4 song fixture`() {
-        val bytes = javaClass.classLoader!!.getResourceAsStream("m8songs/CMDMAPPING_4_0.m8s")!!
-            .use { it.readBytes() }
+    fun `real V4_0 fixtures preserve header mixer fx scale and instrument offsets`() {
+        val empty = parseFixture("m8songs/V4EMPTY.m8s")
+        val command = parseFixture("m8songs/CMDMAPPING_4_0.m8s")
 
-        val parsed = M8sParser.parse(bytes)
+        assertEquals(4, empty.header.major)
+        assertEquals(0, empty.header.minor)
+        assertEquals(1, empty.header.patch)
+        assertEquals("V4EMPTY", empty.header.name)
+        assertEquals(120, empty.header.tempo)
+        assertEquals(0xE0, empty.mixer.masterVolume)
+        assertEquals(0xE0, empty.mixer.trackVolumes[0])
+        assertEquals(0xE0, empty.mixer.reverbVolume)
+        assertEquals(0x80, empty.mixer.djFilter)
+        assertEquals(0x40, empty.fx.chorusModDepth)
+        assertEquals(0x26, empty.fx.delayTimeL)
+        assertEquals(0xFF, empty.fx.delayFeedback)
+        assertEquals(0xE0, empty.fx.reverbWidth)
+        assertEquals("CHROMATIC", empty.scales[0].name)
+        assertTrue(empty.scales[0].intervals.all { it }, "chromatic scale should enable all semitones")
+        assertTrue(empty.songGrid.all { row -> row.all { it == 0xFF } }, "V4EMPTY song grid should be empty")
 
-        assertEquals(128, parsed.instruments.size)
-        // CMDMAPPING_4_0 has a single WavSynth in slot 0 and empty slots elsewhere.
-        assertEquals(InstrumentType.WAVSYNTH, parsed.instruments[0].type)
-        assertEquals("---", parsed.instruments[1].name, "slot 1 should be empty in this fixture")
+        assertEquals("CMDMAPPING", command.header.name)
+        assertEquals(133, command.header.tempo)
+        assertEquals(0x00, command.songGrid[0][0])
+        assertEquals(0xA0, command.songGrid[0][2])
+        assertEquals(0x10, command.songGrid[2][0])
+        assertEquals(128, command.instruments.size)
+        assertEquals(InstrumentType.WAVSYNTH, command.instruments[0].type)
+        assertEquals("---", command.instruments[1].name, "slot 1 should be empty in this fixture")
         assertTrue(
-            parsed.warnings.none { it.contains("Instrument pool", ignoreCase = true) },
+            command.warnings.none { it.contains("Instrument pool", ignoreCase = true) },
             "complete pool should not emit truncation warnings",
         )
+    }
+
+    @Test
+    fun `real V4_1 fixture shares V4 offsets for imported song settings`() {
+        val parsed = parseFixture("m8songs/V4-1EMPTY.m8s")
+
+        assertEquals(4, parsed.header.major)
+        assertEquals(2, parsed.header.minor)
+        assertEquals(0, parsed.header.patch)
+        assertEquals("V4-1EMPTY", parsed.header.name)
+        assertEquals(120, parsed.header.tempo)
+        assertEquals(0xE0, parsed.mixer.masterVolume)
+        assertEquals(0xE0, parsed.mixer.trackVolumes[7])
+        assertEquals(0xE0, parsed.mixer.chorusVolume)
+        assertEquals(0x80, parsed.mixer.djFilter)
+        assertEquals(0x40, parsed.fx.chorusModDepth)
+        assertEquals(0x80, parsed.fx.chorusModFreq)
+        assertEquals(0x30, parsed.fx.delayWidth)
+        assertEquals(0xFF, parsed.fx.reverbSize)
+        assertEquals("CHROMATIC", parsed.scales[0].name)
+        assertTrue(parsed.scales[0].intervals.all { it }, "chromatic scale should enable all semitones")
+        assertTrue(parsed.songGrid.all { row -> row.all { it == 0xFF } }, "V4-1EMPTY song grid should be empty")
     }
 
     @Test
@@ -314,6 +355,12 @@ class M8sParserTest {
         // Remaining slots are empty placeholders so out-of-range references don't fall back.
         assertEquals("---", defaults[8].name)
         assertEquals("---", defaults[127].name)
+    }
+
+    private fun parseFixture(path: String): M8sParser.ParsedSong {
+        val bytes = javaClass.classLoader!!.getResourceAsStream(path)!!
+            .use { it.readBytes() }
+        return M8sParser.parse(bytes)
     }
 
     private fun minimalV4Song(): ByteArray {

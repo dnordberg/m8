@@ -231,7 +231,7 @@ object M8sParser {
         val chorusVolume = bytes[p++].toInt() and 0xFF
         val delayVolume = bytes[p++].toInt() and 0xFF
         val reverbVolume = bytes[p++].toInt() and 0xFF
-        p += 13 // analog/usb input mixer block
+        p += 12 // analog/usb input mixer block
         val djFilter = bytes[p].toInt() and 0xFF
         return ParsedMixer(
             masterVolume = masterVolume,
@@ -309,10 +309,14 @@ object M8sParser {
         val intervals = BooleanArray(12) { note -> ((map shr note) and 0x1) == 1 }
         val nameOffset = offset + 2 + 12 * 2
         val nameBytes = bytes.copyOfRange(nameOffset, nameOffset + 16)
-        val end = nameBytes.indexOfFirst { it == 0.toByte() }
-            .let { if (it == -1) nameBytes.size else it }
-        val name = String(nameBytes, 0, end, Charsets.US_ASCII).trim().ifBlank { defaultParsedScale(index).name }
+        val name = decodeFixedAscii(nameBytes).ifBlank { defaultParsedScale(index).name }
         return ParsedScale(name, intervals)
+    }
+
+    private fun decodeFixedAscii(bytes: ByteArray): String {
+        val end = bytes.indexOfFirst { it == 0.toByte() || it == 0xFF.toByte() }
+            .let { if (it == -1) bytes.size else it }
+        return String(bytes, 0, end, Charsets.US_ASCII).trim()
     }
 
     private fun defaultParsedScale(index: Int): ParsedScale {

@@ -39,8 +39,10 @@ so you can override any that don't match your intent.
 
 Implemented in `M8sParser.kt`. Reference: `AlexCharlton/m8-files`
 (V4_OFFSETS). Test fixtures checked in under
-`app/src/test/resources/m8songs/` (`V4EMPTY.m8s`, `CMDMAPPING_4_0.m8s`
-from that same repo's `examples/songs/`).
+`app/src/test/resources/m8songs/` (`V4EMPTY.m8s`, `CMDMAPPING_4_0.m8s`,
+and `V4-1EMPTY.m8s` from that same repo's `examples/songs/`; note that
+upstream `V4-1EMPTY.m8s` encodes version bytes as 4.2.0 but shares the V4
+offsets under test).
 
 **Parsed (playback-critical):** header (version, tempo, transpose,
 quantize, name, song key), song grid (256×8), phrases (255×16 steps,
@@ -66,7 +68,9 @@ offsets for everything we read. Older versions rejected.
 skip intermediate sections (MidiSettings, MixerSettings, Grooves)
 without knowing their exact layout. Fragile if Dirtywave ever ships a
 V5 that relocates things — acceptable because the Rust reference does
-the same.
+the same. Real-fixture tests now pin the V4 mixer, FX, scale, instrument,
+and song-grid offsets; those tests caught that `dj_filter` is byte 25 of
+the mixer block after a 12-byte analog/USB-input sub-block, not byte 26.
 
 **Signed transpose bytes:** `ChainRow.transpose` and
 `TableRow.transpose` are signed on the M8 UI (`%+03d` display) but
@@ -116,6 +120,8 @@ checked in, ready for a future test phase.
 - V4 delay/reverb HP/LP cutoff locations and chorus width are still unknown;
   imported FX preserve existing destination defaults for those fields.
 - Scale microtuning cent offsets are parsed around but not represented/applied
-  yet; scale enable maps, names, and song key now load.
+  yet; scale enable maps, names, and song key now load. Scale names in real
+  fixtures are `0xFF` padded, not just NUL padded; parser trims both terminators
+  before falling back to default names.
 - SD delete/rename — downloads accumulate indefinitely
 - Older firmware version support in `.m8i` parser
