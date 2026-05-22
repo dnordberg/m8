@@ -11,6 +11,51 @@ class M8EmulatorEditTest {
         handleKeyState(0)
     }
 
+    private fun parseSongFixture(path: String): M8sParser.ParsedSong {
+        val bytes = javaClass.classLoader!!.getResourceAsStream(path)!!
+            .use { it.readBytes() }
+        return M8sParser.parse(bytes)
+    }
+
+    @Test
+    fun `loadParsedSong installs parsed grid chain phrase and instrument data into live emulator`() {
+        val parsed = parseSongFixture("m8songs/CMDMAPPING_4_0.m8s")
+        val emulator = M8Emulator().apply {
+            song.songGrid[0][0] = 0x77
+            song.chains[0].rows[0].phrase = 0x66
+            song.phrases[0].steps[0].note = 0x55
+            currentPhrasePerTrack[0] = 0x66
+        }
+
+        val installed = emulator.loadParsedSong(parsed)
+
+        assertEquals(128, installed)
+        assertEquals("CMDMAPPING", emulator.song.name)
+        assertEquals(133, emulator.song.tempo)
+        assertEquals(0x00, emulator.song.songGrid[0][0])
+        assertEquals(0xA0, emulator.song.songGrid[0][2])
+        assertEquals(0x00, emulator.song.chains[0].rows[0].phrase)
+        assertEquals(0, emulator.song.chains[0].rows[0].transpose)
+        assertEquals(36, emulator.song.phrases[0].steps[0].note)
+        assertEquals(0, emulator.song.phrases[0].steps[0].instrument)
+        assertEquals(100, emulator.song.phrases[0].steps[0].volume)
+        assertEquals(0x80, emulator.song.phrases[0].steps[0].fx1Cmd)
+        assertEquals(0x81, emulator.song.phrases[0].steps[0].fx2Cmd)
+        assertEquals(0, emulator.songRow)
+        assertEquals(0, emulator.chainRow)
+        assertEquals(0, emulator.playRow)
+        assertEquals(0, emulator.currentPhrasePerTrack[0])
+        assertEquals(M8Song.EMPTY, emulator.currentPhrasePerTrack[1])
+        assertEquals(InstrumentType.WAVSYNTH, emulator.instruments[0].type)
+
+        val rowData = emulator.resolveRowDataAt(songRow = 0, chainRow = 0, phraseRow = 0)
+        assertEquals(36, rowData[0][0])
+        assertEquals(0, rowData[0][1])
+        assertEquals(100, rowData[0][2])
+        assertEquals(0x80, rowData[0][3])
+        assertEquals(0x81, rowData[0][4])
+    }
+
     @Test
     fun `instrument edit changes highlighted shape row`() {
         val emulator = M8Emulator().apply {

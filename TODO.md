@@ -51,7 +51,7 @@ This is the biggest demo-to-instrument step. Mirror real M8 firmware behavior; d
 - [x] Parse global FX settings: chorus, delay, reverb. Caveat: V4 delay/reverb HP/LP cutoff and chorus width locations are not documented by upstream; existing defaults are preserved.
 - [x] Parse scale definitions and song key. Caveat: enable maps and names are imported; microtuning cent offsets remain a parity gap until the note/synth path can represent them.
 - [x] Add V4.0/V4.1 offset tests against real-world fixture files. Covers V4EMPTY, CMDMAPPING_4_0, and upstream V4-1EMPTY fixtures; confirmed V4-1 fixture reports 4.2.0 bytes while sharing V4 offsets.
-- [ ] Add integration test proving loaded song grid/chain/phrase data reaches `M8Emulator.song`.
+- [x] Add integration test proving loaded song grid/chain/phrase data reaches `M8Emulator.song`. `M8Emulator.loadParsedSong()` is now the tested import seam used by `M8ViewModel.replaceSong()`.
 
 ## Priority 3 — Sample playback
 

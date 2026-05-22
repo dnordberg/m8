@@ -107,6 +107,11 @@ checked in, ready for a future test phase.
   real M8 hardware capacity. The named Android demo presets sit at
   slots 0–7; slots 8–127 are empty WavSynth placeholders that get
   replaced when an `.m8s` instrument pool loads.
+- **`M8Emulator.loadParsedSong()` is the tested `.m8s` import seam.** It
+  mutates the live `M8Song`, installs the parsed 128-slot instrument pool,
+  rewinds song/chain/phrase resolution to row 0, and is used by
+  `M8ViewModel.replaceSong()` so browser loads and emulator tests share the
+  same path.
 - **BrowseDialog `.m8i` slot picker still caps at 8** (via
   `M8ViewModel.INSTRUMENT_PICKER_SLOT_COUNT`). 128 buttons on a phone
   is unusable; the picker is a phone affordance, not a real M8 surface.

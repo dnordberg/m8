@@ -295,6 +295,29 @@ class M8Emulator {
         }
     }
 
+    /**
+     * Install a parsed .m8s song into this live emulator instance.
+     *
+     * The emulator owns a stable [song] object used by UI/rendering/audio paths,
+     * so imports mutate that object in place, install the parsed instrument pool,
+     * and rewind phrase resolution to row 0. Keeping this seam here lets tests
+     * verify parser output reaches the same model the sequencer reads.
+     *
+     * Returns the number of instrument slots copied into [instruments].
+     */
+    fun loadParsedSong(parsed: M8sParser.ParsedSong): Int {
+        val wasPlaying = playing
+        playing = false
+        M8sParser.applyTo(parsed, song)
+        val installed = M8sParser.applyInstruments(parsed.instruments, instruments)
+        resetPlayheadAndResolve()
+        if (wasPlaying) {
+            playing = true
+            playRow = 0
+        }
+        return installed
+    }
+
     // --- Public interface for synth ---
 
     /**

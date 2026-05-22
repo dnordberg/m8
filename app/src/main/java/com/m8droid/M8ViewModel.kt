@@ -833,21 +833,17 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
      */
     fun replaceSong(parsed: M8sParser.ParsedSong) {
         val wasPlaying = emulator.playing
-        emulator.playing = false
-        M8sParser.applyTo(parsed, song)
-        val installed = M8sParser.applyInstruments(parsed.instruments, instruments)
-        // Reapply the first 8 voices so the synth picks up new samplers/envelopes
-        // immediately; per-row instrument resolution handles the rest on the fly.
-        configureVoicesFromInstruments()
-        emulator.bpm = song.tempo
+        val installed = emulator.loadParsedSong(parsed)
         songRow = 0
         chainRow = 0
         phraseRow = 0
+        // Reapply the first 8 voices so the synth picks up new samplers/envelopes
+        // immediately; per-row instrument resolution handles the rest on the fly.
+        configureVoicesFromInstruments()
         samplesUntilNextRow = 0
         previousSongRow = 0
         emulator.cursorX = 0
         emulator.cursorY = 0
-        emulator.resetPlayheadAndResolve()
         if (wasPlaying) {
             emulator.playing = true
             emulator.playRow = 0
