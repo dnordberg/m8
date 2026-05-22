@@ -9,9 +9,10 @@ import java.nio.ByteOrder
  * Based on the binary layout documented in the m8-files Rust crate
  * (AlexCharlton/m8-files). This parser currently imports the
  * playback-critical subset: header, tempo/name/transpose/quantize,
- * song grid, phrases, chains, grooves, and tables. Later passes should
- * add instrument pool, mixer/FX settings, scales, EQ, and MIDI mappings;
- * until then [ParsedSong.warnings] surfaces the partial-import caveats.
+ * song grid, phrases, chains, grooves, tables, instrument pool, and
+ * mixer settings. Later passes should add global FX settings, scales,
+ * EQ, and MIDI mappings; until then [ParsedSong.warnings] surfaces the
+ * partial-import caveats.
  */
 object M8sParser {
 
@@ -23,6 +24,21 @@ object M8sParser {
     private const val OFFSET_CHAINS = 0x9A5E
     private const val OFFSET_TABLES = 0xBA3E
     private const val OFFSET_INSTRUMENTS = 0x13A3E
+
+    // Mixer block lives sequentially in the header region: after the
+    // 14-byte version + 128-byte directory + transpose/tempo/quantize/name
+    // (32 bytes) + MidiSettings (27 bytes) + key (1 byte) + 18-byte pad,
+    // i.e. at file offset 0xCE. 32 bytes wide; the groove pool starts
+    // exactly at 0xCE + 32 = 0xEE.
+    private const val OFFSET_MIXER = 0xCE
+    private const val MIXER_BYTES = 32
+
+    // Global effects block (chorus / delay / reverb). m8-files V4_OFFSETS
+    // places it at 0x1A5C1 — that's 3 bytes after the instrument pool ends
+    // (0x13A3E + 128*215 = 0x1A5BE), matching the `reader.read_bytes(3)`
+    // skip in songs.rs::from_reader.
+    private const val OFFSET_FX_SETTINGS = 0x1A5C1
+    private const val FX_SETTINGS_BYTES = 17
 
     // Header field positions (relative to file start, after the 14-byte
     // version block). directory(128) starts at 14.
@@ -45,7 +61,10 @@ object M8sParser {
     private const val INSTRUMENT_BYTES = M8iParser.BODY_SIZE   // 215 — same body as .m8i, no per-slot header
 
     private val DEFERRED_IMPORT_WARNINGS = listOf(
-        "Mixer and global FX settings are not imported yet; Android defaults remain active.",
+        // Per m8-files: the V4 layout shifted delay/reverb HP-LP filter cutoff
+        // positions and the exact new offsets aren't yet known. Until they
+        // are, those four fields keep the destination song's existing values.
+        "Delay and reverb HP/LP filter cutoff are not imported on V4.x; using current defaults.",
         "Scale definitions/custom microtuning are not imported yet.",
     )
 
@@ -66,6 +85,47 @@ object M8sParser {
         val quantize: Int,
     )
 
+    /**
+     * Per-track and global mixer levels parsed from the .m8s mixer block.
+     * Mirrors only the fields our [MixerSettings] model carries; values not
+     * present in our model (master_limit, analog/usb input mixer, dj_peak,
+     * dj_filter_type) are skipped over while preserving sequential offsets.
+     *
+     * Note: per-track pan and per-track FX sends are NOT in the .m8s mixer
+     * block — on real M8 they live on each instrument (`amp.pan`,
+     * `amp.chorusSend`, etc.). They are therefore not represented here.
+     */
+    data class ParsedMixer(
+        val masterVolume: Int,
+        val trackVolumes: IntArray,   // length 8
+        val chorusVolume: Int,
+        val delayVolume: Int,
+        val reverbVolume: Int,
+        val djFilter: Int,
+    )
+
+    /**
+     * Global chorus/delay/reverb settings parsed from the .m8s effects block.
+     * Mirrors the fields m8-files reads for V4 — `delay_hp`, `delay_lp`,
+     * `reverb_hp`, `reverb_lp` and `chorus_width` are intentionally absent
+     * (their V4 storage location is not documented upstream).
+     */
+    data class ParsedFx(
+        val chorusModDepth: Int,
+        val chorusModFreq: Int,
+        val chorusReverbSend: Int,
+        val delayTimeL: Int,
+        val delayTimeR: Int,
+        val delayFeedback: Int,
+        val delayWidth: Int,
+        val delayReverbSend: Int,
+        val reverbSize: Int,
+        val reverbDamping: Int,
+        val reverbModDepth: Int,
+        val reverbModFreq: Int,
+        val reverbWidth: Int,
+    )
+
     class ParsedSong(
         val header: Header,
         val songGrid: Array<IntArray>,
@@ -81,6 +141,8 @@ object M8sParser {
          * Always 128 entries.
          */
         val instruments: Array<M8Instrument>,
+        val mixer: ParsedMixer,
+        val fx: ParsedFx,
         val warnings: List<String> = DEFERRED_IMPORT_WARNINGS,
     )
 
@@ -108,9 +170,110 @@ object M8sParser {
         val chains = Array(N_CHAINS) { i -> parseChain(bytes, OFFSET_CHAINS + i * CHAIN_BYTES) }
         val tables = Array(N_TABLES) { i -> parseTable(bytes, OFFSET_TABLES + i * TABLE_BYTES) }
         val (instruments, instrumentWarnings) = parseInstrumentPool(bytes, header)
+        val mixer = parseMixer(bytes)
+        val fx = parseFx(bytes)
 
         val warnings = DEFERRED_IMPORT_WARNINGS + instrumentWarnings
-        return ParsedSong(header, songGrid, phrases, chains, tables, grooves, instruments, warnings)
+        return ParsedSong(header, songGrid, phrases, chains, tables, grooves, instruments, mixer, fx, warnings)
+    }
+
+    /**
+     * Parse the 32-byte mixer block at file offset 0xCE. Layout (sequential,
+     * from m8-files settings::MixerSettings::from_reader):
+     *
+     *   1 master_volume
+     *   1 master_limit               (not in our model — skipped)
+     *   8 track_volume[0..7]
+     *   1 chorus_volume
+     *   1 delay_volume
+     *   1 reverb_volume
+     *   2 analog_input_volume(L, R)  (not in our model — skipped)
+     *   1 usb_input_volume           (not in our model — skipped)
+     *   2 analog_input_chorus(L, R)  (not in our model — skipped)
+     *   2 analog_input_delay(L, R)   (not in our model — skipped)
+     *   2 analog_input_reverb(L, R)  (not in our model — skipped)
+     *   1 usb_input_chorus           (not in our model — skipped)
+     *   1 usb_input_delay            (not in our model — skipped)
+     *   1 usb_input_reverb           (not in our model — skipped)
+     *   1 dj_filter
+     *   1 dj_peak                    (not in our model — skipped)
+     *   1 dj_filter_type             (not in our model — skipped)
+     *   4 trailing discard
+     *  ---
+     *  32 bytes total
+     */
+    private fun parseMixer(bytes: ByteArray): ParsedMixer {
+        var p = OFFSET_MIXER
+        val masterVolume = bytes[p++].toInt() and 0xFF
+        p++ // master_limit
+        val trackVolumes = IntArray(8) { bytes[p++].toInt() and 0xFF }
+        val chorusVolume = bytes[p++].toInt() and 0xFF
+        val delayVolume = bytes[p++].toInt() and 0xFF
+        val reverbVolume = bytes[p++].toInt() and 0xFF
+        p += 13 // analog/usb input mixer block
+        val djFilter = bytes[p].toInt() and 0xFF
+        return ParsedMixer(
+            masterVolume = masterVolume,
+            trackVolumes = trackVolumes,
+            chorusVolume = chorusVolume,
+            delayVolume = delayVolume,
+            reverbVolume = reverbVolume,
+            djFilter = djFilter,
+        )
+    }
+
+    /**
+     * Parse the 17-byte global effects block at file offset 0x1A5C1. Layout
+     * mirrors m8-files settings::EffectsSettings::from_reader for V4 — the
+     * delay/reverb HP/LP cutoff bytes that exist on pre-V4 files are gone on
+     * V4 (m8-files defaults them to 0; their new home isn't documented):
+     *
+     *   1 chorus_mod_depth
+     *   1 chorus_mod_freq
+     *   1 chorus_reverb_send
+     *   3 unused
+     *   1 delay_time_l
+     *   1 delay_time_r
+     *   1 delay_feedback
+     *   1 delay_width
+     *   1 delay_reverb_send
+     *   1 unused
+     *   1 reverb_size
+     *   1 reverb_damping
+     *   1 reverb_mod_depth
+     *   1 reverb_mod_freq
+     *   1 reverb_width
+     *  ---
+     *  17 bytes total (file offsets 0x1A5C1..0x1A5D1 inclusive)
+     */
+    private fun parseFx(bytes: ByteArray): ParsedFx {
+        if (bytes.size < OFFSET_FX_SETTINGS + FX_SETTINGS_BYTES) {
+            // Truncated files (older or partial) — fall back to neutral
+            // defaults so callers don't crash; warnings still flag the
+            // partial import via DEFERRED_IMPORT_WARNINGS.
+            return ParsedFx(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+        }
+        var p = OFFSET_FX_SETTINGS
+        val chorusModDepth = bytes[p++].toInt() and 0xFF
+        val chorusModFreq = bytes[p++].toInt() and 0xFF
+        val chorusReverbSend = bytes[p++].toInt() and 0xFF
+        p += 3 // unused
+        val delayTimeL = bytes[p++].toInt() and 0xFF
+        val delayTimeR = bytes[p++].toInt() and 0xFF
+        val delayFeedback = bytes[p++].toInt() and 0xFF
+        val delayWidth = bytes[p++].toInt() and 0xFF
+        val delayReverbSend = bytes[p++].toInt() and 0xFF
+        p++ // unused
+        val reverbSize = bytes[p++].toInt() and 0xFF
+        val reverbDamping = bytes[p++].toInt() and 0xFF
+        val reverbModDepth = bytes[p++].toInt() and 0xFF
+        val reverbModFreq = bytes[p++].toInt() and 0xFF
+        val reverbWidth = bytes[p].toInt() and 0xFF
+        return ParsedFx(
+            chorusModDepth, chorusModFreq, chorusReverbSend,
+            delayTimeL, delayTimeR, delayFeedback, delayWidth, delayReverbSend,
+            reverbSize, reverbDamping, reverbModDepth, reverbModFreq, reverbWidth,
+        )
     }
 
     /**
@@ -320,5 +483,52 @@ object M8sParser {
                 dst[r].fx3Val = src[r].fx3Val
             }
         }
+        applyMixer(parsed.mixer, song.mixer)
+        applyFx(parsed.fx, song)
+    }
+
+    /**
+     * Copy parsed mixer levels into [dst] and reset per-track pan / FX sends
+     * to neutral. On real M8, pan and sends are per-instrument (carried on
+     * `AmpParams`), not per-track on the mixer — without this reset, leftover
+     * values from the previous song (e.g. demo song's spread pans) would bleed
+     * into a freshly loaded song's audio path.
+     */
+    private fun applyMixer(src: ParsedMixer, dst: MixerSettings) {
+        dst.masterVolume = src.masterVolume
+        dst.chorusVolume = src.chorusVolume
+        dst.delayVolume = src.delayVolume
+        dst.reverbVolume = src.reverbVolume
+        dst.djFilter = src.djFilter
+        for (t in 0 until 8) {
+            dst.trackVolumes[t] = src.trackVolumes[t]
+            dst.trackPans[t] = 0x80
+            dst.trackChorusSend[t] = 0x00
+            dst.trackDelaySend[t] = 0x00
+            dst.trackReverbSend[t] = 0x00
+        }
+    }
+
+    /**
+     * Apply parsed global effects into [song]. Fields the V4 layout doesn't
+     * carry (chorus.width, delay/reverb HP/LP cutoff) are intentionally not
+     * touched — see DEFERRED_IMPORT_WARNINGS for the HP/LP gap.
+     */
+    private fun applyFx(src: ParsedFx, song: M8Song) {
+        song.chorus.modDepth = src.chorusModDepth
+        song.chorus.modFreq = src.chorusModFreq
+        song.chorus.reverbSend = src.chorusReverbSend
+
+        song.delay.timeL = src.delayTimeL
+        song.delay.timeR = src.delayTimeR
+        song.delay.feedback = src.delayFeedback
+        song.delay.width = src.delayWidth
+        song.delay.reverbSend = src.delayReverbSend
+
+        song.reverb.size = src.reverbSize
+        song.reverb.damping = src.reverbDamping
+        song.reverb.modDepth = src.reverbModDepth
+        song.reverb.modFreq = src.reverbModFreq
+        song.reverb.width = src.reverbWidth
     }
 }
