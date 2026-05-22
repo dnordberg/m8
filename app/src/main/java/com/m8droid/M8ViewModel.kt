@@ -439,6 +439,18 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
                     if (fxResult.noteOffset != 0 && rowData[track][0] > 0) {
                         rowData[track][0] = (rowData[track][0] + fxResult.noteOffset).coerceIn(1, 127)
                     }
+                    if (fxResult.volumeOverride >= 0) {
+                        rowData[track][2] = fxResult.volumeOverride
+                    }
+                    if (fxResult.ampOverride >= 0) {
+                        synth.setRuntimeTrackAmp(track, fxResult.ampOverride)
+                    }
+                    if (fxResult.panOverride >= 0) {
+                        synth.setRuntimeTrackPan(track, fxResult.panOverride)
+                    }
+                    if (fxResult.delaySendOverride >= 0) {
+                        synth.setRuntimeTrackDelaySend(track, fxResult.delaySendOverride)
+                    }
                 }
             }
         }

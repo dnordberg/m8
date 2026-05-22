@@ -237,6 +237,9 @@ class M8Synth {
     private val trackSamplers = Array(8) { SamplerParams() }
     private val trackMacroSynths = Array(8) { MacroSynthParams() }
     private val trackHyperSynths = Array(8) { HyperSynthParams() }
+    private val runtimeTrackAmp = IntArray(8) { -1 }
+    private val runtimeTrackPan = IntArray(8) { -1 }
+    private val runtimeTrackDelaySend = IntArray(8) { -1 }
     private val voices = Array(8) { Voice(it) }
     private val dlBufL = DoubleArray(DELAY_LEN)
     private val dlBufR = DoubleArray(DELAY_LEN)
@@ -274,6 +277,28 @@ class M8Synth {
     fun loadSample(track: Int, sample: WavDecoder.DecodedWav?) {
         if (track !in 0..7) return
         trackSamples[track] = sample
+    }
+
+    fun setRuntimeTrackAmp(track: Int, value: Int) {
+        if (track !in 0..7) return
+        runtimeTrackAmp[track] = value.coerceIn(0, 0xFF)
+    }
+
+    fun setRuntimeTrackPan(track: Int, value: Int) {
+        if (track !in 0..7) return
+        runtimeTrackPan[track] = value.coerceIn(0, 0xFF)
+    }
+
+    fun setRuntimeTrackDelaySend(track: Int, value: Int) {
+        if (track !in 0..7) return
+        runtimeTrackDelaySend[track] = value.coerceIn(0, 0xFF)
+    }
+
+    fun clearRuntimeTrackOverrides(track: Int) {
+        if (track !in 0..7) return
+        runtimeTrackAmp[track] = -1
+        runtimeTrackPan[track] = -1
+        runtimeTrackDelaySend[track] = -1
     }
 
     fun getVoiceFreq(track: Int): Double = if (track in 0..7) voices[track].freq else 0.0
@@ -320,8 +345,16 @@ class M8Synth {
                 val s = voices[t].gen(i)
                 if (s == 0.0) continue
 
-                val tVol = if (mx != null) mx.trackVolumes[t] / 255.0 else voicePresets[t].amp
-                val pan = if (mx != null) mx.trackPans[t] / 255.0 else voicePresets[t].pan
+                val tVol = when {
+                    runtimeTrackAmp[t] >= 0 -> runtimeTrackAmp[t] / 255.0
+                    mx != null -> mx.trackVolumes[t] / 255.0
+                    else -> voicePresets[t].amp
+                }
+                val pan = when {
+                    runtimeTrackPan[t] >= 0 -> runtimeTrackPan[t] / 255.0
+                    mx != null -> mx.trackPans[t] / 255.0
+                    else -> voicePresets[t].pan
+                }
                 val scaled = s * tVol
                 val pL = cos(pan * PI * 0.5)
                 val pR = sin(pan * PI * 0.5)
@@ -330,7 +363,7 @@ class M8Synth {
                 mixL += sL; mixR += sR
 
                 // Delay send
-                val ds = voicePresets[t].dlSend
+                val ds = if (runtimeTrackDelaySend[t] >= 0) runtimeTrackDelaySend[t] / 255.0 else voicePresets[t].dlSend
                 if (ds > 0.0) { dlInL += sL * ds; dlInR += sR * ds }
 
                 val pk = abs(scaled)

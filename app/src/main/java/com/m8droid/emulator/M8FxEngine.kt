@@ -170,6 +170,10 @@ class M8FxEngine {
         var tempoChange: Int = -1,          // New tempo (-1 = no change)
         var transposeChange: Int = Int.MIN_VALUE,
         var noteOffset: Int = 0,            // Random note offset
+        var volumeOverride: Int = -1,       // Runtime VOL command override (-1 = no change)
+        var ampOverride: Int = -1,          // Runtime AMP command override (-1 = no change)
+        var panOverride: Int = -1,          // Runtime PAN command override (-1 = no change)
+        var delaySendOverride: Int = -1,    // Runtime SDL command override (-1 = no change)
     )
 
     /**
@@ -235,7 +239,7 @@ class M8FxEngine {
                     state.vibratoActive = true
                 }
                 FX_VOL -> {
-                    // Handled by caller - adjust voice volume
+                    result.volumeOverride = value.coerceIn(0, 0xFF)
                 }
                 FX_KIL -> {
                     state.killTick = value
@@ -302,6 +306,15 @@ class M8FxEngine {
                 FX_TIC -> {
                     state.tableTickRate = value.coerceAtLeast(1)
                 }
+                FX_AMP -> {
+                    result.ampOverride = value.coerceIn(0, 0xFF)
+                }
+                FX_PAN -> {
+                    result.panOverride = value.coerceIn(0, 0xFF)
+                }
+                FX_SDL -> {
+                    result.delaySendOverride = value.coerceIn(0, 0xFF)
+                }
             }
         }
 
@@ -357,14 +370,20 @@ class M8FxEngine {
      * Called once per sequencer tick.
      * Returns true if the note should be re-triggered.
      */
-    fun processTick(track: Int, tick: Int): Boolean {
+    data class TickResult(
+        val retrigger: Boolean = false,
+        val releaseNote: Boolean = false,
+    )
+
+    fun processTick(track: Int, tick: Int): TickResult {
         val state = trackStates[track]
         var retrigger = false
+        var releaseNote = false
 
         // Kill
         if (state.killTick >= 0 && tick >= state.killTick) {
             state.killTick = -1
-            // Caller should release note
+            releaseNote = true
         }
 
         // Retrigger
@@ -384,7 +403,7 @@ class M8FxEngine {
             }
         }
 
-        return retrigger
+        return TickResult(retrigger = retrigger, releaseNote = releaseNote)
     }
 
     /** Reset all track states */

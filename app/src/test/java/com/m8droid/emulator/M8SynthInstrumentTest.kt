@@ -204,6 +204,29 @@ class M8SynthInstrumentTest {
         assertNotEquals(csaw.toList(), squareSub.toList())
     }
 
+    @Test
+    fun `runtime pan override controls stereo balance without replacing instrument`() {
+        val synth = M8Synth()
+        synth.applyInstrument(
+            0,
+            stableInstrument("CENTER", InstrumentType.WAVSYNTH).apply {
+                wavSynth.shape = WavShape.SINE
+                amp.pan = 0x80
+            },
+        )
+        synth.setRuntimeTrackPan(0, 0x00)
+        val row = Array(8) { IntArray(3) }
+        row[0][0] = 69
+        row[0][2] = 255
+        synth.triggerRow(row)
+        val pcm = synth.generateChunk()
+
+        val leftPeak = peakChannel(pcm, 0)
+        val rightPeak = peakChannel(pcm, 1)
+
+        assertTrue(leftPeak > rightPeak * 3, "expected runtime pan override to make output left-heavy, L=$leftPeak R=$rightPeak")
+    }
+
     private fun samplerInstrument() = M8Instrument("SAMPLE", InstrumentType.SAMPLER).apply {
         amp.amp = 0xFF
         amp.pan = 0x80

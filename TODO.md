@@ -89,7 +89,7 @@ These are the “sounds/behaves like a real M8” gaps. Do not chase hardware-on
 
 - [x] MACROSYNTH / Mutable Instruments-style models: first-pass CSAW, morph/saw-square/sine-triangle, square/saw sub, triple saw/square, and noise/drum-like mappings are present. Remaining: deeper Braids parity/formant/chord engines.
 - [x] HYPERSYNTH: first-pass 8-detuned-oscillator supersaw behavior with chord intervals, swarm/detune, shift, and sub-osc controls.
-- [ ] Runtime per-step FX command engine: parser reads three FX bytes per step, but the playback side of commands like `V`, `P`, `A`, `T`, `R`, `O`, `H`, `K`, `X`, `Y`, etc. is mostly unwired. This is required for arp, retrig, slide, hop, kill, parameter locks, and M8-style programmability.
+- [ ] Runtime per-step FX command engine: first playback slice wires `VOL`, `AMP`, `PAN`, `SDL`, and `KIL` into row/synth runtime behavior. Remaining: fuller arp/retrig/slide/hop/table/parameter-lock command parity for `T`, `R`, `O`, `H`, `X`, `Y`, etc.
 - [ ] Modulation block: parse and apply 2 envelopes + 2 LFOs with assignable destinations. `DECISIONS.md` says this was explicitly skipped in both `.m8i` and `.m8s`; without it, downloaded instruments are static snapshots.
 - [ ] MIDI OUT: support each track driving external synths on its own channel + CCs. This is a bigger M8 hardware-user use case than MIDI input.
 - [ ] Per-instrument mixer chain: add 3-band EQ, limiter, drive, sample-rate reduction, and FX sends. Current implementation mostly has master delay/chorus/reverb, not real per-voice processing.
