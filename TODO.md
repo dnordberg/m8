@@ -33,7 +33,7 @@ This is the biggest demo-to-instrument step. Mirror real M8 firmware behavior; d
 - [ ] Add phone-friendly value input overlay only where it maps cleanly to real M8 edit semantics.
 - [ ] Add long-press cell edit affordance.
 - [x] Add sticky Shift/Edit/Option modes.
-- [ ] Add mini piano / note picker overlay for phrase note entry.
+- [x] Add mini piano / note picker overlay for phrase note entry.
 - [ ] Add haptic feedback for edit confirmation and navigation.
 - [ ] Verify edited phrases trigger audible synth playback correctly.
 

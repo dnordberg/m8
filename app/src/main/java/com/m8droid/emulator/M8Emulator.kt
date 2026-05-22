@@ -224,6 +224,23 @@ class M8Emulator {
         else -> null
     }
 
+    fun canEnterNoteFromPicker(): Boolean = currentPhraseNoteStep() != null
+
+    fun enterNoteFromPicker(semitone: Int): Boolean {
+        if (semitone !in 0..11) return false
+        val step = currentPhraseNoteStep() ?: return false
+        step.note = (60 + (octave - 4) * 12 + semitone).coerceIn(1, 127)
+        return true
+    }
+
+    private fun currentPhraseNoteStep(): PhraseStep? {
+        if (screen != SCREEN_PHRASE || phraseEditColumn != 0) return null
+        val track = cursorX.coerceIn(0, 7)
+        val phraseIdx = currentPhrasePerTrack.getOrElse(track) { M8Song.EMPTY }
+        if (phraseIdx == M8Song.EMPTY || phraseIdx > 254) return null
+        return song.phrases[phraseIdx].steps[cursorY.coerceIn(0, 15)]
+    }
+
     /**
      * Rewind the sequencer to row 0 and resolve phrase references from
      * the current song grid. Call after replacing song data in place.

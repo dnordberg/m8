@@ -223,6 +223,9 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
                     val showHexEntry = remember(displayTick, serverSettings.hexEditorEnabled) {
                         serverSettings.hexEditorEnabled && viewModel.isEditMode && viewModel.canEnterHexDigit
                     }
+                    val showNotePicker = remember(displayTick) {
+                        viewModel.isEditMode && viewModel.canEnterNoteFromPicker
+                    }
                     Column(modifier = Modifier.fillMaxSize()) {
                         AppHeaderBar(
                             subtitle = if (academyState == AcademyState.QUEST_ACTIVE) "QUEST" else "CLASSIC",
@@ -261,6 +264,14 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
                                         .align(Alignment.BottomCenter)
                                         .padding(bottom = 8.dp),
                                     onDigit = { viewModel.enterHexDigit(it) },
+                                )
+                            }
+                            if (showNotePicker) {
+                                MiniPianoPad(
+                                    modifier = Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .padding(bottom = 8.dp),
+                                    onNote = { viewModel.enterNoteFromPicker(it) },
                                 )
                             }
                         }
@@ -369,6 +380,61 @@ private fun HexEntryPad(
                             ),
                         ) {
                             Text(ch.toString(), fontSize = 15.sp)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MiniPianoPad(
+    modifier: Modifier = Modifier,
+    onNote: (Int) -> Unit,
+) {
+    val notes = listOf(
+        "C" to 0,
+        "C#" to 1,
+        "D" to 2,
+        "D#" to 3,
+        "E" to 4,
+        "F" to 5,
+        "F#" to 6,
+        "G" to 7,
+        "G#" to 8,
+        "A" to 9,
+        "A#" to 10,
+        "B" to 11,
+    )
+    Surface(
+        modifier = modifier,
+        color = Color(0xEE05080C),
+        shape = MaterialTheme.shapes.medium,
+        tonalElevation = 6.dp,
+        shadowElevation = 6.dp,
+    ) {
+        Column(
+            modifier = Modifier
+                .border(1.dp, Color(0xFF3B5268), MaterialTheme.shapes.medium)
+                .padding(8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text("NOTE", color = Color(0xFF9BB7D0), fontSize = 11.sp)
+            notes.chunked(6).forEach { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    row.forEach { (label, semitone) ->
+                        Button(
+                            onClick = { onNote(semitone) },
+                            modifier = Modifier.size(width = 42.dp, height = 34.dp),
+                            contentPadding = PaddingValues(0.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (label.contains('#')) Color(0xFF1A2436) else Color(0xFF233245),
+                                contentColor = Color(0xFFE9F5FF),
+                            ),
+                        ) {
+                            Text(label, fontSize = 12.sp)
                         }
                     }
                 }

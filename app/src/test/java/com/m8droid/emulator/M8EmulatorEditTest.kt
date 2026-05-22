@@ -284,6 +284,48 @@ class M8EmulatorEditTest {
     }
 
     @Test
+    fun `phrase note picker writes selected note cell only`() {
+        val emulator = M8Emulator().apply {
+            screen = M8Emulator.SCREEN_PHRASE
+            song.songGrid[0][2] = 0
+            song.chains[0].rows[0].phrase = 4
+            resetPlayheadAndResolve()
+            cursorX = 2
+            cursorY = 6
+            phraseEditColumn = 0
+            octave = 4
+        }
+        val selectedTrackStep = emulator.song.phrases[4].steps[6]
+        val neighboringTrackStep = emulator.song.phrases[0].steps[6]
+        selectedTrackStep.note = M8Song.EMPTY
+        selectedTrackStep.instrument = 0x03
+        neighboringTrackStep.note = 0x31
+
+        assertEquals(true, emulator.canEnterNoteFromPicker())
+        assertEquals(true, emulator.enterNoteFromPicker(7))
+
+        assertEquals(67, selectedTrackStep.note)
+        assertEquals(0x03, selectedTrackStep.instrument)
+        assertEquals(0x31, neighboringTrackStep.note)
+    }
+
+    @Test
+    fun `phrase note picker is unavailable outside note cells`() {
+        val emulator = M8Emulator().apply {
+            screen = M8Emulator.SCREEN_PHRASE
+            song.songGrid[0][0] = 0
+            song.chains[0].rows[0].phrase = 0
+            resetPlayheadAndResolve()
+            cursorX = 0
+            cursorY = 0
+            phraseEditColumn = 1
+        }
+
+        assertEquals(false, emulator.canEnterNoteFromPicker())
+        assertEquals(false, emulator.enterNoteFromPicker(0))
+    }
+
+    @Test
     fun `chain accepts touch hex digit entry into selected phrase cell only`() {
         val emulator = M8Emulator().apply {
             screen = M8Emulator.SCREEN_CHAIN
