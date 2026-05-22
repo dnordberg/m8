@@ -34,8 +34,9 @@ This is the biggest demo-to-instrument step. Mirror real M8 firmware behavior; d
 - [x] Add long-press cell edit affordance.
 - [x] Add sticky Shift/Edit/Option modes.
 - [x] Add mini piano / note picker overlay for phrase note entry.
-- [ ] Add haptic feedback for edit confirmation and navigation.
+- [x] Add haptic feedback for edit confirmation and navigation.
 - [ ] Verify edited phrases trigger audible synth playback correctly.
+- [ ] Add preview actions for song parts: audition selected phrase/chain/track region and quickly preview edited material without starting full song playback.
 
 ## Priority 2 — `.m8s` song loading
 
@@ -75,6 +76,7 @@ WAV decode and first-pass sampler voice already exist. Finish the path so sample
 Make the synth sound more like M8, not just a generic synth. The current Kotlin synth has a basic mapping; extend it toward real M8 oscillator/macro behavior. If/when the Rust engine is present in this repo, mirror the same model there too.
 
 - [ ] Inventory existing Kotlin synth modes and any Rust crate/engine files in repo.
+- [ ] Build an authenticity plan for synth parity: parameter mapping docs, reference patches, rendered-audio fixtures, and real-M8/headless-firmware comparison workflow where possible.
 - [ ] Define a single parameter mapping table from `M8Instrument` to audible engine params.
 - [ ] Replace fallback preset mapping with fuller M8 parameter interpretation.
 - [ ] Expand WAVSYNTH oscillator shapes and wavetable behavior.

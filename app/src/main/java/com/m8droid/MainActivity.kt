@@ -1,6 +1,7 @@
 package com.m8droid
 
 import android.os.Bundle
+import android.view.HapticFeedbackConstants
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.WindowManager
@@ -18,6 +19,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import com.m8droid.data.ButtonLayout
 import com.m8droid.input.KeyMapper
@@ -158,6 +160,15 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
     val activeQuest by academyVm.activeQuest.collectAsState()
     val lastEval by academyVm.lastEvaluation.collectAsState()
     val serverSettings by viewModel.serverSettings.collectAsState()
+    val hapticView = LocalView.current
+
+    fun performNavigationHaptic() {
+        hapticView.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+    }
+
+    fun performEditHaptic() {
+        hapticView.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+    }
 
     // Tutorial fields are Compose state; read them directly so overlay controls
     // refresh immediately even when the display tick is paused or unchanged.
@@ -211,11 +222,22 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
                         M8Screen(
                             bitmap = viewModel.connectionManager.display.snapshot(),
                             invalidationTick = displayTick,
-                            onScreenTap = { viewModel.setScreen(it) },
+                            onScreenTap = {
+                                viewModel.setScreen(it)
+                                performNavigationHaptic()
+                            },
                             onDisplayTap = { x, y -> viewModel.handleDisplayTap(x, y) },
-                            onDisplayLongPress = { x, y -> viewModel.handleDisplayLongPress(x, y) },
-                            onSwipeLeft = { viewModel.nextScreen() },
-                            onSwipeRight = { viewModel.prevScreen() },
+                            onDisplayLongPress = { x, y ->
+                                if (viewModel.handleDisplayLongPress(x, y)) performEditHaptic()
+                            },
+                            onSwipeLeft = {
+                                viewModel.nextScreen()
+                                performNavigationHaptic()
+                            },
+                            onSwipeRight = {
+                                viewModel.prevScreen()
+                                performNavigationHaptic()
+                            },
                         )
                     }
                     val onKeys: (Int) -> Unit = { keys -> viewModel.setTouchKeys(keys) }
@@ -264,7 +286,9 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
                                     modifier = Modifier
                                         .align(Alignment.BottomCenter)
                                         .padding(bottom = 8.dp),
-                                    onDigit = { viewModel.enterHexDigit(it) },
+                                    onDigit = {
+                                        if (viewModel.enterHexDigit(it)) performEditHaptic()
+                                    },
                                 )
                             }
                             if (showNotePicker) {
@@ -272,7 +296,9 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
                                     modifier = Modifier
                                         .align(Alignment.BottomCenter)
                                         .padding(bottom = 8.dp),
-                                    onNote = { viewModel.enterNoteFromPicker(it) },
+                                    onNote = {
+                                        if (viewModel.enterNoteFromPicker(it)) performEditHaptic()
+                                    },
                                 )
                             }
                         }
