@@ -36,7 +36,7 @@ This is the biggest demo-to-instrument step. Mirror real M8 firmware behavior; d
 - [x] Add mini piano / note picker overlay for phrase note entry.
 - [x] Add haptic feedback for edit confirmation and navigation.
 - [x] Verify edited phrases trigger audible synth playback correctly. Row resolution lives on `M8Emulator.resolveRowDataAt` so touch edits, the audio scheduler, and previews share one path; regression tests in `M8EmulatorEditTest` guard the edit→synth bridge for notes, instrument index, chain transpose, and NOTE_OFF/EMPTY sentinels.
-- [x] Add preview actions for song parts: picker note entry now auditions the written note via `previewNote` (mirrors EDIT-mode key press on real M8); `previewRowAtCursor` fires a one-shot synth trigger of the cursor row without engaging the sequencer. Future UI surface for the row preview is deferred per the no-extra-overlay constraint.
+- [x] Add preview actions for song parts: picker note entry now auditions the written note via `previewNote` (mirrors EDIT-mode key press on real M8); EDIT+PLAY on SONG/CHAIN/PHRASE fires `previewRowAtCursor` as a one-shot synth trigger of the cursor row without engaging the sequencer or toggling playback.
 
 ## Priority 2 — `.m8s` song loading
 

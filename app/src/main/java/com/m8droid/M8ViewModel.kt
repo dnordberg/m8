@@ -15,6 +15,7 @@ import com.m8droid.emulator.*
 import com.m8droid.academy.data.EmulatorEventRepository
 import com.m8droid.academy.data.EmulatorSnapshot
 import com.m8droid.midi.MidiEngine
+import com.m8droid.input.RowPreviewShortcut
 import com.m8droid.input.StickyKeyLatch
 import com.m8droid.network.ConnectionManager
 import kotlinx.coroutines.Job
@@ -705,6 +706,7 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     private var touchKeys = 0
     private var keyboardKeys = 0
     private val stickyTouchKeys = StickyKeyLatch()
+    private val rowPreviewShortcut = RowPreviewShortcut()
     private val _stickyKeyState = MutableStateFlow(0)
     val stickyKeyState: StateFlow<Int> = _stickyKeyState
     private val _keyState = MutableStateFlow(0)
@@ -745,6 +747,10 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
             return
         } else {
             comboHeldFrames = 0
+        }
+        if (rowPreviewShortcut.consume(keys, emulator.screen)) {
+            previewRowAtCursor()
+            return
         }
         if (!keyInputPaused) emulator.handleKeyState(keys)
     }

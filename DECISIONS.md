@@ -112,6 +112,10 @@ checked in, ready for a future test phase.
   rewinds song/chain/phrase resolution to row 0, and is used by
   `M8ViewModel.replaceSong()` so browser loads and emulator tests share the
   same path.
+- **EDIT+PLAY is the row-preview gesture on SONG/CHAIN/PHRASE.** It reuses
+  existing M8 buttons instead of adding an overlay, calls
+  `M8ViewModel.previewRowAtCursor()`, consumes the chord before normal PLAY
+  handling, and edge-detects so held touch/sticky keys do not retrigger.
 - **BrowseDialog `.m8i` slot picker still caps at 8** (via
   `M8ViewModel.INSTRUMENT_PICKER_SLOT_COUNT`). 128 buttons on a phone
   is unusable; the picker is a phone affordance, not a real M8 surface.
