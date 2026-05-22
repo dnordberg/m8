@@ -42,4 +42,17 @@ class M8TutorialTest {
         }
         assertEquals(M8Commands.KEY_SHIFT or M8Commands.KEY_EDIT, tutorial.currentStepButtonMask)
     }
+
+    @Test
+    fun guidedPressProgressesFirstTutorialStepsOneAtATime() {
+        val tutorial = M8Tutorial(M8Emulator())
+        tutorial.start()
+
+        assertEquals("WELCOME TO M8", tutorial.currentStep?.title)
+        assertEquals(M8Commands.KEY_RIGHT, tutorial.completeCurrentStepFromOverlay())
+        assertEquals("SONG VIEW", tutorial.currentStep?.title)
+
+        assertEquals(M8Commands.KEY_RIGHT, tutorial.completeCurrentStepFromOverlay())
+        assertEquals("TRACKS", tutorial.currentStep?.title)
+    }
 }

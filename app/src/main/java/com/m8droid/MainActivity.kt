@@ -15,8 +15,6 @@ import androidx.compose.material3.*
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.*
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -302,13 +300,7 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
                 onStop = { tutorial.stop() },
                 onSkip = { tutorial.skip() },
                 onPrevious = { tutorial.previousStep() },
-                onPressHint = { keyMask ->
-                    scope.launch {
-                        viewModel.setTouchKeys(keyMask)
-                        delay(90)
-                        viewModel.setTouchKeys(0)
-                    }
-                },
+                onPressHint = { tutorial.completeCurrentStepFromOverlay() },
             )
         }
 

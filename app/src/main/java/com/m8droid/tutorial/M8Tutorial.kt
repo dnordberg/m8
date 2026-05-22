@@ -110,6 +110,12 @@ class M8Tutorial(private val emulator: M8Emulator) {
         }
     }
 
+    fun completeCurrentStepFromOverlay(): Int? {
+        val mask = currentStepButtonMask ?: return null
+        skip()
+        return mask
+    }
+
     /** Jump to the first step for the current screen (for context-sensitive resume) */
     fun jumpToScreen(screen: Int) {
         val idx = steps.indexOfFirst { it.section.screen == screen }

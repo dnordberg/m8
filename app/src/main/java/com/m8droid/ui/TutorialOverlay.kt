@@ -43,7 +43,7 @@ fun TutorialOverlay(
     onStop: () -> Unit,
     onSkip: () -> Unit,
     onPrevious: () -> Unit,
-    onPressHint: (Int) -> Unit,
+    onPressHint: () -> Unit,
 ) {
     val step = tutorial.currentStep ?: return
     val stepButtonMask = tutorial.currentStepButtonMask
@@ -157,7 +157,7 @@ fun TutorialOverlay(
                         fontWeight = FontWeight.Bold,
                     )
                     if (stepButtonMask != null) {
-                        TutorialButton("PRESS") { onPressHint(stepButtonMask) }
+                        TutorialButton("PRESS") { onPressHint() }
                     }
                 }
             }
