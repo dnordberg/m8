@@ -39,14 +39,8 @@ class ArchiveOrgSource(private val http: HttpClient) : ContentSource {
             if (name.isEmpty()) continue
             val lower = name.lowercase()
             // Only surface M8-relevant files. .7z/.zip stays so users can grab the starter pack.
-            val kind = when {
-                lower.endsWith(".m8s") -> ContentKind.SONG
-                lower.endsWith(".m8i") -> ContentKind.INSTRUMENT
-                lower.endsWith(".m8t") -> ContentKind.THEME
-                lower.endsWith(".wav") -> ContentKind.SAMPLE
-                lower.contains("m8") && (lower.endsWith(".zip") || lower.endsWith(".7z")) -> ContentKind.PACK
-                else -> continue
-            }
+            val kind = RemoteContentClassifier.classify(name)
+            if (kind == ContentKind.UNKNOWN || (kind == ContentKind.PACK && !lower.contains("m8"))) continue
             val size = f.optString("size").toLongOrNull()
             out += RemoteItem(
                 id = "${item.identifier}/$name",

@@ -43,7 +43,7 @@ This is the biggest demo-to-instrument step. Mirror real M8 firmware behavior; d
 `M8sParser` already exists and has tests. Wire it into the emulator/app so real M8 songs can be loaded and played.
 
 - [x] HIGH PRIORITY: File hub for song loading: File New clears the song, Open Device launches Android's file picker for `.m8s`/audio-ish files, recent songs/projects are shown at the top of the File dialog, and startup tries to restore the last loaded song/project instead of always staying on the demo.
-- [ ] HIGH PRIORITY: remote song discovery/download, not just instruments. Add GitHub and/or another source that lists downloadable `.m8s` song files in the Browse dialog, saves them into the virtual SD `Songs/` area, and then loads them through the existing dirty-confirm `.m8s` import flow.
+- [x] HIGH PRIORITY: remote song discovery/download, not just instruments. Added a dedicated Songs source that surfaces downloadable `.m8s` starter/song files ahead of instrument/sample sources; remote song downloads save into virtual SD `Songs/` and load through dirty-confirm using the existing one-click `.m8s` import flow.
 
 - [x] Add app-level load path from downloaded/local `.m8s` files into emulator state.
 - [x] Call `M8sParser.parse()` + `M8sParser.applyTo()` from the browser/load workflow.

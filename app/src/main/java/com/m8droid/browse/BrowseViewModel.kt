@@ -31,6 +31,7 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
     private val samplePreviewPlayer = SamplePreviewPlayer()
 
     val sources: List<ContentSource> = listOf(
+        CuratedSongSource(),
         GitHubSource(http),
         PatchstorageSource(http),
         ArchiveOrgSource(http),

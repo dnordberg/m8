@@ -53,7 +53,7 @@ class GitHubSource(private val http: HttpClient) : ContentSource {
             val node = tree.getJSONObject(i)
             if (node.optString("type") != "blob") continue
             val path = node.getString("path")
-            val kind = classify(path) ?: continue
+            val kind = RemoteContentClassifier.classify(path).takeIf { it != ContentKind.UNKNOWN } ?: continue
             val rawUrl = "https://raw.githubusercontent.com/${repo.owner}/${repo.name}/${repo.defaultBranch}/$path"
             val name = path.substringAfterLast('/')
             out += RemoteItem(
@@ -74,17 +74,5 @@ class GitHubSource(private val http: HttpClient) : ContentSource {
             )
         }
         return out
-    }
-
-    private fun classify(path: String): ContentKind? {
-        val lower = path.lowercase()
-        return when {
-            lower.endsWith(".m8s") -> ContentKind.SONG
-            lower.endsWith(".m8i") -> ContentKind.INSTRUMENT
-            lower.endsWith(".m8t") -> ContentKind.THEME
-            lower.endsWith(".m8n") -> ContentKind.SCALE
-            lower.endsWith(".wav") -> ContentKind.SAMPLE
-            else -> null
-        }
     }
 }

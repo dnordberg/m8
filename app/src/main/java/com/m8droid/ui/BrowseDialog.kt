@@ -129,12 +129,21 @@ fun BrowseDialog(
                     },
                 )
 
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(6.dp))
+
+                Text(
+                    text = "DOWNLOAD SOURCES",
+                    color = M8_DIM,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                )
+                Spacer(Modifier.height(4.dp))
 
                 // Download source tabs + local SD/projects
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     val tabs = sources.map { it.displayName } + "SD" + "PROJECTS"
                     tabs.forEachIndexed { i, label ->
@@ -155,13 +164,13 @@ fun BrowseDialog(
                                     if (i == viewModel.projectTabIndex) onRefreshProjects()
                                     viewModel.selectSource(i)
                                 }
-                                .padding(vertical = 6.dp),
+                                .padding(vertical = 5.dp),
                             contentAlignment = Alignment.Center,
                         ) {
                             Text(
                                 text = label,
                                 color = if (active) M8_GREEN else M8_DIM,
-                                fontSize = 12.sp,
+                                fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace,
                             )
@@ -337,7 +346,7 @@ private fun FileActionBar(
             Spacer(Modifier.height(6.dp))
             Text("RECENT", color = M8_GREEN, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
             Spacer(Modifier.height(4.dp))
-            recentSongs.take(3).forEach { entry ->
+            recentSongs.take(2).forEach { entry ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()

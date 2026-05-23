@@ -50,7 +50,7 @@ class PatchstorageSource(private val http: HttpClient) : ContentSource {
                 val fileUrl = f.optString("url")
                 if (fileUrl.isEmpty()) continue
                 val fileName = f.optString("filename").ifEmpty { fileUrl.substringAfterLast('/') }
-                val kind = classify(fileName)
+                val kind = RemoteContentClassifier.classify(fileName)
                 out += RemoteItem(
                     id = "$id-$j",
                     sourceName = displayName,
@@ -86,18 +86,5 @@ class PatchstorageSource(private val http: HttpClient) : ContentSource {
             null
         }.onFailure { Log.w("PatchstorageSource", "platform lookup failed: ${it.message}") }
             .getOrNull()
-    }
-
-    private fun classify(name: String): ContentKind {
-        val lower = name.lowercase()
-        return when {
-            lower.endsWith(".m8s") -> ContentKind.SONG
-            lower.endsWith(".m8i") -> ContentKind.INSTRUMENT
-            lower.endsWith(".m8t") -> ContentKind.THEME
-            lower.endsWith(".m8n") -> ContentKind.SCALE
-            lower.endsWith(".wav") -> ContentKind.SAMPLE
-            lower.endsWith(".zip") || lower.endsWith(".7z") -> ContentKind.PACK
-            else -> ContentKind.UNKNOWN
-        }
     }
 }
