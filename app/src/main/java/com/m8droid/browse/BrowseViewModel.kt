@@ -30,12 +30,7 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
     private val sampleCache = SampleCache(File(application.filesDir, "m8sd"))
     private val samplePreviewPlayer = SamplePreviewPlayer()
 
-    val sources: List<ContentSource> = listOf(
-        CuratedSongSource(),
-        GitHubSource(http),
-        PatchstorageSource(http),
-        ArchiveOrgSource(http),
-    )
+    val sources: List<ContentSource> = DownloadSources.create(http)
 
     private val _currentSourceIndex = MutableStateFlow(0)
     val currentSourceIndex: StateFlow<Int> = _currentSourceIndex.asStateFlow()

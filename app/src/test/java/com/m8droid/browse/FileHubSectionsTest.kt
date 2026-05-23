@@ -12,10 +12,10 @@ class FileHubSectionsTest {
     }
 
     @Test
-    fun `download sources are chips inside download tab not top tabs`() {
-        val sources = FileHubTabs.downloadSourceLabels(listOf("Songs", "GitHub", "Patchstorage", "Archive.org"))
+    fun `download sources expose only implemented providers`() {
+        val sources = DownloadSources.displayNames()
 
-        assertEquals(listOf("Songs", "GitHub", "Patchstorage", "Archive.org"), sources)
+        assertEquals(listOf("Songs", "GitHub", "Archive.org"), sources)
         assertFalse(FileHubTabs.topTabLabels.contains("Songs"))
         assertFalse(FileHubTabs.topTabLabels.contains("SD"))
         assertFalse(FileHubTabs.topTabLabels.contains("PROJECTS"))
