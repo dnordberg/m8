@@ -88,6 +88,8 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     val isEditMode: Boolean get() = emulator.editMode
     val canEnterHexDigit: Boolean get() = emulator.canEnterHexDigit()
     val canEnterNoteFromPicker: Boolean get() = emulator.canEnterNoteFromPicker()
+    val canUseTrackerQuickActions: Boolean get() = emulator.screen in setOf(M8Emulator.SCREEN_SONG, M8Emulator.SCREEN_CHAIN, M8Emulator.SCREEN_PHRASE)
+    val trackerEditStatus: String get() = emulator.trackerEditStatus()
     private var emulatorRenderJob: Job? = null
     private var audioThread: Thread? = null
     private var samplesUntilNextFxTick = 0
@@ -1070,6 +1072,23 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         previewNote(emulator.cursorX.coerceIn(0, 7), midi)
         noteMeaningfulProjectEdit(beforeSignature)
         return true
+    }
+
+    fun quickInsertAtSelection(): Boolean = applyTrackerQuickEdit { emulator.quickInsertAtSelection() }
+
+    fun clearSelection(): Boolean = applyTrackerQuickEdit { emulator.clearSelection() }
+
+    fun duplicateSelection(): Boolean = applyTrackerQuickEdit { emulator.duplicateSelection() }
+
+    fun transposeSelection(delta: Int): Boolean = applyTrackerQuickEdit { emulator.transposeSelection(delta) }
+
+    private fun applyTrackerQuickEdit(action: () -> String): Boolean {
+        val beforeSignature = currentProjectSignature()
+        val status = action()
+        _projectSaveStatus.value = status
+        val changed = currentProjectSignature() != beforeSignature
+        if (changed) noteMeaningfulProjectEdit(beforeSignature)
+        return changed
     }
 
     fun nextScreen() {

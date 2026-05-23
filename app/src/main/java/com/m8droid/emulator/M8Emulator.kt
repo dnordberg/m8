@@ -262,12 +262,178 @@ class M8Emulator {
         return midi
     }
 
+    fun quickInsertAtSelection(): String = when (screen) {
+        SCREEN_SONG -> {
+            val row = cursorY.coerceIn(0, 255)
+            val track = cursorX.coerceIn(0, 7)
+            song.songGrid[row][track] = 0
+            selectedChain = 0
+            resolveCurrentPhrases()
+            "SONG ${M8Song.hex2(row)}:T$track CHAIN 00"
+        }
+        SCREEN_CHAIN -> {
+            val rowIndex = cursorY.coerceIn(0, 15)
+            val chainIndex = selectedChain.coerceIn(0, 254)
+            val row = song.chains[chainIndex].rows[rowIndex]
+            row.phrase = 0
+            selectedPhrase = 0
+            resolveCurrentPhrases()
+            "CHAIN ${M8Song.hex2(chainIndex)}:${M8Song.hex2(rowIndex)} PHRASE 00"
+        }
+        SCREEN_PHRASE -> {
+            val step = currentPhraseStep() ?: return "NO PHRASE STEP"
+            step.note = if (step.note == M8Song.EMPTY || step.note == M8Song.NOTE_OFF) 60 else step.note
+            "PHRASE ${M8Song.hex2(currentPhraseIndex())}:${M8Song.hex2(cursorY.coerceIn(0, 15))} NOTE ${trackerNoteName(step.note)}"
+        }
+        else -> "NO TRACKER CELL"
+    }
+
+    fun clearSelection(): String = when (screen) {
+        SCREEN_SONG -> {
+            val row = cursorY.coerceIn(0, 255)
+            val track = cursorX.coerceIn(0, 7)
+            song.songGrid[row][track] = M8Song.EMPTY
+            resolveCurrentPhrases()
+            "SONG ${M8Song.hex2(row)}:T$track CLEARED"
+        }
+        SCREEN_CHAIN -> {
+            val rowIndex = cursorY.coerceIn(0, 15)
+            val row = song.chains[selectedChain.coerceIn(0, 254)].rows[rowIndex]
+            row.phrase = M8Song.EMPTY
+            row.transpose = 0
+            resolveCurrentPhrases()
+            "CHAIN ${M8Song.hex2(selectedChain.coerceIn(0, 254))}:${M8Song.hex2(rowIndex)} CLEARED"
+        }
+        SCREEN_PHRASE -> {
+            val step = currentPhraseStep() ?: return "NO PHRASE STEP"
+            step.note = M8Song.EMPTY
+            step.instrument = M8Song.EMPTY
+            step.volume = M8Song.EMPTY
+            step.fx1Cmd = 0
+            step.fx1Val = 0
+            step.fx2Cmd = 0
+            step.fx2Val = 0
+            step.fx3Cmd = 0
+            step.fx3Val = 0
+            "PHRASE ${M8Song.hex2(currentPhraseIndex())}:${M8Song.hex2(cursorY.coerceIn(0, 15))} CLEARED"
+        }
+        else -> "NO TRACKER CELL"
+    }
+
+    fun duplicateSelection(): String {
+        return when (screen) {
+        SCREEN_SONG -> {
+            val row = cursorY.coerceIn(0, 255)
+            val dst = (row + 1).coerceAtMost(255)
+            song.songGrid[dst] = song.songGrid[row].copyOf()
+            resolveCurrentPhrases()
+            "SONG ROW ${M8Song.hex2(row)} DUPED TO ${M8Song.hex2(dst)}"
+        }
+        SCREEN_CHAIN -> {
+            val rowIndex = cursorY.coerceIn(0, 15)
+            val dst = (rowIndex + 1).coerceAtMost(15)
+            val chain = song.chains[selectedChain.coerceIn(0, 254)]
+            chain.rows[dst].phrase = chain.rows[rowIndex].phrase
+            chain.rows[dst].transpose = chain.rows[rowIndex].transpose
+            resolveCurrentPhrases()
+            "CHAIN ROW ${M8Song.hex2(rowIndex)} DUPED TO ${M8Song.hex2(dst)}"
+        }
+        SCREEN_PHRASE -> {
+            val phraseIndex = currentPhraseIndex()
+            if (phraseIndex == M8Song.EMPTY || phraseIndex > 254) return "NO PHRASE STEP"
+            val row = cursorY.coerceIn(0, 15)
+            val dst = (row + 1).coerceAtMost(15)
+            val phrase = song.phrases[phraseIndex]
+            copyPhraseStep(phrase.steps[row], phrase.steps[dst])
+            "PHRASE STEP ${M8Song.hex2(row)} DUPED TO ${M8Song.hex2(dst)}"
+        }
+        else -> "NO TRACKER CELL"
+        }
+    }
+
+    fun transposeSelection(delta: Int): String {
+        return when (screen) {
+        SCREEN_CHAIN -> {
+            val rowIndex = cursorY.coerceIn(0, 15)
+            val chainIndex = selectedChain.coerceIn(0, 254)
+            val row = song.chains[chainIndex].rows[rowIndex]
+            row.transpose = (row.transpose + delta).coerceIn(-128, 127)
+            "CHAIN ${M8Song.hex2(chainIndex)}:${M8Song.hex2(rowIndex)} TSP ${signed3(row.transpose)}"
+        }
+        SCREEN_PHRASE -> {
+            val step = currentPhraseStep() ?: return "NO PHRASE STEP"
+            if (step.note == M8Song.EMPTY || step.note == M8Song.NOTE_OFF) return "NO NOTE"
+            step.note = (step.note + delta).coerceIn(1, 127)
+            "PHRASE ${M8Song.hex2(currentPhraseIndex())}:${M8Song.hex2(cursorY.coerceIn(0, 15))} NOTE ${trackerNoteName(step.note)}"
+        }
+        else -> "NO TRANSPOSE TARGET"
+        }
+    }
+
+    fun trackerEditStatus(): String = when (screen) {
+        SCREEN_SONG -> {
+            val row = cursorY.coerceIn(0, 255)
+            val track = cursorX.coerceIn(0, 7)
+            val chain = song.songGrid[row][track]
+            val value = if (chain == M8Song.EMPTY) "--" else "CHAIN ${M8Song.hex2(chain)}"
+            "SONG ${M8Song.hex2(row)}:T$track $value"
+        }
+        SCREEN_CHAIN -> {
+            val rowIndex = cursorY.coerceIn(0, 15)
+            val chainIndex = selectedChain.coerceIn(0, 254)
+            val row = song.chains[chainIndex].rows[rowIndex]
+            val phrase = if (row.phrase == M8Song.EMPTY) "--" else "PHRASE ${M8Song.hex2(row.phrase)}"
+            "CHAIN ${M8Song.hex2(chainIndex)}:${M8Song.hex2(rowIndex)} $phrase ${signed3(row.transpose)}"
+        }
+        SCREEN_PHRASE -> {
+            val phraseIndex = currentPhraseIndex()
+            val step = currentPhraseStep()
+            val note = if (step == null) "---" else trackerNoteName(step.note)
+            "PHRASE ${M8Song.hex2(phraseIndex)}:${M8Song.hex2(cursorY.coerceIn(0, 15))} $note"
+        }
+        else -> "NO TRACKER CELL"
+    }
+
     private fun currentPhraseNoteStep(): PhraseStep? {
         if (screen != SCREEN_PHRASE || phraseEditColumn != 0) return null
         val track = cursorX.coerceIn(0, 7)
         val phraseIdx = currentPhrasePerTrack.getOrElse(track) { M8Song.EMPTY }
         if (phraseIdx == M8Song.EMPTY || phraseIdx > 254) return null
         return song.phrases[phraseIdx].steps[cursorY.coerceIn(0, 15)]
+    }
+
+    private fun currentPhraseIndex(): Int {
+        val track = cursorX.coerceIn(0, 7)
+        return currentPhrasePerTrack.getOrElse(track) { M8Song.EMPTY }
+    }
+
+    private fun currentPhraseStep(): PhraseStep? {
+        val phraseIdx = currentPhraseIndex()
+        if (phraseIdx == M8Song.EMPTY || phraseIdx > 254) return null
+        return song.phrases[phraseIdx].steps[cursorY.coerceIn(0, 15)]
+    }
+
+    private fun copyPhraseStep(source: PhraseStep, target: PhraseStep) {
+        target.note = source.note
+        target.instrument = source.instrument
+        target.volume = source.volume
+        target.fx1Cmd = source.fx1Cmd
+        target.fx1Val = source.fx1Val
+        target.fx2Cmd = source.fx2Cmd
+        target.fx2Val = source.fx2Val
+        target.fx3Cmd = source.fx3Cmd
+        target.fx3Val = source.fx3Val
+    }
+
+    private fun signed3(value: Int): String = String.format("%+03d", value)
+
+    private fun trackerNoteName(note: Int): String {
+        if (note == M8Song.EMPTY) return "---"
+        if (note == M8Song.NOTE_OFF) return "OFF"
+        val names = arrayOf("C-", "C#", "D-", "D#", "E-", "F-", "F#", "G-", "G#", "A-", "A#", "B-")
+        val semitone = note % 12
+        val octave = (note / 12) - 1
+        return "${names[semitone]}$octave"
     }
 
     /**

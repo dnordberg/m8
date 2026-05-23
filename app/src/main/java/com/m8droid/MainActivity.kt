@@ -274,6 +274,10 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
                     val showNotePicker = remember(displayTick) {
                         viewModel.isEditMode && viewModel.canEnterNoteFromPicker
                     }
+                    val showTrackerQuickActions = remember(displayTick) {
+                        viewModel.isEditMode && viewModel.canUseTrackerQuickActions
+                    }
+                    val trackerQuickStatus = remember(displayTick) { viewModel.trackerEditStatus }
                     Column(modifier = Modifier.fillMaxSize()) {
                         AppHeaderBar(
                             subtitle = if (academyState == AcademyState.QUEST_ACTIVE) "QUEST" else "CLASSIC",
@@ -308,6 +312,32 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
                                     .align(Alignment.TopStart)
                                     .padding(8.dp),
                             )
+                            if (showTrackerQuickActions) {
+                                TrackerQuickActionBar(
+                                    status = trackerQuickStatus,
+                                    onInsert = {
+                                        if (viewModel.quickInsertAtSelection()) performEditHaptic()
+                                    },
+                                    onClear = {
+                                        if (viewModel.clearSelection()) performEditHaptic()
+                                    },
+                                    onDuplicate = {
+                                        if (viewModel.duplicateSelection()) performEditHaptic()
+                                    },
+                                    onTransposeDown = {
+                                        if (viewModel.transposeSelection(-1)) performEditHaptic()
+                                    },
+                                    onTransposeUp = {
+                                        if (viewModel.transposeSelection(1)) performEditHaptic()
+                                    },
+                                    modifier = Modifier
+                                        .align(Alignment.BottomEnd)
+                                        .padding(
+                                            end = 8.dp,
+                                            bottom = if (showHexEntry || showNotePicker) 104.dp else 8.dp,
+                                        ),
+                                )
+                            }
                             if (showHexEntry) {
                                 HexEntryPad(
                                     modifier = Modifier

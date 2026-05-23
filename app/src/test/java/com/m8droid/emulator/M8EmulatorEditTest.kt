@@ -567,6 +567,60 @@ class M8EmulatorEditTest {
     }
 
     @Test
+    fun `quick insert clear duplicate transpose and status support phone tracker editing`() {
+        val emulator = M8Emulator().apply {
+            song.songGrid.forEach { row -> java.util.Arrays.fill(row, M8Song.EMPTY) }
+            song.chains.forEach { chain -> chain.rows.forEach { row -> row.phrase = M8Song.EMPTY; row.transpose = 0 } }
+            song.phrases.forEach { phrase -> phrase.steps.forEach { step -> step.note = M8Song.EMPTY; step.instrument = M8Song.EMPTY; step.volume = M8Song.EMPTY } }
+            resetPlayheadAndResolve()
+            screen = M8Emulator.SCREEN_SONG
+            cursorX = 0
+            cursorY = 0
+        }
+
+        assertEquals("SONG 00:T0 --", emulator.trackerEditStatus())
+        assertEquals("SONG 00:T0 CHAIN 00", emulator.quickInsertAtSelection())
+        assertEquals(0, emulator.song.songGrid[0][0])
+        assertEquals("SONG 00:T0 CHAIN 00", emulator.trackerEditStatus())
+        assertEquals("SONG ROW 00 DUPED TO 01", emulator.duplicateSelection())
+        assertEquals(0, emulator.song.songGrid[1][0])
+
+        emulator.screen = M8Emulator.SCREEN_CHAIN
+        emulator.cursorX = 0
+        emulator.cursorY = 0
+        assertEquals("CHAIN 00:00 -- +00", emulator.trackerEditStatus())
+        assertEquals("CHAIN 00:00 PHRASE 00", emulator.quickInsertAtSelection())
+        assertEquals(0, emulator.song.chains[0].rows[0].phrase)
+        assertEquals("CHAIN 00:00 PHRASE 00 +00", emulator.trackerEditStatus())
+        assertEquals("CHAIN 00:00 TSP +01", emulator.transposeSelection(1))
+        assertEquals(1, emulator.song.chains[0].rows[0].transpose)
+        assertEquals("CHAIN ROW 00 DUPED TO 01", emulator.duplicateSelection())
+        assertEquals(0, emulator.song.chains[0].rows[1].phrase)
+        assertEquals(1, emulator.song.chains[0].rows[1].transpose)
+
+        emulator.screen = M8Emulator.SCREEN_PHRASE
+        emulator.cursorX = 0
+        emulator.cursorY = 0
+        emulator.phraseEditColumn = 0
+        assertEquals("PHRASE 00:00 ---", emulator.trackerEditStatus())
+        assertEquals("PHRASE 00:00 NOTE C-4", emulator.quickInsertAtSelection())
+        assertEquals(60, emulator.song.phrases[0].steps[0].note)
+        assertEquals("PHRASE 00:00 C-4", emulator.trackerEditStatus())
+        assertEquals("PHRASE 00:00 NOTE C#4", emulator.transposeSelection(1))
+        assertEquals(61, emulator.song.phrases[0].steps[0].note)
+        emulator.song.phrases[0].steps[0].fx3Cmd = 7
+        emulator.song.phrases[0].steps[0].fx3Val = 64
+        assertEquals("PHRASE STEP 00 DUPED TO 01", emulator.duplicateSelection())
+        assertEquals(61, emulator.song.phrases[0].steps[1].note)
+        assertEquals(7, emulator.song.phrases[0].steps[1].fx3Cmd)
+        assertEquals(64, emulator.song.phrases[0].steps[1].fx3Val)
+        assertEquals("PHRASE 00:00 CLEARED", emulator.clearSelection())
+        assertEquals(M8Song.EMPTY, emulator.song.phrases[0].steps[0].note)
+        assertEquals(0, emulator.song.phrases[0].steps[0].fx3Cmd)
+        assertEquals(0, emulator.song.phrases[0].steps[0].fx3Val)
+    }
+
+    @Test
     fun `fresh tracker loop resolves song chain phrase edits before note entry`() {
         val emulator = M8Emulator().apply {
             song.songGrid.forEach { row -> java.util.Arrays.fill(row, M8Song.EMPTY) }
