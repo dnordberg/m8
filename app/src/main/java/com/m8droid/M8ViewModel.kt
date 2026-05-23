@@ -278,6 +278,8 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         samplesUntilNextRow = 0
         wasPlaying = false
         previousSongRow = 0
+        BuiltInDemoProjects.ensureSeeded(projectDir)
+        refreshSavedProjects()
         refreshRecentSongs()
         restoreLastLoadedOnStartup()
 

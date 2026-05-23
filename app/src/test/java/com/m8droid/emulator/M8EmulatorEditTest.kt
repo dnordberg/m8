@@ -434,6 +434,7 @@ class M8EmulatorEditTest {
     fun `phrase note picker edit reaches resolved synth row data`() {
         val emulator = M8Emulator().apply {
             screen = M8Emulator.SCREEN_PHRASE
+            song.songGrid.forEach { row -> java.util.Arrays.fill(row, M8Song.EMPTY) }
             // Track 2 plays chain 0 → phrase 4; cursor on row 6 of phrase 4.
             song.songGrid[0][2] = 0
             song.chains[0].rows[0].phrase = 4
