@@ -100,6 +100,8 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     val isSongDirty: StateFlow<Boolean> = _isSongDirty
     private val _projectSaveStatus = MutableStateFlow<String?>(null)
     val projectSaveStatus: StateFlow<String?> = _projectSaveStatus
+    private val _savedProjects = MutableStateFlow<List<M8ProjectLibrary.SavedProject>>(emptyList())
+    val savedProjects: StateFlow<List<M8ProjectLibrary.SavedProject>> = _savedProjects
 
     // ======================= MIDI =======================
     private val midiEngine = MidiEngine(application.applicationContext).also { engine ->
@@ -759,6 +761,39 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         _isSongDirty.value = false
         val status = "SAVED ${target.name}"
         _projectSaveStatus.value = status
+        refreshSavedProjects()
+        return status
+    }
+
+    fun refreshSavedProjects() {
+        _savedProjects.value = M8ProjectLibrary.list(projectDir)
+    }
+
+    fun loadSavedProject(path: String): String {
+        val file = File(path)
+        val restored = M8ProjectLibrary.load(file)
+        val wasPlaying = emulator.playing
+        emulator.playing = false
+        M8ProjectSnapshot.restoreInto(restored, song, instruments)
+        emulator.resetPlayheadAndResolve()
+        songRow = 0
+        chainRow = 0
+        phraseRow = 0
+        samplesUntilNextRow = 0
+        previousSongRow = 0
+        emulator.cursorX = 0
+        emulator.cursorY = 0
+        emulator.editMode = false
+        configureVoicesFromInstruments()
+        if (wasPlaying) {
+            emulator.playing = true
+            emulator.playRow = 0
+        }
+        markProjectClean()
+        refreshSavedProjects()
+        val status = "LOADED ${file.name}"
+        _projectSaveStatus.value = status
+        Log.i(TAG, "Restored project '${song.name}' from ${file.name}")
         return status
     }
 

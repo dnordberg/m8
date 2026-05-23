@@ -161,6 +161,7 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
     val lastEval by academyVm.lastEvaluation.collectAsState()
     val serverSettings by viewModel.serverSettings.collectAsState()
     val isSongDirty by viewModel.isSongDirty.collectAsState()
+    val savedProjects by viewModel.savedProjects.collectAsState()
     val projectSaveStatus by viewModel.projectSaveStatus.collectAsState()
     val hapticView = LocalView.current
 
@@ -318,6 +319,9 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
                 slotCount = viewModel.instrumentSlotCount,
                 onLoadInstrument = { slot, inst -> viewModel.replaceInstrument(slot, inst) },
                 onLoadSong = { parsed -> viewModel.replaceSong(parsed) },
+                savedProjects = savedProjects,
+                onRefreshProjects = { viewModel.refreshSavedProjects() },
+                onLoadProject = { path -> viewModel.loadSavedProject(path) },
                 shouldConfirmSongReplace = { viewModel.shouldConfirmBeforeReplacingSong() },
                 onSaveCurrentSong = { viewModel.saveCurrentSong() },
                 saveStatus = projectSaveStatus,

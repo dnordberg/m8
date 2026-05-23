@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import java.io.File
 
 class M8ProjectSnapshotTest {
     @Test
@@ -81,5 +82,67 @@ class M8ProjectSnapshotTest {
 
         guard.markClean(edited)
         assertFalse(guard.shouldConfirmBeforeReplace(edited))
+    }
+
+    @Test
+    fun projectLibraryListsOnlyM8DroidProjectsNewestFirst() {
+        val dir = createTempDir(prefix = "m8-projects-")
+        try {
+            val oldProject = writeProject(dir, "old_song.m8droid", "OLD", tempo = 120)
+            val newProject = writeProject(dir, "new_song.m8droid", "NEW", tempo = 144)
+            File(dir, "notes.txt").writeText("ignore me")
+            oldProject.setLastModified(1_000L)
+            newProject.setLastModified(2_000L)
+
+            val projects = M8ProjectLibrary.list(dir)
+
+            assertEquals(listOf("new_song.m8droid", "old_song.m8droid"), projects.map { it.fileName })
+            assertEquals("NEW", projects[0].songName)
+            assertEquals(144, projects[0].tempo)
+            assertTrue(projects[0].sizeBytes > 0)
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun projectLibraryLoadsSavedProjectSnapshot() {
+        val dir = createTempDir(prefix = "m8-projects-")
+        try {
+            val file = writeProject(dir, "restore_me.m8droid", "RESTORE ME", tempo = 151) { song, instruments ->
+                song.songGrid[2][1] = 0x24
+                song.chains[0x24].rows[3].phrase = 0x35
+                song.phrases[0x35].steps[4].note = 67
+                instruments[3] = M8Instrument("RESTORED INST", InstrumentType.FM_SYNTH)
+            }
+
+            val restored = M8ProjectLibrary.load(file)
+
+            assertEquals("RESTORE ME", restored.song.name)
+            assertEquals(151, restored.song.tempo)
+            assertEquals(0x24, restored.song.songGrid[2][1])
+            assertEquals(0x35, restored.song.chains[0x24].rows[3].phrase)
+            assertEquals(67, restored.song.phrases[0x35].steps[4].note)
+            assertEquals("RESTORED INST", restored.instruments[3].name)
+            assertEquals(InstrumentType.FM_SYNTH, restored.instruments[3].type)
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    private fun writeProject(
+        dir: File,
+        name: String,
+        songName: String,
+        tempo: Int,
+        mutate: (M8Song, Array<M8Instrument>) -> Unit = { _, _ -> },
+    ): File {
+        val song = M8Song().apply {
+            this.name = songName
+            this.tempo = tempo
+        }
+        val instruments = M8Instrument.createDefaults()
+        mutate(song, instruments)
+        return File(dir, name).also { it.writeBytes(M8ProjectSnapshot.encode(song, instruments)) }
     }
 }

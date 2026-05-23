@@ -27,6 +27,7 @@ import com.m8droid.browse.ContentKind
 import com.m8droid.browse.DownloadStore
 import com.m8droid.browse.RemoteItem
 import com.m8droid.emulator.M8Instrument
+import com.m8droid.emulator.M8ProjectLibrary
 import com.m8droid.emulator.M8sParser
 
 private val M8_GREEN = Color(0xFF00FF00)
@@ -40,6 +41,9 @@ fun BrowseDialog(
     slotCount: Int,
     onLoadInstrument: (slot: Int, inst: M8Instrument) -> Unit,
     onLoadSong: (M8sParser.ParsedSong) -> Unit,
+    savedProjects: List<M8ProjectLibrary.SavedProject> = emptyList(),
+    onRefreshProjects: () -> Unit = {},
+    onLoadProject: (String) -> String = { "LOADED" },
     shouldConfirmSongReplace: () -> Boolean = { false },
     onSaveCurrentSong: () -> String = { "SAVED" },
     saveStatus: String? = null,
@@ -58,13 +62,19 @@ fun BrowseDialog(
     val loadStatus by viewModel.loadStatus.collectAsState()
     val previewStatus by viewModel.previewStatus.collectAsState()
     val viewingSd = sourceIndex == viewModel.sdTabIndex
+    val viewingProjects = sourceIndex == viewModel.projectTabIndex
+    var selectedProject by remember { mutableStateOf<M8ProjectLibrary.SavedProject?>(null) }
+    var projectLoadStatus by remember { mutableStateOf<String?>(null) }
     var pendingSongLoad by remember { mutableStateOf<(() -> Unit)?>(null) }
     fun requestSongLoad(action: () -> Unit) {
         if (shouldConfirmSongReplace()) pendingSongLoad = action else action()
     }
 
     // First-open fetch.
-    LaunchedEffect(Unit) { if (items.isEmpty() && !loading) viewModel.refresh() }
+    LaunchedEffect(Unit) {
+        if (items.isEmpty() && !loading) viewModel.refresh()
+        onRefreshProjects()
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -101,7 +111,7 @@ fun BrowseDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    val tabs = sources.map { it.displayName } + "SD"
+                    val tabs = sources.map { it.displayName } + "SD" + "PROJECTS"
                     tabs.forEachIndexed { i, label ->
                         val active = i == sourceIndex
                         Box(
@@ -116,7 +126,10 @@ fun BrowseDialog(
                                     if (active) M8_GREEN.copy(alpha = 0.15f) else Color.Transparent,
                                     RoundedCornerShape(4.dp),
                                 )
-                                .clickable { viewModel.selectSource(i) }
+                                .clickable {
+                                    if (i == viewModel.projectTabIndex) onRefreshProjects()
+                                    viewModel.selectSource(i)
+                                }
                                 .padding(vertical = 6.dp),
                             contentAlignment = Alignment.Center,
                         ) {
@@ -136,8 +149,11 @@ fun BrowseDialog(
                 // Body: list (left) + detail (right) in a Row, stacked on narrow screens
                 Row(modifier = Modifier.fillMaxWidth().weight(1f)) {
                     Column(modifier = Modifier.weight(1f)) {
-                        val desc = if (viewingSd) "Virtual M8 SD card at ${viewModel.sdRootPath}"
-                                   else sources.getOrNull(sourceIndex)?.description.orEmpty()
+                        val desc = when {
+                            viewingProjects -> "Saved app-native projects in m8sd/Projects"
+                            viewingSd -> "Virtual M8 SD card at ${viewModel.sdRootPath}"
+                            else -> sources.getOrNull(sourceIndex)?.description.orEmpty()
+                        }
                         if (desc.isNotEmpty()) {
                             Text(
                                 text = desc,
@@ -148,6 +164,14 @@ fun BrowseDialog(
                             )
                         }
                         when {
+                            viewingProjects -> if (savedProjects.isEmpty()) EmptyState() else ProjectList(
+                                projects = savedProjects,
+                                selected = selectedProject,
+                                onSelect = {
+                                    selectedProject = it
+                                    projectLoadStatus = null
+                                },
+                            )
                             viewingSd -> if (sdEntries.isEmpty()) EmptyState() else SdList(
                                 entries = sdEntries,
                                 selected = sdSelected,
@@ -167,7 +191,20 @@ fun BrowseDialog(
                     Spacer(Modifier.width(8.dp))
 
                     Column(modifier = Modifier.weight(1f)) {
-                        if (viewingSd) {
+                        if (viewingProjects) {
+                            ProjectDetailPane(
+                                project = selectedProject,
+                                loadStatus = projectLoadStatus ?: saveStatus,
+                                onRefresh = onRefreshProjects,
+                                onLoad = {
+                                    val project = selectedProject ?: return@ProjectDetailPane
+                                    requestSongLoad {
+                                        projectLoadStatus = runCatching { onLoadProject(project.path) }
+                                            .getOrElse { "ERROR: ${it.message ?: "load failed"}" }
+                                    }
+                                },
+                            )
+                        } else if (viewingSd) {
                             SdDetailPane(
                                 entry = sdSelected,
                                 slotCount = slotCount,
@@ -365,6 +402,110 @@ private fun SdList(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ProjectList(
+    projects: List<M8ProjectLibrary.SavedProject>,
+    selected: M8ProjectLibrary.SavedProject?,
+    onSelect: (M8ProjectLibrary.SavedProject) -> Unit,
+) {
+    LazyColumn(modifier = Modifier.fillMaxSize()) {
+        items(projects, key = { it.path }) { project ->
+            val isSelected = selected?.path == project.path
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 1.dp)
+                    .background(if (isSelected) M8_GREEN.copy(alpha = 0.2f) else Color.Transparent)
+                    .border(1.dp, if (isSelected) M8_GREEN else M8_DIM.copy(alpha = 0.4f), RoundedCornerShape(3.dp))
+                    .clickable { onSelect(project) }
+                    .padding(horizontal = 6.dp, vertical = 4.dp),
+            ) {
+                Text(
+                    text = project.songName,
+                    color = M8_GREEN,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                    maxLines = 1,
+                )
+                Text(
+                    text = "${project.fileName}  ${project.tempo} BPM  ${humanSize(project.sizeBytes)}",
+                    color = M8_DIM,
+                    fontSize = 9.sp,
+                    fontFamily = FontFamily.Monospace,
+                    maxLines = 1,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProjectDetailPane(
+    project: M8ProjectLibrary.SavedProject?,
+    loadStatus: String?,
+    onRefresh: () -> Unit,
+    onLoad: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .border(1.dp, M8_DIM, RoundedCornerShape(4.dp))
+            .padding(8.dp)
+            .verticalScroll(rememberScrollState()),
+    ) {
+        if (project == null) {
+            Text("Select a saved project", color = M8_DIM, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "[REFRESH]",
+                color = M8_GREEN,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace,
+                modifier = Modifier
+                    .border(1.dp, M8_GREEN, RoundedCornerShape(4.dp))
+                    .clickable { onRefresh() }
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+            )
+            return@Column
+        }
+        Text(project.songName, color = M8_GREEN, fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+        Field("file", project.fileName)
+        Field("tempo", "${project.tempo} BPM")
+        Field("size", humanSize(project.sizeBytes))
+        Spacer(Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                text = "[LOAD PROJECT]",
+                color = M8_GREEN,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace,
+                modifier = Modifier
+                    .border(1.dp, M8_GREEN, RoundedCornerShape(4.dp))
+                    .clickable { onLoad() }
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+            )
+            Text(
+                text = "[REFRESH]",
+                color = M8_GREEN,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace,
+                modifier = Modifier
+                    .border(1.dp, M8_GREEN, RoundedCornerShape(4.dp))
+                    .clickable { onRefresh() }
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+            )
+        }
+        if (!loadStatus.isNullOrBlank()) {
+            Spacer(Modifier.height(10.dp))
+            Text(loadStatus, color = M8_GREEN, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
         }
     }
 }

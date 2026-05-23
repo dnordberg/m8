@@ -59,6 +59,7 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
 
     // SD tab state — index == sources.size means "showing local SD card".
     val sdTabIndex: Int = sources.size
+    val projectTabIndex: Int = sources.size + 1
 
     private val _sdEntries = MutableStateFlow<List<DownloadStore.Entry>>(emptyList())
     val sdEntries: StateFlow<List<DownloadStore.Entry>> = _sdEntries.asStateFlow()
@@ -69,10 +70,19 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
 
     fun selectSource(index: Int) {
         if (index == _currentSourceIndex.value) return
-        if (index !in 0..sdTabIndex) return
+        if (index !in 0..projectTabIndex) return
         _currentSourceIndex.value = index
         _selected.value = null
-        if (index == sdTabIndex) refreshSd() else refresh()
+        _sdSelected.value = null
+        when (index) {
+            sdTabIndex -> refreshSd()
+            projectTabIndex -> {
+                _loading.value = false
+                _error.value = null
+                _items.value = emptyList()
+            }
+            else -> refresh()
+        }
     }
 
     private fun refreshSd() {

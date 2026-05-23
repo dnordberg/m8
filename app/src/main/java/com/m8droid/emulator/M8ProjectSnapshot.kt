@@ -5,6 +5,7 @@ import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.security.MessageDigest
+import java.io.File
 
 /** A local Android project snapshot. V1 is app-native, not Dirtywave .m8s export. */
 object M8ProjectSnapshot {
@@ -43,6 +44,56 @@ object M8ProjectSnapshot {
             repeat(count) { i -> instruments[i] = readInstrument(data) }
             return Restored(song, instruments)
         }
+    }
+
+    fun restoreInto(restored: Restored, targetSong: M8Song, targetInstruments: Array<M8Instrument>) {
+        copySong(restored.song, targetSong)
+        val count = minOf(restored.instruments.size, targetInstruments.size)
+        for (i in 0 until count) targetInstruments[i] = restored.instruments[i]
+    }
+
+    private fun copySong(source: M8Song, target: M8Song) {
+        target.name = source.name
+        target.tempo = source.tempo
+        target.transpose = source.transpose
+        target.activeScale = source.activeScale
+        target.quantize = source.quantize
+        for (row in source.songGrid.indices) {
+            for (track in source.songGrid[row].indices) target.songGrid[row][track] = source.songGrid[row][track]
+        }
+        for (chain in source.chains.indices) for (row in source.chains[chain].rows.indices) {
+            target.chains[chain].rows[row].phrase = source.chains[chain].rows[row].phrase
+            target.chains[chain].rows[row].transpose = source.chains[chain].rows[row].transpose
+        }
+        for (phrase in source.phrases.indices) for (step in source.phrases[phrase].steps.indices) {
+            val src = source.phrases[phrase].steps[step]
+            val dst = target.phrases[phrase].steps[step]
+            dst.note = src.note
+            dst.instrument = src.instrument
+            dst.volume = src.volume
+            dst.fx1Cmd = src.fx1Cmd
+            dst.fx1Val = src.fx1Val
+            dst.fx2Cmd = src.fx2Cmd
+            dst.fx2Val = src.fx2Val
+            dst.fx3Cmd = src.fx3Cmd
+            dst.fx3Val = src.fx3Val
+        }
+        for (table in source.tables.indices) for (row in source.tables[table].rows.indices) {
+            val src = source.tables[table].rows[row]
+            val dst = target.tables[table].rows[row]
+            dst.transpose = src.transpose
+            dst.volume = src.volume
+            dst.fx1Cmd = src.fx1Cmd
+            dst.fx1Val = src.fx1Val
+            dst.fx2Cmd = src.fx2Cmd
+            dst.fx2Val = src.fx2Val
+            dst.fx3Cmd = src.fx3Cmd
+            dst.fx3Val = src.fx3Val
+        }
+        for (groove in source.grooves.indices) {
+            for (tick in source.grooves[groove].ticks.indices) target.grooves[groove].ticks[tick] = source.grooves[groove].ticks[tick]
+        }
+        for (i in source.instrumentIndices.indices) target.instrumentIndices[i] = source.instrumentIndices[i]
     }
 
     private fun writeSong(data: DataOutputStream, song: M8Song) {
@@ -174,4 +225,35 @@ class SongDirtyGuard(initialCleanSignature: String) {
     fun markClean(currentSignature: String) {
         cleanSignature = currentSignature
     }
+}
+
+object M8ProjectLibrary {
+    data class SavedProject(
+        val fileName: String,
+        val path: String,
+        val songName: String,
+        val tempo: Int,
+        val modifiedAt: Long,
+        val sizeBytes: Long,
+    )
+
+    fun list(projectDir: File): List<SavedProject> {
+        val files = projectDir.listFiles { file -> file.isFile && file.extension.equals("m8droid", ignoreCase = true) }
+            ?: return emptyList()
+        return files.mapNotNull { file ->
+            runCatching {
+                val restored = load(file)
+                SavedProject(
+                    fileName = file.name,
+                    path = file.absolutePath,
+                    songName = restored.song.name.ifBlank { file.nameWithoutExtension },
+                    tempo = restored.song.tempo,
+                    modifiedAt = file.lastModified(),
+                    sizeBytes = file.length(),
+                )
+            }.getOrNull()
+        }.sortedWith(compareByDescending<M8ProjectLibrary.SavedProject> { it.modifiedAt }.thenBy { it.fileName })
+    }
+
+    fun load(file: File): M8ProjectSnapshot.Restored = M8ProjectSnapshot.decode(file.readBytes())
 }
