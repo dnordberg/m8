@@ -115,10 +115,10 @@ Once note/phrase editing exists, saving becomes mandatory and relatively cheap.
 - [x] Serialize current emulator state to local app storage (`filesDir/m8sd/Projects/<song>.m8droid`) from the new header `S` action and Save + Replace flow.
 - [x] Add app-native project load/restore UI from the SD/Projects folder. The LOAD dialog now has a PROJECTS tab backed by `M8ProjectLibrary`, with dirty-confirm reuse and live restore into the emulator/instrument pool.
 - [x] Add autosave after meaningful edits. The ViewModel now debounces dirty project edits and writes one `AUTOSAVED <song>.m8droid` snapshot after a quiet window; manual saves/project loads cancel pending autosaves.
-- [ ] Add project list: recent projects, duplicate, rename, delete.
+- [x] Add project list operations: recent projects are surfaced in File hub and PROJECTS supports duplicate, rename, and delete with safe app-local `.m8droid` paths.
 - [ ] Add export/share for project files.
 - [ ] Add import from shared file intent or SD browser.
-- [ ] Add tests for round-trip save/load of phrases, chains, tables, instruments, tempo, transpose, mixer.
+- [x] Add tests for round-trip save/load of phrases, chains, tables, instruments, tempo, transpose, mixer, and global FX settings. `.m8droid` snapshot v2 preserves mixer/chorus/delay/reverb while still reading v1 snapshots.
 
 ## Priority 6 — MIDI input + MIDI OUT
 

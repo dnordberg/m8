@@ -90,11 +90,16 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
         _loading.value = false
         _error.value = null
         _items.value = emptyList()
+        refreshDownloadedEntries()
+    }
+
+    private fun refreshDownloadedEntries() {
         _sdEntries.value = store.list().sortedByDescending { it.downloadedAt }
     }
 
     fun refresh() {
         val src = sources.getOrNull(_currentSourceIndex.value) ?: return
+        refreshDownloadedEntries()
         _loading.value = true
         _error.value = null
         _items.value = emptyList()
@@ -117,15 +122,22 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
         val item = _selected.value ?: return
         _downloading.value = true
         _error.value = null
+        _loadStatus.value = null
         viewModelScope.launch {
             val result = runCatching {
-                val bytes = http.getBytes(item.downloadUrl)
-                store.save(item, bytes)
+                val existing = withContext(Dispatchers.IO) { store.findExisting(item) }
+                if (existing != null) {
+                    existing to true
+                } else {
+                    store.save(item, http.getBytes(item.downloadUrl)) to false
+                }
             }
-            result.onSuccess {
-                _lastDownloaded.value = it
+            result.onSuccess { (entry, reused) ->
+                _lastDownloaded.value = entry
                 // Keep the SD list warm so the SD tab is current next time it opens.
-                _sdEntries.value = store.list().sortedByDescending { e -> e.downloadedAt }
+                refreshDownloadedEntries()
+                val prefix = if (reused) "USING DOWNLOADED" else "DOWNLOADED"
+                _loadStatus.value = "$prefix ${entry.sdPath}"
             }
                 .onFailure {
                     Log.w("BrowseViewModel", "download failed for ${item.title}", it)
@@ -239,13 +251,19 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
         _loadStatus.value = null
         viewModelScope.launch {
             val result = runCatching {
-                val bytes = http.getBytes(item.downloadUrl)
-                val entry = withContext(Dispatchers.IO) { store.save(item, bytes) }
+                val existing = withContext(Dispatchers.IO) { store.findExisting(item) }
+                val bytes = if (existing != null) {
+                    withContext(Dispatchers.IO) { File(existing.localPath).readBytes() }
+                } else {
+                    http.getBytes(item.downloadUrl)
+                }
+                val entry = existing ?: withContext(Dispatchers.IO) { store.save(item, bytes) }
                 _lastDownloaded.value = entry
-                _sdEntries.value = store.list().sortedByDescending { it.downloadedAt }
+                refreshDownloadedEntries()
                 val inst = M8iParser.parse(bytes)
                 apply(slot, inst)
-                "LOADED '${inst.name}' -> SLOT $slot"
+                val prefix = if (existing != null) "USING DOWNLOADED" else "LOADED"
+                "$prefix '${inst.name}' -> SLOT $slot"
             }
             _loadStatus.value = result.getOrElse { "ERROR: ${it.message ?: "load failed"}" }
             _downloading.value = false
@@ -267,13 +285,19 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
         _loadStatus.value = null
         viewModelScope.launch {
             val result = runCatching {
-                val bytes = http.getBytes(item.downloadUrl)
-                val entry = withContext(Dispatchers.IO) { store.save(item, bytes) }
+                val existing = withContext(Dispatchers.IO) { store.findExisting(item) }
+                val bytes = if (existing != null) {
+                    withContext(Dispatchers.IO) { File(existing.localPath).readBytes() }
+                } else {
+                    http.getBytes(item.downloadUrl)
+                }
+                val entry = existing ?: withContext(Dispatchers.IO) { store.save(item, bytes) }
                 _lastDownloaded.value = entry
-                _sdEntries.value = store.list().sortedByDescending { it.downloadedAt }
+                refreshDownloadedEntries()
                 val song = M8sParser.parse(bytes)
                 apply(song, entry.localPath)
-                songLoadStatus(song)
+                val prefix = if (existing != null) "USING DOWNLOADED" else "DOWNLOADED"
+                "$prefix ${entry.sdPath}\n${songLoadStatus(song)}"
             }
             _loadStatus.value = result.getOrElse { "ERROR: ${it.message ?: "load failed"}" }
             _downloading.value = false

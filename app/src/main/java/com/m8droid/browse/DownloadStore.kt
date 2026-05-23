@@ -21,12 +21,14 @@ import java.io.File
  * dialog can show what's been saved and where, and so future parser code
  * can enumerate the virtual SD like the real M8 firmware does.
  */
-class DownloadStore(context: Context) {
+class DownloadStore(private val root: File) {
 
-    private val root: File = File(context.filesDir, "m8sd").apply { mkdirs() }
+    constructor(context: Context) : this(File(context.filesDir, "m8sd"))
+
     private val indexFile: File = File(root, "index.json")
 
     init {
+        root.mkdirs()
         // Pre-create the M8 SD layout so the directories exist even before
         // any downloads land — matches how a freshly-formatted M8 SD starts.
         for (kind in ContentKind.values()) {
@@ -60,8 +62,24 @@ class DownloadStore(context: Context) {
         val license: String?,
     )
 
+    data class DownloadedState(
+        val item: RemoteItem,
+        val entry: Entry?,
+    ) {
+        val isDownloaded: Boolean get() = entry != null
+    }
+
+    @Synchronized
+    fun findExisting(item: RemoteItem): Entry? = list().firstOrNull { entry ->
+        entry.id == item.id &&
+            entry.sourceName == item.sourceName &&
+            entry.kind == item.kind &&
+            File(entry.localPath).exists()
+    }
+
     @Synchronized
     fun save(item: RemoteItem, bytes: ByteArray): Entry {
+        findExisting(item)?.let { return it }
         val kindDir = File(root, folderFor(item.kind)).apply { mkdirs() }
         val safeName = sanitize(item.fileName).ifEmpty { "${item.id}.bin" }
         val target = uniqueFile(kindDir, safeName)
@@ -129,7 +147,7 @@ class DownloadStore(context: Context) {
 
     private fun appendEntry(entry: Entry) {
         val existing = list().toMutableList()
-        existing.removeAll { it.id == entry.id && it.sourceName == entry.sourceName }
+        existing.removeAll { it.id == entry.id && it.sourceName == entry.sourceName && it.kind == entry.kind }
         existing.add(entry)
         val arr = JSONArray()
         existing.forEach { e ->
@@ -152,4 +170,16 @@ class DownloadStore(context: Context) {
 
     private fun sanitize(name: String): String =
         name.replace(Regex("[^A-Za-z0-9._-]"), "_").take(120)
+
+    companion object {
+        fun markDownloaded(items: List<RemoteItem>, entries: List<Entry>): List<DownloadedState> = items.map { item ->
+            val entry = entries.firstOrNull { entry ->
+                entry.id == item.id &&
+                    entry.sourceName == item.sourceName &&
+                    entry.kind == item.kind &&
+                    File(entry.localPath).exists()
+            }
+            DownloadedState(item, entry)
+        }
+    }
 }

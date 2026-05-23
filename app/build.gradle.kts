@@ -78,6 +78,7 @@ dependencies {
 
     // Test
     testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
+    testImplementation("org.json:json:20240303")
     testImplementation("app.cash.turbine:turbine:1.2.0")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
 }

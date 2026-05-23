@@ -50,6 +50,9 @@ fun BrowseDialog(
     savedProjects: List<M8ProjectLibrary.SavedProject> = emptyList(),
     onRefreshProjects: () -> Unit = {},
     onLoadProject: (String) -> String = { "LOADED" },
+    onRenameProject: (String, String) -> String = { _, _ -> "RENAMED" },
+    onDuplicateProject: (String, String) -> String = { _, _ -> "DUPLICATED" },
+    onDeleteProject: (String) -> String = { "DELETED" },
     shouldConfirmSongReplace: () -> Boolean = { false },
     onSaveCurrentSong: () -> String = { "SAVED" },
     saveStatus: String? = null,
@@ -69,6 +72,9 @@ fun BrowseDialog(
     val previewStatus by viewModel.previewStatus.collectAsState()
     val viewingSd = sourceIndex == viewModel.sdTabIndex
     val viewingProjects = sourceIndex == viewModel.projectTabIndex
+    val downloadedStates = remember(items, sdEntries) { DownloadStore.markDownloaded(items, sdEntries) }
+    val downloadedByKey = remember(downloadedStates) { downloadedStates.associateBy { remoteKey(it.item) } }
+    val selectedDownloaded = selected?.let { downloadedByKey[remoteKey(it)]?.entry }
     var selectedProject by remember { mutableStateOf<M8ProjectLibrary.SavedProject?>(null) }
     var projectLoadStatus by remember { mutableStateOf<String?>(null) }
     var fileActionStatus by remember { mutableStateOf<String?>(null) }
@@ -217,6 +223,7 @@ fun BrowseDialog(
                             else -> ItemList(
                                 items = items,
                                 selected = selected,
+                                downloadedKeys = downloadedStates.filter { it.isDownloaded }.map { remoteKey(it.item) }.toSet(),
                                 onSelect = { viewModel.select(it) },
                             )
                         }
@@ -236,6 +243,26 @@ fun BrowseDialog(
                                         projectLoadStatus = runCatching { onLoadProject(project.path) }
                                             .getOrElse { "ERROR: ${it.message ?: "load failed"}" }
                                     }
+                                },
+                                onRename = { name ->
+                                    val project = selectedProject ?: return@ProjectDetailPane
+                                    projectLoadStatus = runCatching { onRenameProject(project.path, name) }
+                                        .getOrElse { "ERROR: ${it.message ?: "rename failed"}" }
+                                    selectedProject = null
+                                    onRefreshProjects()
+                                },
+                                onDuplicate = { name ->
+                                    val project = selectedProject ?: return@ProjectDetailPane
+                                    projectLoadStatus = runCatching { onDuplicateProject(project.path, name) }
+                                        .getOrElse { "ERROR: ${it.message ?: "duplicate failed"}" }
+                                    onRefreshProjects()
+                                },
+                                onDelete = {
+                                    val project = selectedProject ?: return@ProjectDetailPane
+                                    projectLoadStatus = runCatching { onDeleteProject(project.path) }
+                                        .getOrElse { "ERROR: ${it.message ?: "delete failed"}" }
+                                    selectedProject = null
+                                    onRefreshProjects()
                                 },
                             )
                         } else if (viewingSd) {
@@ -262,7 +289,7 @@ fun BrowseDialog(
                             DetailPane(
                                 item = selected,
                                 downloading = downloading,
-                                lastDownloaded = lastDownloaded,
+                                lastDownloaded = lastDownloaded ?: selectedDownloaded,
                                 loadStatus = loadStatus,
                                 slotCount = slotCount,
                                 onDownload = { viewModel.downloadSelected() },
@@ -343,11 +370,28 @@ private fun FileActionBar(
             )
         }
         if (recentSongs.isNotEmpty()) {
-            Spacer(Modifier.height(6.dp))
-            Text("RECENT", color = M8_GREEN, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+            var showRecents by remember { mutableStateOf(true) }
             Spacer(Modifier.height(4.dp))
-            recentSongs.take(2).forEach { entry ->
-                Row(
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { showRecents = !showRecents },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = if (showRecents) "RECENT ▾" else "RECENT ▸",
+                    color = M8_GREEN,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                    modifier = Modifier.weight(1f),
+                )
+                if (recentSongs.size > 2) Text("${recentSongs.size - 2} more", color = M8_DIM, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+            }
+            if (showRecents) {
+                Spacer(Modifier.height(2.dp))
+                recentSongs.take(2).forEach { entry ->
+                    Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable { onLoadRecent(entry) }
@@ -369,6 +413,7 @@ private fun FileActionBar(
                         maxLines = 1,
                         modifier = Modifier.weight(1f),
                     )
+                }
                 }
             }
         }
@@ -476,8 +521,8 @@ private fun SdList(
                     modifier = Modifier.padding(top = 6.dp, bottom = 2.dp),
                 )
             }
-            items(list, key = { e -> e.sourceName + "|" + e.id }) { e ->
-                val isSelected = selected?.id == e.id && selected.sourceName == e.sourceName
+            items(list, key = { e -> entryKey(e) }) { e ->
+                val isSelected = selected?.let { entryKey(it) == entryKey(e) } == true
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -561,6 +606,9 @@ private fun ProjectDetailPane(
     loadStatus: String?,
     onRefresh: () -> Unit,
     onLoad: () -> Unit,
+    onRename: (String) -> Unit,
+    onDuplicate: (String) -> Unit,
+    onDelete: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -590,7 +638,26 @@ private fun ProjectDetailPane(
         Field("tempo", "${project.tempo} BPM")
         Field("size", humanSize(project.sizeBytes))
         Spacer(Modifier.height(10.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        var projectName by remember(project.path) { mutableStateOf(project.fileName.removeSuffix(".m8droid")) }
+        var confirmDelete by remember(project.path) { mutableStateOf(false) }
+        OutlinedTextField(
+            value = projectName,
+            onValueChange = { projectName = it },
+            label = { Text("Project name") },
+            singleLine = true,
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = M8_GREEN,
+                unfocusedTextColor = M8_GREEN,
+                focusedBorderColor = M8_GREEN,
+                unfocusedBorderColor = M8_DIM,
+                focusedLabelColor = M8_GREEN,
+                unfocusedLabelColor = M8_DIM,
+                cursorColor = M8_GREEN,
+            ),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(
                 text = "[LOAD PROJECT]",
                 color = M8_GREEN,
@@ -613,6 +680,18 @@ private fun ProjectDetailPane(
                     .clickable { onRefresh() }
                     .padding(horizontal = 10.dp, vertical = 6.dp),
             )
+        }
+        Spacer(Modifier.height(6.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            CompactButton("RENAME") { onRename(projectName) }
+            CompactButton("DUPLICATE") { onDuplicate("${projectName}_copy") }
+            CompactButton(if (confirmDelete) "CONFIRM DELETE" else "DELETE") {
+                if (confirmDelete) onDelete() else confirmDelete = true
+            }
+        }
+        if (confirmDelete) {
+            Spacer(Modifier.height(4.dp))
+            Text("Tap CONFIRM DELETE to remove this .m8droid file", color = Color(0xFFFFA040), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
         }
         if (!loadStatus.isNullOrBlank()) {
             Spacer(Modifier.height(10.dp))
@@ -806,11 +885,12 @@ private fun folderLabel(kind: ContentKind): String = when (kind) {
 private fun ItemList(
     items: List<RemoteItem>,
     selected: RemoteItem?,
+    downloadedKeys: Set<String>,
     onSelect: (RemoteItem) -> Unit,
 ) {
     LazyColumn(modifier = Modifier.fillMaxSize()) {
-        items(items, key = { it.sourceName + "|" + it.id }) { item ->
-            val isSelected = selected?.id == item.id && selected.sourceName == item.sourceName
+        items(items, key = { remoteKey(it) }) { item ->
+            val isSelected = selected?.let { remoteKey(it) == remoteKey(item) } == true
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -843,6 +923,18 @@ private fun ItemList(
                         maxLines = 1,
                         modifier = Modifier.weight(1f),
                     )
+                    if (downloadedKeys.contains(remoteKey(item))) {
+                        Text(
+                            text = "DOWNLOADED",
+                            color = M8_GREEN,
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier
+                                .border(1.dp, M8_GREEN.copy(alpha = 0.7f), RoundedCornerShape(3.dp))
+                                .padding(horizontal = 3.dp, vertical = 1.dp),
+                        )
+                    }
                 }
                 if (!item.author.isNullOrBlank()) {
                     Text(
@@ -912,127 +1004,130 @@ private fun DetailPane(
 
         Spacer(Modifier.height(10.dp))
 
-        if (lastDownloaded != null && lastDownloaded.id == item.id) {
+        val downloadedEntry = lastDownloaded?.takeIf { it.id == item.id && it.sourceName == item.sourceName && it.kind == item.kind }
+        if (downloadedEntry != null) {
             Text(
-                text = "SAVED TO SD",
+                text = "DOWNLOADED",
                 color = M8_GREEN,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
                 fontFamily = FontFamily.Monospace,
             )
             Text(
-                text = lastDownloaded.sdPath,
+                text = downloadedEntry.sdPath,
                 color = M8_GREEN,
                 fontSize = 10.sp,
                 fontFamily = FontFamily.Monospace,
             )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = "[OK]",
-                color = M8_GREEN,
-                fontSize = 11.sp,
-                fontFamily = FontFamily.Monospace,
-                modifier = Modifier
-                    .border(1.dp, M8_GREEN, RoundedCornerShape(4.dp))
-                    .clickable { onDismissResult() }
-                    .padding(horizontal = 10.dp, vertical = 4.dp),
-            )
-        } else {
-            // Songs get a "save + load in one click" action; instruments
-            // get a slot picker + save+load; everything else uses plain download.
-            val isSong = item.kind == ContentKind.SONG
-            val isInst = item.kind == ContentKind.INSTRUMENT
-            when {
-                isSong -> {
-                    val label = if (downloading) "LOADING..." else "[SAVE + LOAD]"
-                    Text(
-                        text = label,
-                        color = M8_GREEN,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
-                        modifier = Modifier
-                            .border(1.dp, M8_GREEN, RoundedCornerShape(4.dp))
-                            .clickable(enabled = !downloading) { onDownloadAndLoadSong() }
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
-                    )
+            Spacer(Modifier.height(8.dp))
+        }
+
+        // Songs get a "save + load in one click" action; instruments
+        // get a slot picker + save+load; everything else uses plain download.
+        val isSong = item.kind == ContentKind.SONG
+        val isInst = item.kind == ContentKind.INSTRUMENT
+        when {
+            isSong -> {
+                val label = when {
+                    downloading -> "LOADING..."
+                    downloadedEntry != null -> "[LOAD DOWNLOADED]"
+                    else -> "[SAVE + LOAD]"
                 }
-                isInst -> {
-                    var selectedSlot by remember(item.id) { mutableStateOf(0) }
-                    Text(
-                        text = "SAVE + LOAD INTO SLOT",
-                        color = M8_GREEN,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        repeat(slotCount) { i ->
-                            val active = i == selectedSlot
-                            Box(
-                                modifier = Modifier
-                                    .size(28.dp)
-                                    .border(
-                                        1.dp,
-                                        if (active) M8_GREEN else M8_DIM,
-                                        RoundedCornerShape(3.dp),
-                                    )
-                                    .background(
-                                        if (active) M8_GREEN.copy(alpha = 0.2f) else Color.Transparent,
-                                    )
-                                    .clickable { selectedSlot = i },
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(
-                                    text = i.toString(),
-                                    color = if (active) M8_GREEN else M8_DIM,
-                                    fontSize = 11.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    fontWeight = FontWeight.Bold,
-                                )
-                            }
-                        }
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    val label = if (downloading) "LOADING..." else "[SAVE + LOAD]"
-                    Text(
-                        text = label,
-                        color = M8_GREEN,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
-                        modifier = Modifier
-                            .border(1.dp, M8_GREEN, RoundedCornerShape(4.dp))
-                            .clickable(enabled = !downloading) { onDownloadAndLoadInstrument(selectedSlot) }
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
-                    )
-                }
-                else -> {
-                    val label = if (downloading) "DOWNLOADING..." else "[DOWNLOAD]"
-                    Text(
-                        text = label,
-                        color = M8_GREEN,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
-                        modifier = Modifier
-                            .border(1.dp, M8_GREEN, RoundedCornerShape(4.dp))
-                            .clickable(enabled = !downloading) { onDownload() }
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
-                    )
-                }
-            }
-            if (!loadStatus.isNullOrBlank()) {
-                Spacer(Modifier.height(6.dp))
-                val isError = loadStatus.startsWith("ERROR", ignoreCase = true)
                 Text(
-                    text = loadStatus,
-                    color = if (isError) Color(0xFFFF4040) else M8_GREEN,
-                    fontSize = 10.sp,
+                    text = label,
+                    color = M8_GREEN,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace,
+                    modifier = Modifier
+                        .border(1.dp, M8_GREEN, RoundedCornerShape(4.dp))
+                        .clickable(enabled = !downloading) { onDownloadAndLoadSong() }
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
                 )
             }
+            isInst -> {
+                var selectedSlot by remember(item.id) { mutableStateOf(0) }
+                Text(
+                    text = if (downloadedEntry != null) "LOAD DOWNLOADED INTO SLOT" else "SAVE + LOAD INTO SLOT",
+                    color = M8_GREEN,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                )
+                Spacer(Modifier.height(4.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    repeat(slotCount) { i ->
+                        val active = i == selectedSlot
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .border(
+                                    1.dp,
+                                    if (active) M8_GREEN else M8_DIM,
+                                    RoundedCornerShape(3.dp),
+                                )
+                                .background(
+                                    if (active) M8_GREEN.copy(alpha = 0.2f) else Color.Transparent,
+                                )
+                                .clickable { selectedSlot = i },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = i.toString(),
+                                color = if (active) M8_GREEN else M8_DIM,
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                val label = when {
+                    downloading -> "LOADING..."
+                    downloadedEntry != null -> "[LOAD DOWNLOADED]"
+                    else -> "[SAVE + LOAD]"
+                }
+                Text(
+                    text = label,
+                    color = M8_GREEN,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                    modifier = Modifier
+                        .border(1.dp, M8_GREEN, RoundedCornerShape(4.dp))
+                        .clickable(enabled = !downloading) { onDownloadAndLoadInstrument(selectedSlot) }
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                )
+            }
+            else -> {
+                val label = when {
+                    downloading -> "DOWNLOADING..."
+                    downloadedEntry != null -> "[DOWNLOADED]"
+                    else -> "[DOWNLOAD]"
+                }
+                Text(
+                    text = label,
+                    color = M8_GREEN,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                    modifier = Modifier
+                        .border(1.dp, M8_GREEN, RoundedCornerShape(4.dp))
+                        .clickable(enabled = !downloading && downloadedEntry == null) { onDownload() }
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                )
+            }
+        }
+        if (!loadStatus.isNullOrBlank()) {
+            Spacer(Modifier.height(6.dp))
+            val isError = loadStatus.startsWith("ERROR", ignoreCase = true)
+            Text(
+                text = loadStatus,
+                color = if (isError) Color(0xFFFF4040) else M8_GREEN,
+                fontSize = 10.sp,
+                fontFamily = FontFamily.Monospace,
+            )
         }
     }
 }
@@ -1055,6 +1150,10 @@ private fun Field(label: String, value: String) {
         )
     }
 }
+
+private fun entryKey(entry: DownloadStore.Entry): String = "${entry.sourceName}|${entry.kind.name}|${entry.id}"
+
+private fun remoteKey(item: RemoteItem): String = "${item.sourceName}|${item.kind.name}|${item.id}"
 
 private fun kindGlyph(kind: ContentKind): String = when (kind) {
     ContentKind.SONG -> "SONG"

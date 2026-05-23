@@ -831,6 +831,31 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         return status
     }
 
+    fun renameSavedProject(path: String, newName: String): String {
+        val renamed = M8ProjectLibrary.rename(projectDir, File(path), newName)
+        refreshSavedProjects()
+        val status = "RENAMED ${renamed.name}"
+        _projectSaveStatus.value = status
+        return status
+    }
+
+    fun duplicateSavedProject(path: String, newName: String): String {
+        val duplicate = M8ProjectLibrary.duplicate(projectDir, File(path), newName)
+        refreshSavedProjects()
+        val status = "DUPLICATED ${duplicate.name}"
+        _projectSaveStatus.value = status
+        return status
+    }
+
+    fun deleteSavedProject(path: String): String {
+        val file = File(path)
+        val deleted = M8ProjectLibrary.delete(projectDir, file)
+        refreshSavedProjects()
+        val status = if (deleted) "DELETED ${file.name}" else "ERROR: delete failed"
+        _projectSaveStatus.value = status
+        return status
+    }
+
     fun refreshRecentSongs() {
         _recentSongs.value = recentSongStore.list()
     }

@@ -2,6 +2,7 @@ package com.m8droid.emulator
 
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.io.File
@@ -34,6 +35,19 @@ class M8ProjectSnapshotTest {
             phrases[0x33].steps[9].fx1Val = 0x44
             tables[2].rows[1].transpose = 5
             grooves[1].ticks[3] = 9
+            activeScale = 4
+            quantize = 3
+            chorus.modDepth = 0x22
+            chorus.width = 0x77
+            delay.timeL = 0x11
+            delay.feedback = 0x66
+            reverb.size = 0x99
+            reverb.damping = 0x55
+            mixer.trackVolumes[2] = 0x91
+            mixer.trackPans[2] = 0x30
+            mixer.trackDelaySend[2] = 0x44
+            mixer.masterVolume = 0xC0
+            mixer.djFilter = 0x70
         }
         val instruments = M8Instrument.createDefaults().apply {
             this[17] = M8Instrument("KICK SAVE", InstrumentType.SAMPLER).apply {
@@ -58,6 +72,19 @@ class M8ProjectSnapshotTest {
         assertEquals(0x44, restored.song.phrases[0x33].steps[9].fx1Val)
         assertEquals(5, restored.song.tables[2].rows[1].transpose)
         assertEquals(9, restored.song.grooves[1].ticks[3])
+        assertEquals(4, restored.song.activeScale)
+        assertEquals(3, restored.song.quantize)
+        assertEquals(0x22, restored.song.chorus.modDepth)
+        assertEquals(0x77, restored.song.chorus.width)
+        assertEquals(0x11, restored.song.delay.timeL)
+        assertEquals(0x66, restored.song.delay.feedback)
+        assertEquals(0x99, restored.song.reverb.size)
+        assertEquals(0x55, restored.song.reverb.damping)
+        assertEquals(0x91, restored.song.mixer.trackVolumes[2])
+        assertEquals(0x30, restored.song.mixer.trackPans[2])
+        assertEquals(0x44, restored.song.mixer.trackDelaySend[2])
+        assertEquals(0xC0, restored.song.mixer.masterVolume)
+        assertEquals(0x70, restored.song.mixer.djFilter)
         assertEquals("KICK SAVE", restored.instruments[17].name)
         assertEquals(InstrumentType.SAMPLER, restored.instruments[17].type)
         assertEquals("Samples/kick.wav", restored.instruments[17].sampler.samplePath)
@@ -150,6 +177,70 @@ class M8ProjectSnapshotTest {
             assertEquals(InstrumentType.FM_SYNTH, restored.instruments[3].type)
         } finally {
             dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun projectLibraryRenamesDuplicatesAndDeletesProjectFilesSafely() {
+        val dir = createTempDir(prefix = "m8-projects-")
+        try {
+            val original = writeProject(dir, "sketch.m8droid", "SKETCH", tempo = 133)
+
+            val renamed = M8ProjectLibrary.rename(dir, original, "Renamed Sketch")
+            assertEquals("Renamed_Sketch.m8droid", renamed.name)
+            assertFalse(original.exists())
+            assertTrue(renamed.exists())
+
+            val duplicate = M8ProjectLibrary.duplicate(dir, renamed, "Renamed Sketch Copy")
+            assertEquals("Renamed_Sketch_Copy.m8droid", duplicate.name)
+            assertTrue(renamed.exists())
+            assertTrue(duplicate.exists())
+            assertEquals("SKETCH", M8ProjectLibrary.load(duplicate).song.name)
+
+            assertTrue(M8ProjectLibrary.delete(dir, renamed))
+            assertFalse(renamed.exists())
+            assertEquals(listOf("Renamed_Sketch_Copy.m8droid"), M8ProjectLibrary.list(dir).map { it.fileName })
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun projectLibraryRejectsUnsafeProjectOperationNames() {
+        val dir = createTempDir(prefix = "m8-projects-")
+        try {
+            val original = writeProject(dir, "safe.m8droid", "SAFE", tempo = 120)
+
+            val renamed = M8ProjectLibrary.rename(dir, original, "../unsafe path")
+
+            assertEquals("unsafe_path.m8droid", renamed.name)
+            assertEquals(dir.canonicalPath, renamed.parentFile!!.canonicalPath)
+            assertTrue(renamed.exists())
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun projectLibraryRejectsProjectOperationsOutsideManagedDirectory() {
+        val dir = createTempDir(prefix = "m8-projects-")
+        val outside = createTempDir(prefix = "m8-projects-outside-")
+        try {
+            val externalProject = writeProject(outside, "external.m8droid", "EXTERNAL", tempo = 120)
+
+            assertThrows(IllegalArgumentException::class.java) {
+                M8ProjectLibrary.rename(dir, externalProject, "Should Not Move")
+            }
+            assertThrows(IllegalArgumentException::class.java) {
+                M8ProjectLibrary.duplicate(dir, externalProject, "Should Not Copy")
+            }
+            assertThrows(IllegalArgumentException::class.java) {
+                M8ProjectLibrary.delete(dir, externalProject)
+            }
+            assertTrue(externalProject.exists())
+        } finally {
+            dir.deleteRecursively()
+            outside.deleteRecursively()
         }
     }
 

@@ -10,7 +10,7 @@ import java.io.File
 /** A local Android project snapshot. V1 is app-native, not Dirtywave .m8s export. */
 object M8ProjectSnapshot {
     private const val MAGIC = "M8DROID_PROJECT"
-    private const val VERSION = 1
+    private const val VERSION = 2
 
     data class Restored(
         val song: M8Song,
@@ -37,8 +37,9 @@ object M8ProjectSnapshot {
     fun decode(bytes: ByteArray): Restored {
         DataInputStream(ByteArrayInputStream(bytes)).use { data ->
             require(data.readUTF() == MAGIC) { "Not an M8Droid project" }
-            require(data.readInt() == VERSION) { "Unsupported M8Droid project version" }
-            val song = readSong(data)
+            val version = data.readInt()
+            require(version in 1..VERSION) { "Unsupported M8Droid project version" }
+            val song = readSong(data, version)
             val count = data.readInt().coerceIn(0, M8Instrument.SLOT_COUNT)
             val instruments = M8Instrument.createDefaults()
             repeat(count) { i -> instruments[i] = readInstrument(data) }
@@ -94,6 +95,40 @@ object M8ProjectSnapshot {
             for (tick in source.grooves[groove].ticks.indices) target.grooves[groove].ticks[tick] = source.grooves[groove].ticks[tick]
         }
         for (i in source.instrumentIndices.indices) target.instrumentIndices[i] = source.instrumentIndices[i]
+        copyEffects(source, target)
+    }
+
+    private fun copyEffects(source: M8Song, target: M8Song) {
+        target.chorus.modDepth = source.chorus.modDepth
+        target.chorus.modFreq = source.chorus.modFreq
+        target.chorus.width = source.chorus.width
+        target.chorus.reverbSend = source.chorus.reverbSend
+        target.delay.filterHP = source.delay.filterHP
+        target.delay.filterLP = source.delay.filterLP
+        target.delay.timeL = source.delay.timeL
+        target.delay.timeR = source.delay.timeR
+        target.delay.feedback = source.delay.feedback
+        target.delay.width = source.delay.width
+        target.delay.reverbSend = source.delay.reverbSend
+        target.reverb.filterHP = source.reverb.filterHP
+        target.reverb.filterLP = source.reverb.filterLP
+        target.reverb.size = source.reverb.size
+        target.reverb.damping = source.reverb.damping
+        target.reverb.modDepth = source.reverb.modDepth
+        target.reverb.modFreq = source.reverb.modFreq
+        target.reverb.width = source.reverb.width
+        for (i in source.mixer.trackVolumes.indices) {
+            target.mixer.trackVolumes[i] = source.mixer.trackVolumes[i]
+            target.mixer.trackPans[i] = source.mixer.trackPans[i]
+            target.mixer.trackChorusSend[i] = source.mixer.trackChorusSend[i]
+            target.mixer.trackDelaySend[i] = source.mixer.trackDelaySend[i]
+            target.mixer.trackReverbSend[i] = source.mixer.trackReverbSend[i]
+        }
+        target.mixer.masterVolume = source.mixer.masterVolume
+        target.mixer.djFilter = source.mixer.djFilter
+        target.mixer.chorusVolume = source.mixer.chorusVolume
+        target.mixer.delayVolume = source.mixer.delayVolume
+        target.mixer.reverbVolume = source.mixer.reverbVolume
     }
 
     private fun writeSong(data: DataOutputStream, song: M8Song) {
@@ -130,9 +165,10 @@ object M8ProjectSnapshot {
         }
         for (groove in song.grooves) groove.ticks.forEach(data::writeInt)
         song.instrumentIndices.forEach(data::writeInt)
+        writeEffects(data, song)
     }
 
-    private fun readSong(data: DataInputStream): M8Song {
+    private fun readSong(data: DataInputStream, version: Int): M8Song {
         val song = M8Song()
         song.name = data.readUTF()
         song.tempo = data.readInt()
@@ -167,7 +203,70 @@ object M8ProjectSnapshot {
         }
         for (groove in song.grooves) for (i in groove.ticks.indices) groove.ticks[i] = data.readInt()
         for (i in song.instrumentIndices.indices) song.instrumentIndices[i] = data.readInt()
+        if (version >= 2) readEffects(data, song)
         return song
+    }
+
+    private fun writeEffects(data: DataOutputStream, song: M8Song) {
+        data.writeInt(song.chorus.modDepth)
+        data.writeInt(song.chorus.modFreq)
+        data.writeInt(song.chorus.width)
+        data.writeInt(song.chorus.reverbSend)
+        data.writeInt(song.delay.filterHP)
+        data.writeInt(song.delay.filterLP)
+        data.writeInt(song.delay.timeL)
+        data.writeInt(song.delay.timeR)
+        data.writeInt(song.delay.feedback)
+        data.writeInt(song.delay.width)
+        data.writeInt(song.delay.reverbSend)
+        data.writeInt(song.reverb.filterHP)
+        data.writeInt(song.reverb.filterLP)
+        data.writeInt(song.reverb.size)
+        data.writeInt(song.reverb.damping)
+        data.writeInt(song.reverb.modDepth)
+        data.writeInt(song.reverb.modFreq)
+        data.writeInt(song.reverb.width)
+        song.mixer.trackVolumes.forEach(data::writeInt)
+        song.mixer.trackPans.forEach(data::writeInt)
+        song.mixer.trackChorusSend.forEach(data::writeInt)
+        song.mixer.trackDelaySend.forEach(data::writeInt)
+        song.mixer.trackReverbSend.forEach(data::writeInt)
+        data.writeInt(song.mixer.masterVolume)
+        data.writeInt(song.mixer.djFilter)
+        data.writeInt(song.mixer.chorusVolume)
+        data.writeInt(song.mixer.delayVolume)
+        data.writeInt(song.mixer.reverbVolume)
+    }
+
+    private fun readEffects(data: DataInputStream, song: M8Song) {
+        song.chorus.modDepth = data.readInt()
+        song.chorus.modFreq = data.readInt()
+        song.chorus.width = data.readInt()
+        song.chorus.reverbSend = data.readInt()
+        song.delay.filterHP = data.readInt()
+        song.delay.filterLP = data.readInt()
+        song.delay.timeL = data.readInt()
+        song.delay.timeR = data.readInt()
+        song.delay.feedback = data.readInt()
+        song.delay.width = data.readInt()
+        song.delay.reverbSend = data.readInt()
+        song.reverb.filterHP = data.readInt()
+        song.reverb.filterLP = data.readInt()
+        song.reverb.size = data.readInt()
+        song.reverb.damping = data.readInt()
+        song.reverb.modDepth = data.readInt()
+        song.reverb.modFreq = data.readInt()
+        song.reverb.width = data.readInt()
+        for (i in song.mixer.trackVolumes.indices) song.mixer.trackVolumes[i] = data.readInt()
+        for (i in song.mixer.trackPans.indices) song.mixer.trackPans[i] = data.readInt()
+        for (i in song.mixer.trackChorusSend.indices) song.mixer.trackChorusSend[i] = data.readInt()
+        for (i in song.mixer.trackDelaySend.indices) song.mixer.trackDelaySend[i] = data.readInt()
+        for (i in song.mixer.trackReverbSend.indices) song.mixer.trackReverbSend[i] = data.readInt()
+        song.mixer.masterVolume = data.readInt()
+        song.mixer.djFilter = data.readInt()
+        song.mixer.chorusVolume = data.readInt()
+        song.mixer.delayVolume = data.readInt()
+        song.mixer.reverbVolume = data.readInt()
     }
 
     private fun writeInstrument(data: DataOutputStream, inst: M8Instrument) {
@@ -256,4 +355,48 @@ object M8ProjectLibrary {
     }
 
     fun load(file: File): M8ProjectSnapshot.Restored = M8ProjectSnapshot.decode(file.readBytes())
+
+    fun rename(projectDir: File, file: File, requestedName: String): File {
+        val source = requireManagedProjectFile(projectDir, file)
+        val target = uniqueProjectFile(projectDir.canonicalFile, requestedName)
+        if (!source.renameTo(target)) error("Could not rename ${source.name}")
+        return target
+    }
+
+    fun duplicate(projectDir: File, file: File, requestedName: String): File {
+        val source = requireManagedProjectFile(projectDir, file)
+        val target = uniqueProjectFile(projectDir.canonicalFile, requestedName)
+        source.copyTo(target, overwrite = false)
+        return target
+    }
+
+    fun delete(projectDir: File, file: File): Boolean {
+        val source = requireManagedProjectFile(projectDir, file)
+        return source.delete()
+    }
+
+    private fun requireManagedProjectFile(projectDir: File, file: File): File {
+        val root = projectDir.canonicalFile
+        val candidate = file.canonicalFile
+        require(candidate.isFile) { "Project does not exist" }
+        require(candidate.extension.equals("m8droid", ignoreCase = true)) { "Not an m8droid project" }
+        require(candidate.parentFile?.canonicalFile == root) { "Project is outside managed project folder" }
+        return candidate
+    }
+
+    private fun uniqueProjectFile(dir: File, requestedName: String): File {
+        val safeStem = requestedName
+            .replace(Regex("[^A-Za-z0-9._-]+"), "_")
+            .trim('_', '.')
+            .ifEmpty { "Untitled_Project" }
+            .take(100)
+        val base = File(dir, "$safeStem.m8droid")
+        if (!base.exists()) return base
+        var i = 2
+        while (true) {
+            val candidate = File(dir, "${safeStem}_$i.m8droid")
+            if (!candidate.exists()) return candidate
+            i++
+        }
+    }
 }
