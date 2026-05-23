@@ -160,6 +160,8 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
     val activeQuest by academyVm.activeQuest.collectAsState()
     val lastEval by academyVm.lastEvaluation.collectAsState()
     val serverSettings by viewModel.serverSettings.collectAsState()
+    val isSongDirty by viewModel.isSongDirty.collectAsState()
+    val projectSaveStatus by viewModel.projectSaveStatus.collectAsState()
     val hapticView = LocalView.current
 
     fun performNavigationHaptic() {
@@ -253,6 +255,8 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
                         AppHeaderBar(
                             subtitle = if (academyState == AcademyState.QUEST_ACTIVE) "QUEST" else "CLASSIC",
                             onLoad = { showLoadDialog = true },
+                            onSave = { viewModel.saveCurrentSong() },
+                            dirty = isSongDirty,
                             onSettings = { showSettings = true },
                             onHelp = { showHelpMenu = true },
                             onAcademy = { appMode = AppMode.ACADEMY },
@@ -314,6 +318,9 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
                 slotCount = viewModel.instrumentSlotCount,
                 onLoadInstrument = { slot, inst -> viewModel.replaceInstrument(slot, inst) },
                 onLoadSong = { parsed -> viewModel.replaceSong(parsed) },
+                shouldConfirmSongReplace = { viewModel.shouldConfirmBeforeReplacingSong() },
+                onSaveCurrentSong = { viewModel.saveCurrentSong() },
+                saveStatus = projectSaveStatus,
             )
         }
 

@@ -40,6 +40,9 @@ fun BrowseDialog(
     slotCount: Int,
     onLoadInstrument: (slot: Int, inst: M8Instrument) -> Unit,
     onLoadSong: (M8sParser.ParsedSong) -> Unit,
+    shouldConfirmSongReplace: () -> Boolean = { false },
+    onSaveCurrentSong: () -> String = { "SAVED" },
+    saveStatus: String? = null,
     viewModel: BrowseViewModel = viewModel(),
 ) {
     val sources = viewModel.sources
@@ -55,6 +58,10 @@ fun BrowseDialog(
     val loadStatus by viewModel.loadStatus.collectAsState()
     val previewStatus by viewModel.previewStatus.collectAsState()
     val viewingSd = sourceIndex == viewModel.sdTabIndex
+    var pendingSongLoad by remember { mutableStateOf<(() -> Unit)?>(null) }
+    fun requestSongLoad(action: () -> Unit) {
+        if (shouldConfirmSongReplace()) pendingSongLoad = action else action()
+    }
 
     // First-open fetch.
     LaunchedEffect(Unit) { if (items.isEmpty() && !loading) viewModel.refresh() }
@@ -172,7 +179,7 @@ fun BrowseDialog(
                                 },
                                 onLoadSong = {
                                     val e = sdSelected ?: return@SdDetailPane
-                                    viewModel.loadSongFromEntry(e, onLoadSong)
+                                    requestSongLoad { viewModel.loadSongFromEntry(e, onLoadSong) }
                                 },
                                 onPreviewSample = {
                                     val e = sdSelected ?: return@SdDetailPane
@@ -190,7 +197,7 @@ fun BrowseDialog(
                                 onDownload = { viewModel.downloadSelected() },
                                 onDownloadAndLoadSong = {
                                     val it = selected ?: return@DetailPane
-                                    viewModel.downloadAndLoadSong(it, onLoadSong)
+                                    requestSongLoad { viewModel.downloadAndLoadSong(it, onLoadSong) }
                                 },
                                 onDownloadAndLoadInstrument = { slot ->
                                     val it = selected ?: return@DetailPane
@@ -203,6 +210,39 @@ fun BrowseDialog(
                 }
             }
         }
+    }
+
+    val pending = pendingSongLoad
+    if (pending != null) {
+        AlertDialog(
+            onDismissRequest = { pendingSongLoad = null },
+            title = { Text("Replace current song?") },
+            text = {
+                Column {
+                    Text("Current edits are not saved. Save them before loading a different song, or discard them.")
+                    if (!saveStatus.isNullOrBlank()) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(saveStatus, color = M8_GREEN, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    onSaveCurrentSong()
+                    pendingSongLoad = null
+                    pending()
+                }) { Text("Save + Replace") }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = { pendingSongLoad = null }) { Text("Cancel") }
+                    TextButton(onClick = {
+                        pendingSongLoad = null
+                        pending()
+                    }) { Text("Discard") }
+                }
+            },
+        )
     }
 }
 

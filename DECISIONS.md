@@ -82,12 +82,7 @@ songs — downloads, saves to SD, parses, and applies in one click. On
 the SD tab, the song detail pane gains a `[LOAD SONG]` action
 (previously a "coming next phase" stub).
 
-**No formal unit test.** The project has no `testImplementation`
-dependencies or test source sets. Setting up JUnit for one parser
-test was more yak-shaving than warranted. Parser byte offsets and
-struct layouts were validated against the real fixture files with
-Python binary inspection before writing the Kotlin. Fixtures are
-checked in, ready for a future test phase.
+**Tests:** parser, emulator import, phone-editing, row-preview, and project snapshot behavior now have JUnit coverage. Legacy binary-offset notes from before the test harness exist in history but are no longer the validation strategy.
 
 ## `.m8i` parser scope cuts
 
@@ -116,6 +111,16 @@ checked in, ready for a future test phase.
   existing M8 buttons instead of adding an overlay, calls
   `M8ViewModel.previewRowAtCursor()`, consumes the chord before normal PLAY
   handling, and edge-detects so held touch/sticky keys do not retrigger.
+- **App-native `.m8droid` project snapshots are local save files, not real M8
+  `.m8s` exports.** Header `S` writes the current song/instrument state to
+  `filesDir/m8sd/Projects/<song>.m8droid`; dirty checks are SHA-256
+  signatures of the same snapshot bytes.
+- **Dirty song loads require an explicit choice.** Any SD/remote `.m8s` song
+  load checks the current snapshot signature and shows Save + Replace,
+  Discard, or Cancel when edits would otherwise be overwritten.
+- **App-native project restore is deferred.** The snapshot codec can decode
+  saved bytes in tests, but there is not yet a phone UI to browse and reload
+  `.m8droid` projects.
 - **BrowseDialog `.m8i` slot picker still caps at 8** (via
   `M8ViewModel.INSTRUMENT_PICKER_SLOT_COUNT`). 128 buttons on a phone
   is unusable; the picker is a phone affordance, not a real M8 surface.

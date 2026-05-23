@@ -65,6 +65,7 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
 
     private val emulator = M8Emulator()
     private val synth = M8Synth() // kept for visualization API compat
+    private val projectDir = File(application.filesDir, "m8sd/Projects").apply { mkdirs() }
     private val sampleCache = SampleCache(File(application.filesDir, "m8sd"))
     private val localAudioPlayer = M8AudioPlayer()
     private val fxEngine = M8FxEngine()
@@ -94,6 +95,11 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     // Use the emulator's song data model (shared state for display + audio)
     private val song get() = emulator.song
     private val instruments get() = emulator.instruments
+    private val dirtyGuard = SongDirtyGuard(M8ProjectSnapshot.signature(song, instruments))
+    private val _isSongDirty = MutableStateFlow(false)
+    val isSongDirty: StateFlow<Boolean> = _isSongDirty
+    private val _projectSaveStatus = MutableStateFlow<String?>(null)
+    val projectSaveStatus: StateFlow<String?> = _projectSaveStatus
 
     // ======================= MIDI =======================
     private val midiEngine = MidiEngine(application.applicationContext).also { engine ->
@@ -734,6 +740,33 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         dispatchKeys()
     }
 
+    private fun currentProjectSignature(): String = M8ProjectSnapshot.signature(song, instruments)
+
+    private fun refreshDirtyState() {
+        _isSongDirty.value = dirtyGuard.isDirty(currentProjectSignature())
+    }
+
+    fun shouldConfirmBeforeReplacingSong(): Boolean = dirtyGuard.shouldConfirmBeforeReplace(currentProjectSignature())
+
+    fun saveCurrentSong(): String {
+        val safeName = song.name.ifBlank { "NEW SONG" }
+            .replace(Regex("[^A-Za-z0-9._-]+"), "_")
+            .trim('_')
+            .ifEmpty { "NEW_SONG" }
+        val target = File(projectDir, "$safeName.m8droid")
+        target.writeBytes(M8ProjectSnapshot.encode(song, instruments))
+        dirtyGuard.markClean(currentProjectSignature())
+        _isSongDirty.value = false
+        val status = "SAVED ${target.name}"
+        _projectSaveStatus.value = status
+        return status
+    }
+
+    private fun markProjectClean() {
+        dirtyGuard.markClean(currentProjectSignature())
+        _isSongDirty.value = false
+    }
+
     private fun dispatchKeys() {
         val keys = stickyTouchKeys.applyTo(touchKeys) or keyboardKeys
         _keyState.value = keys
@@ -752,7 +785,10 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
             previewRowAtCursor()
             return
         }
-        if (!keyInputPaused) emulator.handleKeyState(keys)
+        if (!keyInputPaused) {
+            emulator.handleKeyState(keys)
+            refreshDirtyState()
+        }
     }
 
     @Deprecated("Use setTouchKeys/setKeyboardKeys", ReplaceWith("setTouchKeys(keys)"))
@@ -787,9 +823,17 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         emulator.handleDisplayTap(m8X, m8Y)
     }
 
-    fun handleDisplayLongPress(m8X: Int, m8Y: Int): Boolean = emulator.handleDisplayLongPress(m8X, m8Y)
+    fun handleDisplayLongPress(m8X: Int, m8Y: Int): Boolean {
+        val changed = emulator.handleDisplayLongPress(m8X, m8Y)
+        if (changed) refreshDirtyState()
+        return changed
+    }
 
-    fun enterHexDigit(digit: Int): Boolean = emulator.enterHexDigit(digit)
+    fun enterHexDigit(digit: Int): Boolean {
+        val changed = emulator.enterHexDigit(digit)
+        if (changed) refreshDirtyState()
+        return changed
+    }
 
     fun enterNoteFromPicker(semitone: Int): Boolean {
         val midi = emulator.enterNoteFromPickerWithResult(semitone)
@@ -797,6 +841,7 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         // Audition the written note immediately so the picker behaves like pressing a
         // key in EDIT mode on real M8 — note entry and audible feedback in one tap.
         previewNote(emulator.cursorX.coerceIn(0, 7), midi)
+        refreshDirtyState()
         return true
     }
 
@@ -827,6 +872,7 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         if (slot !in instruments.indices) return
         instruments[slot] = newInst
         runCatching { configureTrackInstrument(slot, newInst) }
+        refreshDirtyState()
     }
 
     /**
@@ -854,6 +900,7 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
             emulator.playing = true
             emulator.playRow = 0
         }
+        markProjectClean()
         Log.i(TAG, "Loaded song '${song.name}' @ ${song.tempo} BPM with $installed instrument slots")
     }
 

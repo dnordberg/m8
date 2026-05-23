@@ -44,7 +44,7 @@ This is the biggest demo-to-instrument step. Mirror real M8 firmware behavior; d
 
 - [x] Add app-level load path from downloaded/local `.m8s` files into emulator state.
 - [x] Call `M8sParser.parse()` + `M8sParser.applyTo()` from the browser/load workflow.
-- [ ] Preserve current app state or ask/confirm before replacing active song.
+- [x] Preserve current app state or ask/confirm before replacing active song: dirty-state signature now gates `.m8s` loads behind Save + Replace / Discard / Cancel.
 - [x] Display load success/failure and partial-import warnings.
 - [x] Parse instrument pool — 128 slots at `0x13A3E`, 215 bytes each, reusing `M8iParser.parseBodyAt`. Emulator instrument array expanded from 8 to 128 (named demo presets at 0–7, empty placeholders at 8–127). BrowseDialog picker stays capped at 8.
 - [x] Parse mixer settings.
@@ -108,8 +108,9 @@ These are the “sounds/behaves like a real M8” gaps. Do not chase hardware-on
 
 Once note/phrase editing exists, saving becomes mandatory and relatively cheap.
 
-- [ ] Add stable project snapshot model for song + instruments + engine settings.
-- [ ] Serialize current emulator state to local app storage.
+- [x] Add stable project snapshot model for song + instruments + engine settings (app-native `.m8droid` v1, binary snapshot with SHA-256 signatures for dirty checks).
+- [x] Serialize current emulator state to local app storage (`filesDir/m8sd/Projects/<song>.m8droid`) from the new header `S` action and Save + Replace flow.
+- [ ] Add app-native project load/restore UI from the SD/Projects folder.
 - [ ] Add autosave after meaningful edits.
 - [ ] Add project list: recent projects, duplicate, rename, delete.
 - [ ] Add export/share for project files.

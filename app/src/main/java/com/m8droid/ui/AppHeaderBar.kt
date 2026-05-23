@@ -19,6 +19,8 @@ import androidx.compose.ui.unit.dp
 fun AppHeaderBar(
     subtitle: String,
     onLoad: () -> Unit,
+    onSave: (() -> Unit)? = null,
+    dirty: Boolean = false,
     onSettings: () -> Unit,
     onHelp: () -> Unit,
     modifier: Modifier = Modifier,
@@ -65,6 +67,18 @@ fun AppHeaderBar(
         // Action icons — evenly spaced
         HeaderIconButton(onClick = onLoad, tint = AppTheme.TextNormal) { c ->
             AppLoadIcon(tint = c, size = 20.dp)
+        }
+        if (onSave != null) {
+            Spacer(Modifier.width(AppTheme.SpaceLg))
+            HeaderIconButton(onClick = onSave, tint = if (dirty) Color(0xFFFFC857) else AppTheme.TextNormal) { c ->
+                Text(
+                    text = if (dirty) "S*" else "S",
+                    color = c,
+                    fontSize = AppTheme.FontHeading,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                )
+            }
         }
         Spacer(Modifier.width(AppTheme.SpaceLg))
         HeaderIconButton(onClick = onSettings, tint = AppTheme.TextNormal) { c ->
