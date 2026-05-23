@@ -2,6 +2,7 @@ package com.m8droid.browse
 
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class FileHubSectionsTest {
@@ -24,5 +25,20 @@ class FileHubSectionsTest {
     @Test
     fun `new song is the standalone action above tabs`() {
         assertEquals("+ NEW SONG · clears current", FileHubTabs.newSongBannerLabel)
+    }
+
+    @Test
+    fun `file dialog keeps border inside phone screen`() {
+        assertTrue(FileHubLayout.dialogWidthFraction <= 0.94f)
+        assertTrue(FileHubLayout.dialogHeightFraction <= 0.90f)
+        assertTrue(FileHubLayout.edgePaddingDp >= 20)
+    }
+
+    @Test
+    fun `download source labels are compact enough to avoid chip wrapping`() {
+        assertEquals(listOf("Songs", "GitHub", "Archive"), FileHubTabs.compactDownloadSourceLabels(DownloadSources.displayNames()))
+        FileHubTabs.compactDownloadSourceLabels(DownloadSources.displayNames()).forEach { label ->
+            assertTrue(label.length <= 7, "$label should fit in a phone chip without wrapping")
+        }
     }
 }

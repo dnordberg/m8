@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -17,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -25,6 +27,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.m8droid.browse.BrowseViewModel
 import com.m8droid.browse.ContentKind
 import com.m8droid.browse.DownloadStore
+import com.m8droid.browse.FileHubLayout
 import com.m8droid.browse.FileHubTabs
 import com.m8droid.browse.RemoteItem
 import com.m8droid.emulator.M8Instrument
@@ -102,11 +105,18 @@ fun BrowseDialog(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(16.dp)
-                .background(M8_BG, RoundedCornerShape(8.dp))
-                .border(1.dp, M8_GREEN, RoundedCornerShape(8.dp)),
+                .systemBarsPadding()
+                .padding(FileHubLayout.edgePaddingDp.dp),
+            contentAlignment = Alignment.TopCenter,
         ) {
-            Column(modifier = Modifier.fillMaxSize().padding(12.dp)) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(FileHubLayout.dialogWidthFraction)
+                    .fillMaxHeight(FileHubLayout.dialogHeightFraction)
+                    .background(M8_BG, RoundedCornerShape(8.dp))
+                    .border(1.dp, M8_GREEN, RoundedCornerShape(8.dp)),
+            ) {
+                Column(modifier = Modifier.fillMaxSize().padding(12.dp)) {
                 // Header
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -162,9 +172,12 @@ fun BrowseDialog(
                             Text(
                                 text = label,
                                 color = if (active) M8_BG else M8_DIM,
-                                fontSize = 11.sp,
+                                fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace,
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis,
                             )
                         }
                     }
@@ -183,10 +196,12 @@ fun BrowseDialog(
                     )
                     Spacer(Modifier.height(6.dp))
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
-                        FileHubTabs.downloadSourceLabels(sources.map { it.displayName }).forEachIndexed { i, label ->
+                        FileHubTabs.compactDownloadSourceLabels(FileHubTabs.downloadSourceLabels(sources.map { it.displayName })).forEachIndexed { i, label ->
                             val active = i == sourceIndex
                             Box(
                                 modifier = Modifier
@@ -209,6 +224,9 @@ fun BrowseDialog(
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
                                     fontFamily = FontFamily.Monospace,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis,
                                 )
                             }
                         }
@@ -350,6 +368,7 @@ fun BrowseDialog(
                 }
             }
         }
+    }
     }
 
     val pending = pendingSongLoad
