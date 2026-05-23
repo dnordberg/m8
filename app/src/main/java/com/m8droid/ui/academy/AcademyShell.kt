@@ -52,6 +52,46 @@ val chapter1Complete = listOf(
     DialogueLine("PROF. KICK", "In the next chapter, we'll dive into SYNTHS and learn how to shape the sounds you trigger.", AcademyTheme.AccentMagenta),
 )
 
+val chapter2Quests = listOf(
+    Quest(
+        id = "ch2_q1", chapter = 2, title = "Open the Synth Lab",
+        briefing = "Head to the Instrument screen. This is where each track gets its sound.",
+        conditions = listOf(QuestCondition.OnScreen(4)),
+        xpReward = 50,
+        hintText = "Swipe or tap the screen selector until you reach the Instrument page.",
+    ),
+    Quest(
+        id = "ch2_q2", chapter = 2, title = "Inspect a Patch",
+        briefing = "Enter edit mode on the Instrument screen so the synth parameters are ready to tweak.",
+        conditions = listOf(QuestCondition.OnScreen(4), QuestCondition.EditModeActive(true)),
+        xpReward = 75,
+        hintText = "Press EDIT while you're on the Instrument screen.",
+    ),
+    Quest(
+        id = "ch2_q3", chapter = 2, title = "Audition the Sound",
+        briefing = "Start playback while viewing the Instrument screen so you can hear changes in context.",
+        conditions = listOf(QuestCondition.OnScreen(4), QuestCondition.IsPlaying(true)),
+        xpReward = 75,
+        hintText = "Stay on Instruments and press PLAY.",
+    ),
+    Quest(
+        id = "ch2_q4", chapter = 2, title = "Ready to Shape",
+        briefing = "Keep playback running and stay in edit mode on the Instrument screen — now you're ready to shape synths.",
+        conditions = listOf(QuestCondition.OnScreen(4), QuestCondition.EditModeActive(true), QuestCondition.IsPlaying(true)),
+        xpReward = 100,
+        hintText = "Instrument screen + EDIT + PLAY completes the synth basics.",
+    ),
+)
+
+val chapter2Intro = listOf(
+    DialogueLine("PROF. KICK", "Welcome to SYNTHS. Drums gave you timing; now we'll shape the sounds themselves.", AcademyTheme.AccentMagenta),
+    DialogueLine("PROF. KICK", "The Instrument screen is your lab: oscillators, envelopes, and playback context all meet there.", AcademyTheme.AccentMagenta),
+)
+
+val chapter2Complete = listOf(
+    DialogueLine("PROF. KICK", "Nice — the synth lab is open. Next we'll get into sampling and loading your own audio.", AcademyTheme.AccentMagenta),
+)
+
 enum class AcademyScreen {
     ONBOARDING,
     CHAPTER_MAP,
@@ -111,7 +151,7 @@ fun AcademyShell(
 
             AcademyScreen.NARRATIVE_INTRO -> {
                 NarrativeView(
-                    lines = chapter1Intro,
+                    lines = getChapterIntro(selectedChapter),
                     onComplete = {
                         currentQuestIndex = findNextQuest(selectedChapter, progress.completedQuestIds)
                         screen = AcademyScreen.QUEST_BRIEFING
@@ -181,7 +221,7 @@ fun AcademyShell(
 
             AcademyScreen.NARRATIVE_OUTRO -> {
                 NarrativeView(
-                    lines = chapter1Complete,
+                    lines = getChapterComplete(selectedChapter),
                     onComplete = { screen = AcademyScreen.CHAPTER_MAP },
                     modifier = modifier,
                 )
@@ -190,15 +230,26 @@ fun AcademyShell(
     }
 }
 
-private fun getChapterQuests(chapter: Int): List<Quest> {
+internal fun getChapterQuests(chapter: Int): List<Quest> {
     return when (chapter) {
         0 -> chapter1Quests
-        // Chapters 2-6 will be added in Phase 5
+        1 -> chapter2Quests
+        // Chapters 3-6 will be added in later Academy slices.
         else -> emptyList()
     }
 }
 
-private fun findNextQuest(chapter: Int, completedIds: Set<String>): Int {
+private fun getChapterIntro(chapter: Int): List<DialogueLine> = when (chapter) {
+    1 -> chapter2Intro
+    else -> chapter1Intro
+}
+
+private fun getChapterComplete(chapter: Int): List<DialogueLine> = when (chapter) {
+    1 -> chapter2Complete
+    else -> chapter1Complete
+}
+
+internal fun findNextQuest(chapter: Int, completedIds: Set<String>): Int {
     val quests = getChapterQuests(chapter)
     return quests.indexOfFirst { it.id !in completedIds }.takeIf { it >= 0 } ?: quests.size
 }

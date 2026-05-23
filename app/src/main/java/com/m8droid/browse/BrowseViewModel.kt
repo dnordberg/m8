@@ -207,13 +207,13 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
      */
     fun loadSongFromEntry(
         entry: DownloadStore.Entry,
-        apply: (M8sParser.ParsedSong) -> Unit,
+        apply: (M8sParser.ParsedSong, String?) -> Unit,
     ) {
         viewModelScope.launch {
             val result = runCatching {
                 val bytes = withContext(Dispatchers.IO) { File(entry.localPath).readBytes() }
                 val song = M8sParser.parse(bytes)
-                apply(song)
+                apply(song, entry.localPath)
                 songLoadStatus(song)
             }
             _loadStatus.value = result.getOrElse { "ERROR: ${it.message ?: "parse failed"}" }
@@ -259,7 +259,7 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
      */
     fun downloadAndLoadSong(
         item: RemoteItem,
-        apply: (M8sParser.ParsedSong) -> Unit,
+        apply: (M8sParser.ParsedSong, String?) -> Unit,
     ) {
         _downloading.value = true
         _error.value = null
@@ -271,7 +271,7 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
                 _lastDownloaded.value = entry
                 _sdEntries.value = store.list().sortedByDescending { it.downloadedAt }
                 val song = M8sParser.parse(bytes)
-                apply(song)
+                apply(song, entry.localPath)
                 songLoadStatus(song)
             }
             _loadStatus.value = result.getOrElse { "ERROR: ${it.message ?: "load failed"}" }

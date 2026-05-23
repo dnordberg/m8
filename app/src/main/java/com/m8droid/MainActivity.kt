@@ -6,6 +6,8 @@ import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
@@ -162,8 +164,14 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
     val serverSettings by viewModel.serverSettings.collectAsState()
     val isSongDirty by viewModel.isSongDirty.collectAsState()
     val savedProjects by viewModel.savedProjects.collectAsState()
+    val recentSongs by viewModel.recentSongs.collectAsState()
     val projectSaveStatus by viewModel.projectSaveStatus.collectAsState()
     val hapticView = LocalView.current
+    val openSongLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        runCatching { viewModel.getApplication<android.app.Application>().contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+        runCatching { viewModel.loadSongFromUri(uri) }
+    }
 
     fun performNavigationHaptic() {
         hapticView.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
@@ -318,7 +326,12 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
                 onDismiss = { showLoadDialog = false },
                 slotCount = viewModel.instrumentSlotCount,
                 onLoadInstrument = { slot, inst -> viewModel.replaceInstrument(slot, inst) },
-                onLoadSong = { parsed -> viewModel.replaceSong(parsed) },
+                onLoadSong = { parsed, location -> viewModel.replaceSong(parsed, recentLocation = location) },
+                recentSongs = recentSongs,
+                onRefreshRecentSongs = { viewModel.refreshRecentSongs() },
+                onNewSong = { viewModel.newSong() },
+                onOpenDeviceSong = { openSongLauncher.launch(arrayOf("audio/*", "application/octet-stream", "*/*")) },
+                onLoadRecentSong = { entry -> viewModel.loadRecentSong(entry) },
                 savedProjects = savedProjects,
                 onRefreshProjects = { viewModel.refreshSavedProjects() },
                 onLoadProject = { path -> viewModel.loadSavedProject(path) },

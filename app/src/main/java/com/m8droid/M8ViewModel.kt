@@ -3,6 +3,8 @@ package com.m8droid
 
 import android.app.Application
 import android.graphics.BitmapFactory
+import android.net.Uri
+import android.provider.OpenableColumns
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -66,6 +68,7 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     private val emulator = M8Emulator()
     private val synth = M8Synth() // kept for visualization API compat
     private val projectDir = File(application.filesDir, "m8sd/Projects").apply { mkdirs() }
+    private val recentSongStore = RecentSongStore(File(application.filesDir, "m8sd/recent_songs.tsv"))
     private val sampleCache = SampleCache(File(application.filesDir, "m8sd"))
     private val localAudioPlayer = M8AudioPlayer()
     private val fxEngine = M8FxEngine()
@@ -104,6 +107,9 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     val projectSaveStatus: StateFlow<String?> = _projectSaveStatus
     private val _savedProjects = MutableStateFlow<List<M8ProjectLibrary.SavedProject>>(emptyList())
     val savedProjects: StateFlow<List<M8ProjectLibrary.SavedProject>> = _savedProjects
+    private val _recentSongs = MutableStateFlow<List<RecentSongStore.Entry>>(emptyList())
+    val recentSongs: StateFlow<List<RecentSongStore.Entry>> = _recentSongs
+    private var triedStartupRecentRestore = false
 
     // ======================= MIDI =======================
     private val midiEngine = MidiEngine(application.applicationContext).also { engine ->
@@ -269,6 +275,8 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         samplesUntilNextRow = 0
         wasPlaying = false
         previousSongRow = 0
+        refreshRecentSongs()
+        restoreLastLoadedOnStartup()
 
         // Display render loop — runs on default dispatcher for UI updates
         emulatorRenderJob?.cancel()
@@ -814,9 +822,78 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     fun loadSavedProject(path: String): String {
         val file = File(path)
         val restored = M8ProjectLibrary.load(file)
+        applyRestoredProject(restored)
+        recordRecent(file.absolutePath, song.name.ifBlank { file.nameWithoutExtension }, RecentSongStore.Kind.PROJECT)
+        refreshSavedProjects()
+        val status = "LOADED ${file.name}"
+        _projectSaveStatus.value = status
+        Log.i(TAG, "Restored project '${song.name}' from ${file.name}")
+        return status
+    }
+
+    fun refreshRecentSongs() {
+        _recentSongs.value = recentSongStore.list()
+    }
+
+    fun newSong(): String {
+        applyRestoredProject(M8ProjectSnapshot.Restored(M8Song().apply { name = "NEW SONG" }, M8Instrument.createDefaults()))
+        val status = "NEW SONG"
+        _projectSaveStatus.value = status
+        return status
+    }
+
+    fun loadRecentSong(entry: RecentSongStore.Entry): String = when (entry.kind) {
+        RecentSongStore.Kind.PROJECT -> loadSavedProject(entry.location)
+        RecentSongStore.Kind.SONG -> {
+            val parsed = M8sParser.parse(readRecentSongBytes(entry.location))
+            replaceSong(parsed, recentLocation = entry.location, recentTitle = entry.title)
+            "LOADED '${entry.title}'"
+        }
+    }
+
+    fun loadSongFile(file: File): String {
+        val parsed = M8sParser.parse(file.readBytes())
+        replaceSong(parsed, recentLocation = file.absolutePath, recentTitle = parsed.header.name.ifBlank { file.nameWithoutExtension })
+        return "LOADED '${parsed.header.name}'"
+    }
+
+    fun loadSongFromUri(uri: Uri): String {
+        val resolver = getApplication<Application>().contentResolver
+        val bytes = resolver.openInputStream(uri)?.use { it.readBytes() }
+            ?: error("Could not open selected song")
+        val title = displayNameFor(uri) ?: uri.lastPathSegment ?: "selected.m8s"
+        val parsed = M8sParser.parse(bytes)
+        replaceSong(parsed, recentLocation = uri.toString(), recentTitle = parsed.header.name.ifBlank { title })
+        return "LOADED '${parsed.header.name.ifBlank { title }}'"
+    }
+
+    private fun restoreLastLoadedOnStartup() {
+        if (triedStartupRecentRestore) return
+        triedStartupRecentRestore = true
+        val last = recentSongStore.lastLoaded() ?: return
+        runCatching {
+            when (last.kind) {
+                RecentSongStore.Kind.PROJECT -> M8ProjectSnapshot.restoreInto(M8ProjectLibrary.load(File(last.location)), song, instruments)
+                RecentSongStore.Kind.SONG -> emulator.loadParsedSong(M8sParser.parse(readRecentSongBytes(last.location)))
+            }
+            resetLoadedSongState(wasPlaying = false)
+            markProjectClean()
+            _projectSaveStatus.value = "RESTORED ${last.title}"
+            Log.i(TAG, "Restored last loaded '${last.title}'")
+        }.onFailure {
+            Log.w(TAG, "Could not restore last loaded song '${last.location}'", it)
+        }
+    }
+
+    private fun applyRestoredProject(restored: M8ProjectSnapshot.Restored) {
         val wasPlaying = emulator.playing
         emulator.playing = false
         M8ProjectSnapshot.restoreInto(restored, song, instruments)
+        resetLoadedSongState(wasPlaying)
+        markProjectClean()
+    }
+
+    private fun resetLoadedSongState(wasPlaying: Boolean) {
         emulator.resetPlayheadAndResolve()
         songRow = 0
         chainRow = 0
@@ -831,12 +908,29 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
             emulator.playing = true
             emulator.playRow = 0
         }
-        markProjectClean()
-        refreshSavedProjects()
-        val status = "LOADED ${file.name}"
-        _projectSaveStatus.value = status
-        Log.i(TAG, "Restored project '${song.name}' from ${file.name}")
-        return status
+    }
+
+    private fun recordRecent(location: String, title: String, kind: RecentSongStore.Kind) {
+        recentSongStore.record(RecentSongStore.Entry(location = location, title = title.ifBlank { "Untitled" }, kind = kind))
+        refreshRecentSongs()
+    }
+
+    private fun readRecentSongBytes(location: String): ByteArray {
+        return if (location.startsWith("content://")) {
+            val uri = Uri.parse(location)
+            getApplication<Application>().contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                ?: error("Could not reopen recent song")
+        } else {
+            File(location).readBytes()
+        }
+    }
+
+    private fun displayNameFor(uri: Uri): String? {
+        return runCatching {
+            getApplication<Application>().contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) else null
+            }
+        }.getOrNull()
     }
 
     private fun markProjectClean() {
@@ -968,7 +1062,7 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
      * > 7 use the timbres the song author intended rather than whatever
      * was last live on each track.
      */
-    fun replaceSong(parsed: M8sParser.ParsedSong) {
+    fun replaceSong(parsed: M8sParser.ParsedSong, recentLocation: String? = null, recentTitle: String = parsed.header.name) {
         val wasPlaying = emulator.playing
         val installed = emulator.loadParsedSong(parsed)
         songRow = 0
@@ -986,6 +1080,7 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
             emulator.playRow = 0
         }
         markProjectClean()
+        if (!recentLocation.isNullOrBlank()) recordRecent(recentLocation, recentTitle, RecentSongStore.Kind.SONG)
         Log.i(TAG, "Loaded song '${song.name}' @ ${song.tempo} BPM with $installed instrument slots")
     }
 

@@ -42,6 +42,9 @@ This is the biggest demo-to-instrument step. Mirror real M8 firmware behavior; d
 
 `M8sParser` already exists and has tests. Wire it into the emulator/app so real M8 songs can be loaded and played.
 
+- [x] HIGH PRIORITY: File hub for song loading: File New clears the song, Open Device launches Android's file picker for `.m8s`/audio-ish files, recent songs/projects are shown at the top of the File dialog, and startup tries to restore the last loaded song/project instead of always staying on the demo.
+- [ ] HIGH PRIORITY: remote song discovery/download, not just instruments. Add GitHub and/or another source that lists downloadable `.m8s` song files in the Browse dialog, saves them into the virtual SD `Songs/` area, and then loads them through the existing dirty-confirm `.m8s` import flow.
+
 - [x] Add app-level load path from downloaded/local `.m8s` files into emulator state.
 - [x] Call `M8sParser.parse()` + `M8sParser.applyTo()` from the browser/load workflow.
 - [x] Preserve current app state or ask/confirm before replacing active song: dirty-state signature now gates `.m8s` loads behind Save + Replace / Discard / Cancel.
@@ -139,7 +142,9 @@ Once note/phrase editing exists, saving becomes mandatory and relatively cheap.
 - [ ] Local SD delete/rename operations.
 - [ ] Favorites/tags/search/pack grouping in content library.
 - [ ] Missing samples/instruments warnings for loaded songs.
+- [x] Academy Synths chapter unlock/start bug: Chapter 2 now has playable Synths quests and chapter-specific intro/outro dialogue, so tapping SYNTHS after finishing basics starts real quests instead of falling through an empty chapter.
 - [ ] Academy quests: first beat, bass patch, chains/phrases/tables explainer.
+- [ ] Tutorial panel positioning: add a draggable handlebar/bottom-sheet style control so the tutorial can be pulled higher/lower as needed; it currently lacks height for all content and sometimes blocks underlying buttons.
 - [ ] WebSocket remote screen/controller polish.
 - [ ] SD card backup/sync helper for real hardware companion use.
 

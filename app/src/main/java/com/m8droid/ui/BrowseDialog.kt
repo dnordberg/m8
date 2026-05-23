@@ -29,6 +29,7 @@ import com.m8droid.browse.RemoteItem
 import com.m8droid.emulator.M8Instrument
 import com.m8droid.emulator.M8ProjectLibrary
 import com.m8droid.emulator.M8sParser
+import com.m8droid.emulator.RecentSongStore
 
 private val M8_GREEN = Color(0xFF00FF00)
 private val M8_BG = Color(0xFF0A0A1A)
@@ -40,7 +41,12 @@ fun BrowseDialog(
     onDismiss: () -> Unit,
     slotCount: Int,
     onLoadInstrument: (slot: Int, inst: M8Instrument) -> Unit,
-    onLoadSong: (M8sParser.ParsedSong) -> Unit,
+    onLoadSong: (M8sParser.ParsedSong, String?) -> Unit,
+    recentSongs: List<RecentSongStore.Entry> = emptyList(),
+    onRefreshRecentSongs: () -> Unit = {},
+    onNewSong: () -> String = { "NEW SONG" },
+    onOpenDeviceSong: () -> Unit = {},
+    onLoadRecentSong: (RecentSongStore.Entry) -> String = { "LOADED" },
     savedProjects: List<M8ProjectLibrary.SavedProject> = emptyList(),
     onRefreshProjects: () -> Unit = {},
     onLoadProject: (String) -> String = { "LOADED" },
@@ -65,6 +71,7 @@ fun BrowseDialog(
     val viewingProjects = sourceIndex == viewModel.projectTabIndex
     var selectedProject by remember { mutableStateOf<M8ProjectLibrary.SavedProject?>(null) }
     var projectLoadStatus by remember { mutableStateOf<String?>(null) }
+    var fileActionStatus by remember { mutableStateOf<String?>(null) }
     var pendingSongLoad by remember { mutableStateOf<(() -> Unit)?>(null) }
     fun requestSongLoad(action: () -> Unit) {
         if (shouldConfirmSongReplace()) pendingSongLoad = action else action()
@@ -73,6 +80,7 @@ fun BrowseDialog(
     // First-open fetch.
     LaunchedEffect(Unit) {
         if (items.isEmpty() && !loading) viewModel.refresh()
+        onRefreshRecentSongs()
         onRefreshProjects()
     }
 
@@ -94,7 +102,7 @@ fun BrowseDialog(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = "LOAD",
+                        text = "FILE",
                         color = M8_GREEN,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
@@ -106,7 +114,24 @@ fun BrowseDialog(
 
                 Spacer(Modifier.height(8.dp))
 
-                // Source tabs (remote sources + local SD)
+                FileActionBar(
+                    recentSongs = recentSongs,
+                    status = fileActionStatus ?: saveStatus,
+                    onNewSong = {
+                        requestSongLoad { fileActionStatus = onNewSong() }
+                    },
+                    onOpenDeviceSong = { requestSongLoad { onOpenDeviceSong() } },
+                    onLoadRecent = { entry ->
+                        requestSongLoad {
+                            fileActionStatus = runCatching { onLoadRecentSong(entry) }
+                                .getOrElse { "ERROR: ${it.message ?: "load failed"}" }
+                        }
+                    },
+                )
+
+                Spacer(Modifier.height(8.dp))
+
+                // Download source tabs + local SD/projects
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -281,6 +306,83 @@ fun BrowseDialog(
             },
         )
     }
+}
+
+@Composable
+private fun FileActionBar(
+    recentSongs: List<RecentSongStore.Entry>,
+    status: String?,
+    onNewSong: () -> Unit,
+    onOpenDeviceSong: () -> Unit,
+    onLoadRecent: (RecentSongStore.Entry) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, M8_DIM.copy(alpha = 0.6f), RoundedCornerShape(6.dp))
+            .padding(8.dp),
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            CompactButton("NEW", onNewSong)
+            CompactButton("OPEN DEVICE", onOpenDeviceSong)
+            Text(
+                text = "Downloads below",
+                color = M8_DIM,
+                fontSize = 10.sp,
+                fontFamily = FontFamily.Monospace,
+                modifier = Modifier.weight(1f),
+            )
+        }
+        if (recentSongs.isNotEmpty()) {
+            Spacer(Modifier.height(6.dp))
+            Text("RECENT", color = M8_GREEN, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+            Spacer(Modifier.height(4.dp))
+            recentSongs.take(3).forEach { entry ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onLoadRecent(entry) }
+                        .padding(vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = if (entry.kind == RecentSongStore.Kind.PROJECT) "PROJECT" else "SONG",
+                        color = M8_DIM,
+                        fontSize = 9.sp,
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier.width(56.dp),
+                    )
+                    Text(
+                        text = entry.title,
+                        color = M8_GREEN,
+                        fontSize = 10.sp,
+                        fontFamily = FontFamily.Monospace,
+                        maxLines = 1,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+        }
+        if (!status.isNullOrBlank()) {
+            Spacer(Modifier.height(4.dp))
+            Text(status, color = M8_DIM, fontSize = 9.sp, fontFamily = FontFamily.Monospace, maxLines = 1)
+        }
+    }
+}
+
+@Composable
+private fun CompactButton(label: String, onClick: () -> Unit) {
+    Text(
+        text = "[$label]",
+        color = M8_GREEN,
+        fontSize = 11.sp,
+        fontWeight = FontWeight.Bold,
+        fontFamily = FontFamily.Monospace,
+        modifier = Modifier
+            .border(1.dp, M8_GREEN, RoundedCornerShape(4.dp))
+            .clickable { onClick() }
+            .padding(horizontal = 8.dp, vertical = 5.dp),
+    )
 }
 
 @Composable
