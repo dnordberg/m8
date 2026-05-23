@@ -14,6 +14,7 @@ import com.m8droid.audio.SampleCache
 import com.m8droid.data.ServerConfig
 import com.m8droid.data.ServerSettings
 import com.m8droid.emulator.*
+import com.m8droid.academy.AcademyTutorialProject
 import com.m8droid.academy.data.EmulatorEventRepository
 import com.m8droid.academy.data.EmulatorSnapshot
 import com.m8droid.midi.MidiEngine
@@ -307,6 +308,18 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
                 val frameData = emulator.renderFrame()
                 connectionManager.protocol.processBytes(frameData)
 
+                val selectedSongChain = song.songGrid[emulator.cursorY.coerceIn(0, 255)][emulator.cursorX.coerceIn(0, 7)]
+                val selectedChainRowPhrase = song.chains[emulator.selectedChain.coerceIn(0, 254)]
+                    .rows[emulator.cursorY.coerceIn(0, 15)]
+                    .phrase
+                val phraseIdx = emulator.currentPhrasePerTrack
+                    .getOrElse(emulator.cursorX.coerceIn(0, 7)) { emulator.selectedPhrase }
+                    .let { if (it == M8Song.EMPTY) emulator.selectedPhrase else it }
+                    .coerceIn(0, 254)
+                val selectedPhraseStepNote = song.phrases[phraseIdx]
+                    .steps[emulator.cursorY.coerceIn(0, 15)]
+                    .note
+
                 emulatorEvents.emit(EmulatorSnapshot(
                     playing = emulator.playing,
                     screen = emulator.screen,
@@ -318,6 +331,9 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
                     cursorY = emulator.cursorY,
                     editMode = emulator.editMode,
                     midiActive = emulator.midiActive,
+                    selectedSongChain = selectedSongChain,
+                    selectedChainRowPhrase = selectedChainRowPhrase,
+                    selectedPhraseStepNote = selectedPhraseStepNote,
                 ))
 
                 _displayTick.value++
@@ -863,6 +879,16 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     fun newSong(): String {
         applyRestoredProject(M8ProjectSnapshot.Restored(M8Song().apply { name = "NEW SONG" }, M8Instrument.createDefaults()))
         val status = "NEW SONG"
+        _projectSaveStatus.value = status
+        return status
+    }
+
+    fun startFreshAcademyTutorialSong(): String {
+        applyRestoredProject(AcademyTutorialProject.freshSession())
+        emulator.screen = M8Emulator.SCREEN_SONG
+        emulator.selectedChain = 0
+        emulator.selectedPhrase = 0
+        val status = "ACADEMY FRESH SONG"
         _projectSaveStatus.value = status
         return status
     }

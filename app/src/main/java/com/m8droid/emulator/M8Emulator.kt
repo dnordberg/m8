@@ -218,11 +218,13 @@ class M8Emulator {
             SCREEN_SONG -> {
                 song.songGrid[cursorY.coerceIn(0, 255)][cursorX.coerceIn(0, 7)] = value
                 selectedChain = value
+                resolveCurrentPhrases()
             }
             SCREEN_CHAIN -> {
                 val row = song.chains[selectedChain.coerceIn(0, 254)].rows[cursorY.coerceIn(0, 15)]
                 row.phrase = value
                 selectedPhrase = value
+                resolveCurrentPhrases()
             }
             else -> return false
         }

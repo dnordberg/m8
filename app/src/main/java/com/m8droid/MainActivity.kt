@@ -152,6 +152,7 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
     var showHelpMenu by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var showLoadDialog by remember { mutableStateOf(false) }
+    var showAcademyFreshStartConfirm by remember { mutableStateOf(false) }
     var appMode by remember { mutableStateOf(AppMode.M8) }
     val scope = rememberCoroutineScope()
     val academyRepo = remember { AcademyRepository(viewModel.getApplication()) }
@@ -179,6 +180,19 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
 
     fun performEditHaptic() {
         hapticView.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+    }
+
+    fun enterAcademyWithFreshSong() {
+        viewModel.startFreshAcademyTutorialSong()
+        appMode = AppMode.ACADEMY
+    }
+
+    fun requestAcademyMode() {
+        if (viewModel.shouldConfirmBeforeReplacingSong()) {
+            showAcademyFreshStartConfirm = true
+        } else {
+            enterAcademyWithFreshSong()
+        }
     }
 
     // Tutorial fields are Compose state; read them directly so overlay controls
@@ -268,7 +282,7 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
                             dirty = isSongDirty,
                             onSettings = { showSettings = true },
                             onHelp = { showHelpMenu = true },
-                            onAcademy = { appMode = AppMode.ACADEMY },
+                            onAcademy = { requestAcademyMode() },
                         )
                         // Quest overlay when a quest is active
                         if (academyState == AcademyState.QUEST_ACTIVE && activeQuest != null) {
@@ -318,6 +332,30 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
                     }
                 }
             }
+        }
+
+        if (showAcademyFreshStartConfirm) {
+            AlertDialog(
+                onDismissRequest = { showAcademyFreshStartConfirm = false },
+                title = { Text("Start fresh Academy song?") },
+                text = { Text("Academy lessons start from a clean tutorial file so quests do not depend on the demo or your current project. Save current work first?") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        viewModel.saveCurrentSong()
+                        showAcademyFreshStartConfirm = false
+                        enterAcademyWithFreshSong()
+                    }) { Text("SAVE + START") }
+                },
+                dismissButton = {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = {
+                            showAcademyFreshStartConfirm = false
+                            enterAcademyWithFreshSong()
+                        }) { Text("START FRESH") }
+                        TextButton(onClick = { showAcademyFreshStartConfirm = false }) { Text("CANCEL") }
+                    }
+                },
+            )
         }
 
         // Browse / download dialog

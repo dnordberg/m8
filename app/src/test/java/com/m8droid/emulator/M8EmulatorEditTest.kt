@@ -565,4 +565,40 @@ class M8EmulatorEditTest {
         assertEquals(0, rowData[4][0], "track with no chain resolves to a silent row")
         assertEquals(0, rowData[4][2], "and zero volume so the synth treats it as continue")
     }
+
+    @Test
+    fun `fresh tracker loop resolves song chain phrase edits before note entry`() {
+        val emulator = M8Emulator().apply {
+            song.songGrid.forEach { row -> java.util.Arrays.fill(row, M8Song.EMPTY) }
+            song.chains.forEach { chain -> chain.rows.forEach { row -> row.phrase = M8Song.EMPTY; row.transpose = 0 } }
+            song.phrases.forEach { phrase -> phrase.steps.forEach { step -> step.note = M8Song.EMPTY; step.instrument = M8Song.EMPTY; step.volume = M8Song.EMPTY } }
+            resetPlayheadAndResolve()
+            screen = M8Emulator.SCREEN_SONG
+            cursorX = 0
+            cursorY = 0
+        }
+
+        assertEquals(M8Song.EMPTY, emulator.currentPhrasePerTrack[0])
+
+        assertEquals(true, emulator.enterHexDigit(0))
+        assertEquals(true, emulator.enterHexDigit(0))
+        assertEquals(0, emulator.selectedChain)
+        assertEquals(M8Song.EMPTY, emulator.currentPhrasePerTrack[0])
+
+        emulator.screen = M8Emulator.SCREEN_CHAIN
+        emulator.cursorX = 0
+        emulator.cursorY = 0
+        assertEquals(true, emulator.enterHexDigit(0))
+        assertEquals(true, emulator.enterHexDigit(0))
+        assertEquals(0, emulator.selectedPhrase)
+        assertEquals(0, emulator.currentPhrasePerTrack[0])
+
+        emulator.screen = M8Emulator.SCREEN_PHRASE
+        emulator.cursorX = 0
+        emulator.cursorY = 0
+        emulator.phraseEditColumn = 0
+        assertEquals(true, emulator.canEnterNoteFromPicker())
+        assertEquals(60, emulator.enterNoteFromPickerWithResult(0))
+        assertEquals(60, emulator.song.phrases[0].steps[0].note)
+    }
 }

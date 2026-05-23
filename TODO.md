@@ -143,8 +143,10 @@ Once note/phrase editing exists, saving becomes mandatory and relatively cheap.
 - [ ] Favorites/tags/search/pack grouping in content library.
 - [ ] Missing samples/instruments warnings for loaded songs.
 - [x] Academy Synths chapter unlock/start bug: Chapter 2 now has playable Synths quests and chapter-specific intro/outro dialogue, so tapping SYNTHS after finishing basics starts real quests instead of falling through an empty chapter.
-- [ ] Academy quests: first beat, bass patch, chains/phrases/tables explainer.
-- [ ] Tutorial panel positioning: add a draggable handlebar/bottom-sheet style control so the tutorial can be pulled higher/lower as needed; it currently lacks height for all content and sometimes blocks underlying buttons.
+- [x] Academy quests: first beat plus real tracker loop basics — place a chain, link a phrase, enter a note, visit phrase/chain/table/song flow before Synths.
+- [x] Tutorial panel positioning: bottom-sheet tutorial overlay with compact/half/expanded states, drag handle, and scrollable content.
+- [x] Academy fresh start: entering Academy starts a controlled blank tutorial project (with dirty-song confirmation) instead of inheriting the demo/current file.
+- [ ] Academy quests: bass patch and deeper synth/sampler practice.
 - [ ] WebSocket remote screen/controller polish.
 - [ ] SD card backup/sync helper for real hardware companion use.
 

@@ -14,10 +14,13 @@ class AcademyContentTest {
         val titles = drumQuests.map { it.title }
 
         assertTrue(titles.contains("First Beat"))
-        assertTrue(titles.contains("Chain a Pattern"))
+        assertTrue(titles.contains("Place a Chain"))
+        assertTrue(titles.contains("Link a Phrase"))
+        assertTrue(titles.contains("Enter a Note"))
         assertTrue(titles.contains("Phrase Steps"))
+        assertTrue(titles.contains("Chain a Pattern"))
         assertTrue(titles.contains("Table Motion"))
-        assertTrue(drumQuests.size >= 8)
+        assertTrue(titles.indexOf("Chain a Pattern") > titles.indexOf("Phrase Steps"))
     }
 
     @Test

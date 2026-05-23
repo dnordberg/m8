@@ -87,6 +87,20 @@ class QuestEngineTest {
     }
 
     @Test
+    fun `tracker loop conditions use edited song chain and phrase data`() {
+        assertTrue(QuestCondition.SongCellFilled.evaluate(EmulatorSnapshot(selectedSongChain = 0)))
+        assertFalse(QuestCondition.SongCellFilled.evaluate(EmulatorSnapshot(selectedSongChain = 2)))
+        assertFalse(QuestCondition.SongCellFilled.evaluate(EmulatorSnapshot(selectedSongChain = 0xFF)))
+
+        assertTrue(QuestCondition.ChainRowHasPhrase.evaluate(EmulatorSnapshot(selectedChainRowPhrase = 0)))
+        assertFalse(QuestCondition.ChainRowHasPhrase.evaluate(EmulatorSnapshot(selectedChainRowPhrase = 2)))
+        assertFalse(QuestCondition.ChainRowHasPhrase.evaluate(EmulatorSnapshot(selectedChainRowPhrase = 0xFF)))
+
+        assertTrue(QuestCondition.PhraseStepHasNote.evaluate(EmulatorSnapshot(selectedPhraseStepNote = 60)))
+        assertFalse(QuestCondition.PhraseStepHasNote.evaluate(EmulatorSnapshot(selectedPhraseStepNote = 0xFF)))
+    }
+
+    @Test
     fun `QuestCondition has zero imports from emulator or audio packages`() {
         val pkg = QuestCondition::class.java.`package`?.name ?: ""
         assertTrue(pkg.startsWith("com.m8droid.academy"))
