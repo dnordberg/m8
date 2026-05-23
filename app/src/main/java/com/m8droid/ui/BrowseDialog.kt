@@ -25,6 +25,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.m8droid.browse.BrowseViewModel
 import com.m8droid.browse.ContentKind
 import com.m8droid.browse.DownloadStore
+import com.m8droid.browse.FileHubTabs
 import com.m8droid.browse.RemoteItem
 import com.m8droid.emulator.M8Instrument
 import com.m8droid.emulator.M8ProjectLibrary
@@ -72,6 +73,7 @@ fun BrowseDialog(
     val previewStatus by viewModel.previewStatus.collectAsState()
     val viewingSd = sourceIndex == viewModel.sdTabIndex
     val viewingProjects = sourceIndex == viewModel.projectTabIndex
+    var viewingRecent by remember { mutableStateOf(true) }
     val downloadedStates = remember(items, sdEntries) { DownloadStore.markDownloaded(items, sdEntries) }
     val downloadedByKey = remember(downloadedStates) { downloadedStates.associateBy { remoteKey(it.item) } }
     val selectedDownloaded = selected?.let { downloadedByKey[remoteKey(it)]?.entry }
@@ -121,24 +123,17 @@ fun BrowseDialog(
                 Spacer(Modifier.height(8.dp))
 
                 FileActionBar(
-                    recentSongs = recentSongs,
                     status = fileActionStatus ?: saveStatus,
                     onNewSong = {
                         requestSongLoad { fileActionStatus = onNewSong() }
                     },
                     onOpenDeviceSong = { requestSongLoad { onOpenDeviceSong() } },
-                    onLoadRecent = { entry ->
-                        requestSongLoad {
-                            fileActionStatus = runCatching { onLoadRecentSong(entry) }
-                                .getOrElse { "ERROR: ${it.message ?: "load failed"}" }
-                        }
-                    },
                 )
 
                 Spacer(Modifier.height(6.dp))
 
                 Text(
-                    text = "DOWNLOAD SOURCES",
+                    text = if (viewingRecent) "RECENT" else "DOWNLOAD / LIBRARY",
                     color = M8_DIM,
                     fontSize = 9.sp,
                     fontWeight = FontWeight.Bold,
@@ -146,14 +141,15 @@ fun BrowseDialog(
                 )
                 Spacer(Modifier.height(4.dp))
 
-                // Download source tabs + local SD/projects
+                // File hub tabs: Recent first by default, then remote download sources and local libraries.
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    val tabs = sources.map { it.displayName } + "SD" + "PROJECTS"
+                    val tabs = FileHubTabs.labels(sources.map { it.displayName })
                     tabs.forEachIndexed { i, label ->
-                        val active = i == sourceIndex
+                        val browseIndex = i - 1
+                        val active = if (i == 0) viewingRecent else !viewingRecent && browseIndex == sourceIndex
                         Box(
                             modifier = Modifier
                                 .weight(1f)
@@ -167,8 +163,13 @@ fun BrowseDialog(
                                     RoundedCornerShape(4.dp),
                                 )
                                 .clickable {
-                                    if (i == viewModel.projectTabIndex) onRefreshProjects()
-                                    viewModel.selectSource(i)
+                                    if (i == 0) {
+                                        viewingRecent = true
+                                    } else {
+                                        viewingRecent = false
+                                        if (browseIndex == viewModel.projectTabIndex) onRefreshProjects()
+                                        viewModel.selectSource(browseIndex)
+                                    }
                                 }
                                 .padding(vertical = 5.dp),
                             contentAlignment = Alignment.Center,
@@ -190,6 +191,7 @@ fun BrowseDialog(
                 Row(modifier = Modifier.fillMaxWidth().weight(1f)) {
                     Column(modifier = Modifier.weight(1f)) {
                         val desc = when {
+                            viewingRecent -> "Songs and projects opened recently"
                             viewingProjects -> "Saved app-native projects in m8sd/Projects"
                             viewingSd -> "Virtual M8 SD card at ${viewModel.sdRootPath}"
                             else -> sources.getOrNull(sourceIndex)?.description.orEmpty()
@@ -204,6 +206,15 @@ fun BrowseDialog(
                             )
                         }
                         when {
+                            viewingRecent -> if (recentSongs.isEmpty()) EmptyState("NO RECENTS") else RecentList(
+                                entries = recentSongs,
+                                onSelect = { entry ->
+                                    requestSongLoad {
+                                        fileActionStatus = runCatching { onLoadRecentSong(entry) }
+                                            .getOrElse { "ERROR: ${it.message ?: "load failed"}" }
+                                    }
+                                },
+                            )
                             viewingProjects -> if (savedProjects.isEmpty()) EmptyState() else ProjectList(
                                 projects = savedProjects,
                                 selected = selectedProject,
@@ -232,7 +243,9 @@ fun BrowseDialog(
                     Spacer(Modifier.width(8.dp))
 
                     Column(modifier = Modifier.weight(1f)) {
-                        if (viewingProjects) {
+                        if (viewingRecent) {
+                            RecentDetailPane(fileActionStatus ?: saveStatus)
+                        } else if (viewingProjects) {
                             ProjectDetailPane(
                                 project = selectedProject,
                                 loadStatus = projectLoadStatus ?: saveStatus,
@@ -346,11 +359,9 @@ fun BrowseDialog(
 
 @Composable
 private fun FileActionBar(
-    recentSongs: List<RecentSongStore.Entry>,
     status: String?,
     onNewSong: () -> Unit,
     onOpenDeviceSong: () -> Unit,
-    onLoadRecent: (RecentSongStore.Entry) -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -359,65 +370,18 @@ private fun FileActionBar(
             .padding(8.dp),
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            CompactButton("NEW", onNewSong)
-            CompactButton("OPEN DEVICE", onOpenDeviceSong)
+            CompactButton(FileHubTabs.newActionLabel, onNewSong)
+            CompactButton(FileHubTabs.openActionLabel, onOpenDeviceSong)
             Text(
-                text = "Downloads below",
+                text = "New clears current song; Open uses device picker",
                 color = M8_DIM,
-                fontSize = 10.sp,
+                fontSize = 9.sp,
                 fontFamily = FontFamily.Monospace,
                 modifier = Modifier.weight(1f),
+                maxLines = 1,
             )
         }
-        if (recentSongs.isNotEmpty()) {
-            var showRecents by remember { mutableStateOf(true) }
-            Spacer(Modifier.height(4.dp))
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { showRecents = !showRecents },
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = if (showRecents) "RECENT ▾" else "RECENT ▸",
-                    color = M8_GREEN,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace,
-                    modifier = Modifier.weight(1f),
-                )
-                if (recentSongs.size > 2) Text("${recentSongs.size - 2} more", color = M8_DIM, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
-            }
-            if (showRecents) {
-                Spacer(Modifier.height(2.dp))
-                recentSongs.take(2).forEach { entry ->
-                    Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onLoadRecent(entry) }
-                        .padding(vertical = 2.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = if (entry.kind == RecentSongStore.Kind.PROJECT) "PROJECT" else "SONG",
-                        color = M8_DIM,
-                        fontSize = 9.sp,
-                        fontFamily = FontFamily.Monospace,
-                        modifier = Modifier.width(56.dp),
-                    )
-                    Text(
-                        text = entry.title,
-                        color = M8_GREEN,
-                        fontSize = 10.sp,
-                        fontFamily = FontFamily.Monospace,
-                        maxLines = 1,
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-                }
-            }
-        }
-        if (!status.isNullOrBlank()) {
+        if (!status.isNullOrBlank() && !status.equals("CURRENT FRESH SONG", ignoreCase = true)) {
             Spacer(Modifier.height(4.dp))
             Text(status, color = M8_DIM, fontSize = 9.sp, fontFamily = FontFamily.Monospace, maxLines = 1)
         }
@@ -452,10 +416,10 @@ private fun LoadingState() {
 }
 
 @Composable
-private fun EmptyState() {
+private fun EmptyState(label: String = "NO ITEMS") {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Text(
-            text = "NO ITEMS",
+            text = label,
             color = M8_DIM,
             fontFamily = FontFamily.Monospace,
             fontSize = 12.sp,
@@ -558,6 +522,70 @@ private fun SdList(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun RecentList(
+    entries: List<RecentSongStore.Entry>,
+    onSelect: (RecentSongStore.Entry) -> Unit,
+) {
+    LazyColumn(modifier = Modifier.fillMaxSize()) {
+        items(entries, key = { it.location }) { entry ->
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 2.dp)
+                    .border(1.dp, M8_DIM.copy(alpha = 0.45f), RoundedCornerShape(3.dp))
+                    .clickable { onSelect(entry) }
+                    .padding(horizontal = 6.dp, vertical = 5.dp),
+            ) {
+                Text(
+                    text = entry.title,
+                    color = M8_GREEN,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                    maxLines = 1,
+                )
+                Text(
+                    text = "${if (entry.kind == RecentSongStore.Kind.PROJECT) "PROJECT" else "SONG"}  ${entry.location}",
+                    color = M8_DIM,
+                    fontSize = 9.sp,
+                    fontFamily = FontFamily.Monospace,
+                    maxLines = 1,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecentDetailPane(status: String?) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .border(1.dp, M8_DIM, RoundedCornerShape(4.dp))
+            .padding(8.dp),
+    ) {
+        Text(
+            text = "RECENT FILES",
+            color = M8_GREEN,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            fontFamily = FontFamily.Monospace,
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = "Tap a recent song/project to load it. Use tabs below for downloads, SD, or projects.",
+            color = M8_DIM,
+            fontSize = 10.sp,
+            fontFamily = FontFamily.Monospace,
+        )
+        if (!status.isNullOrBlank() && !status.equals("CURRENT FRESH SONG", ignoreCase = true)) {
+            Spacer(Modifier.height(10.dp))
+            Text(status, color = M8_GREEN, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
         }
     }
 }
