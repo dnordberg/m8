@@ -28,6 +28,11 @@ sealed interface QuestCondition {
         override fun describe() = "Phrase row is at step $row"
     }
 
+    data class CursorYAtLeast(val row: Int) : QuestCondition {
+        override fun evaluate(snapshot: EmulatorSnapshot) = snapshot.cursorY >= row
+        override fun describe() = "Move cursor to row $row or below"
+    }
+
     data class EditModeActive(val expected: Boolean = true) : QuestCondition {
         override fun evaluate(snapshot: EmulatorSnapshot) = snapshot.editMode == expected
         override fun describe() = if (expected) "Enter edit mode" else "Exit edit mode"

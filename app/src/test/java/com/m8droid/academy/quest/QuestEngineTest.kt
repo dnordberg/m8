@@ -78,6 +78,15 @@ class QuestEngineTest {
     }
 
     @Test
+    fun `CursorYAtLeast evaluates cursor row not playback phrase row`() {
+        val condition = QuestCondition.CursorYAtLeast(4)
+
+        assertTrue(condition.evaluate(EmulatorSnapshot(cursorY = 4, phraseRow = 0)))
+        assertTrue(condition.evaluate(EmulatorSnapshot(cursorY = 8, phraseRow = 0)))
+        assertFalse(condition.evaluate(EmulatorSnapshot(cursorY = 3, phraseRow = 4)))
+    }
+
+    @Test
     fun `QuestCondition has zero imports from emulator or audio packages`() {
         val pkg = QuestCondition::class.java.`package`?.name ?: ""
         assertTrue(pkg.startsWith("com.m8droid.academy"))

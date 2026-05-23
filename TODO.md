@@ -154,10 +154,10 @@ Once note/phrase editing exists, saving becomes mandatory and relatively cheap.
 
 ## Recommended implementation order
 
-1. Note input + phrase editing.
-2. `.m8s` song loading.
-3. Sample playback wired to virtual SD.
-4. Macrosynth / wavsynth mode depth.
-5. Save songs.
-6. MIDI input + MIDI OUT.
-7. Later Android polish.
+Daniel's current testing priority after the save/download foundation: tutorial first, then tracker depth. Export/import and broader persistence hardening can wait until the tutorial and core tracker feel good enough to test seriously.
+
+1. Tutorial / Academy UX and content: draggable/bottom-sheet panel, more playable quests, and a smoother guided flow.
+2. Tracker depth: chain/phrase/table workflow, parameter locks/runtime FX, modulation, sampler/synth behavior that makes the instrument feel less shallow.
+3. File view comfort pass: compact sections, better touch ergonomics, clearer collapsed recents/downloads/projects.
+4. Save/export confidence: project share/import and broader persistence hardening.
+5. MIDI input + MIDI OUT.

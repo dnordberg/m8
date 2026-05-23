@@ -3,20 +3,27 @@ package com.m8droid.ui
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.m8droid.tutorial.M8Tutorial
+import com.m8droid.tutorial.TutorialPanelHeight
+import com.m8droid.tutorial.TutorialPanelState
 
 private val cBg = Color(0xE6000000)         // Semi-transparent black
 private val cPanel = Color(0xFF0A1428)       // Dark navy panel
@@ -47,18 +54,60 @@ fun TutorialOverlay(
 ) {
     val step = tutorial.currentStep ?: return
     val stepButtonMask = tutorial.currentStepButtonMask
+    val panelState = remember { TutorialPanelState() }
+    var dragOffsetFraction by remember { mutableFloatStateOf(0f) }
+    var containerHeightPx by remember { mutableIntStateOf(1) }
+    val latestDragOffset by rememberUpdatedState(dragOffsetFraction)
+    val visibleFraction = (panelState.heightFraction + dragOffsetFraction).coerceIn(
+        TutorialPanelHeight.COMPACT.fraction,
+        TutorialPanelHeight.EXPANDED.fraction,
+    )
+    val showBody = visibleFraction > TutorialPanelHeight.COMPACT.fraction + 0.02f
 
     Box(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .onSizeChanged { containerHeightPx = it.height.coerceAtLeast(1) },
         contentAlignment = Alignment.BottomCenter,
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .fillMaxHeight(visibleFraction)
                 .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
                 .background(cPanel)
                 .padding(top = 2.dp),
         ) {
+            // Drag handle / quick height toggle. Keeps tutorial reachable without
+            // permanently blocking the M8 controls underneath.
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(16.dp)
+                    .pointerInput(containerHeightPx) {
+                        detectVerticalDragGestures(
+                            onDragEnd = {
+                                panelState.snapDragged(latestDragOffset)
+                                dragOffsetFraction = 0f
+                            },
+                            onDragCancel = { dragOffsetFraction = 0f },
+                        ) { change, dragAmount ->
+                            change.consume()
+                            dragOffsetFraction = (dragOffsetFraction - dragAmount / containerHeightPx.toFloat()).coerceIn(-0.4f, 0.4f)
+                        }
+                    }
+                    .clickable { panelState.toggleHeight() },
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(44.dp)
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(99.dp))
+                        .background(cBorder),
+                )
+            }
+
             // Top border accent
             Box(
                 modifier = Modifier
@@ -117,52 +166,68 @@ fun TutorialOverlay(
                 )
             }
 
-            Spacer(modifier = Modifier.height(6.dp))
+            Column(
+                modifier = Modifier
+                    .weight(1f, fill = true)
+                    .verticalScroll(rememberScrollState()),
+            ) {
+                Spacer(modifier = Modifier.height(6.dp))
 
-            // Title
-            Text(
-                text = step.title,
-                color = cTitle,
-                fontSize = 13.sp,
-                fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(horizontal = 12.dp),
-            )
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            // Instruction text
-            Text(
-                text = step.instruction,
-                color = cText,
-                fontSize = 11.sp,
-                fontFamily = FontFamily.Monospace,
-                lineHeight = 16.sp,
-                modifier = Modifier.padding(horizontal = 12.dp),
-            )
-
-            // Button hint
-            if (step.buttonHint != null) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(
+                // Title
+                Text(
+                    text = step.title,
+                    color = cTitle,
+                    fontSize = 13.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(horizontal = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
+                )
+
+                if (showBody) {
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    // Instruction text
                     Text(
-                        text = "> ${step.buttonHint}",
-                        color = cHint,
+                        text = step.instruction,
+                        color = cText,
                         fontSize = 11.sp,
                         fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold,
+                        lineHeight = 16.sp,
+                        modifier = Modifier.padding(horizontal = 12.dp),
                     )
-                    if (stepButtonMask != null) {
-                        TutorialButton("PRESS") { onPressHint() }
-                    }
-                }
-            }
 
-            Spacer(modifier = Modifier.height(8.dp))
+                    // Button hint
+                    if (step.buttonHint != null) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(
+                                text = "> ${step.buttonHint}",
+                                color = cHint,
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            if (stepButtonMask != null) {
+                                TutorialButton("PRESS") { onPressHint() }
+                            }
+                        }
+                    }
+                } else {
+                    Text(
+                        text = "Tap/drag handle for instructions",
+                        color = cDim,
+                        fontSize = 10.sp,
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+            }
         }
     }
 }
