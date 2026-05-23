@@ -96,6 +96,8 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     private val song get() = emulator.song
     private val instruments get() = emulator.instruments
     private val dirtyGuard = SongDirtyGuard(M8ProjectSnapshot.signature(song, instruments))
+    private val autosaveDebouncer = ProjectAutosaveDebouncer()
+    private var autosaveJob: Job? = null
     private val _isSongDirty = MutableStateFlow(false)
     val isSongDirty: StateFlow<Boolean> = _isSongDirty
     private val _projectSaveStatus = MutableStateFlow<String?>(null)
@@ -217,19 +219,31 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setTempo(bpm: Int) {
+        val beforeSignature = currentProjectSignature()
         emulator.song.tempo = bpm.coerceIn(30, 300)
+        noteMeaningfulProjectEdit(beforeSignature)
     }
 
     fun setTrackVolume(track: Int, vol: Int) {
-        if (track in 0..7) emulator.song.mixer.trackVolumes[track] = vol.coerceIn(0, 255)
+        if (track in 0..7) {
+            val beforeSignature = currentProjectSignature()
+            emulator.song.mixer.trackVolumes[track] = vol.coerceIn(0, 255)
+            noteMeaningfulProjectEdit(beforeSignature)
+        }
     }
 
     fun setTrackPan(track: Int, pan: Int) {
-        if (track in 0..7) emulator.song.mixer.trackPans[track] = pan.coerceIn(0, 255)
+        if (track in 0..7) {
+            val beforeSignature = currentProjectSignature()
+            emulator.song.mixer.trackPans[track] = pan.coerceIn(0, 255)
+            noteMeaningfulProjectEdit(beforeSignature)
+        }
     }
 
     fun setMasterVolume(vol: Int) {
+        val beforeSignature = currentProjectSignature()
         emulator.song.mixer.masterVolume = vol.coerceIn(0, 255)
+        noteMeaningfulProjectEdit(beforeSignature)
     }
 
     // Sequencer position
@@ -748,9 +762,36 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         _isSongDirty.value = dirtyGuard.isDirty(currentProjectSignature())
     }
 
+    private fun noteMeaningfulProjectEdit(beforeSignature: String? = null) {
+        val currentSignature = currentProjectSignature()
+        _isSongDirty.value = dirtyGuard.isDirty(currentSignature)
+        if (beforeSignature != null && beforeSignature == currentSignature) return
+        if (!_isSongDirty.value) {
+            cancelPendingAutosave()
+            return
+        }
+        autosaveDebouncer.markMeaningfulEdit(System.currentTimeMillis())
+        autosaveJob?.cancel()
+        autosaveJob = viewModelScope.launch {
+            val waitMs = autosaveDebouncer.remainingDelay(System.currentTimeMillis())
+            if (waitMs != Long.MAX_VALUE) delay(waitMs)
+            if (autosaveDebouncer.shouldAutosave(System.currentTimeMillis()) && dirtyGuard.isDirty(currentProjectSignature())) {
+                saveCurrentSong(statusPrefix = "AUTOSAVED")
+            }
+        }
+    }
+
+    private fun cancelPendingAutosave() {
+        autosaveDebouncer.cancelPending()
+        autosaveJob?.cancel()
+        autosaveJob = null
+    }
+
     fun shouldConfirmBeforeReplacingSong(): Boolean = dirtyGuard.shouldConfirmBeforeReplace(currentProjectSignature())
 
-    fun saveCurrentSong(): String {
+    fun saveCurrentSong(): String = saveCurrentSong(statusPrefix = "SAVED")
+
+    private fun saveCurrentSong(statusPrefix: String): String {
         val safeName = song.name.ifBlank { "NEW SONG" }
             .replace(Regex("[^A-Za-z0-9._-]+"), "_")
             .trim('_')
@@ -759,7 +800,8 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         target.writeBytes(M8ProjectSnapshot.encode(song, instruments))
         dirtyGuard.markClean(currentProjectSignature())
         _isSongDirty.value = false
-        val status = "SAVED ${target.name}"
+        cancelPendingAutosave()
+        val status = "$statusPrefix ${target.name}"
         _projectSaveStatus.value = status
         refreshSavedProjects()
         return status
@@ -800,6 +842,7 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     private fun markProjectClean() {
         dirtyGuard.markClean(currentProjectSignature())
         _isSongDirty.value = false
+        cancelPendingAutosave()
     }
 
     private fun dispatchKeys() {
@@ -821,8 +864,9 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         if (!keyInputPaused) {
+            val beforeSignature = currentProjectSignature()
             emulator.handleKeyState(keys)
-            refreshDirtyState()
+            noteMeaningfulProjectEdit(beforeSignature)
         }
     }
 
@@ -859,24 +903,27 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun handleDisplayLongPress(m8X: Int, m8Y: Int): Boolean {
+        val beforeSignature = currentProjectSignature()
         val changed = emulator.handleDisplayLongPress(m8X, m8Y)
-        if (changed) refreshDirtyState()
+        if (changed) noteMeaningfulProjectEdit(beforeSignature)
         return changed
     }
 
     fun enterHexDigit(digit: Int): Boolean {
+        val beforeSignature = currentProjectSignature()
         val changed = emulator.enterHexDigit(digit)
-        if (changed) refreshDirtyState()
+        if (changed) noteMeaningfulProjectEdit(beforeSignature)
         return changed
     }
 
     fun enterNoteFromPicker(semitone: Int): Boolean {
+        val beforeSignature = currentProjectSignature()
         val midi = emulator.enterNoteFromPickerWithResult(semitone)
         if (midi < 0) return false
         // Audition the written note immediately so the picker behaves like pressing a
         // key in EDIT mode on real M8 — note entry and audible feedback in one tap.
         previewNote(emulator.cursorX.coerceIn(0, 7), midi)
-        refreshDirtyState()
+        noteMeaningfulProjectEdit(beforeSignature)
         return true
     }
 
@@ -891,8 +938,10 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun adjustTempo(delta: Int) {
+        val beforeSignature = currentProjectSignature()
         song.tempo = (song.tempo + delta).coerceIn(40, 300)
         emulator.bpm = song.tempo
+        noteMeaningfulProjectEdit(beforeSignature)
     }
 
     /** Number of instrument slots the BrowseDialog's "load .m8i into slot" picker renders. */
@@ -905,9 +954,10 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
      */
     fun replaceInstrument(slot: Int, newInst: M8Instrument) {
         if (slot !in instruments.indices) return
+        val beforeSignature = currentProjectSignature()
         instruments[slot] = newInst
         runCatching { configureTrackInstrument(slot, newInst) }
-        refreshDirtyState()
+        noteMeaningfulProjectEdit(beforeSignature)
     }
 
     /**

@@ -85,6 +85,29 @@ class M8ProjectSnapshotTest {
     }
 
     @Test
+    fun autosaveDebouncesUntilMeaningfulEditsGoQuiet() {
+        val autosave = ProjectAutosaveDebouncer(delayMs = 2_000)
+
+        autosave.markMeaningfulEdit(nowMs = 100)
+        assertFalse(autosave.shouldAutosave(nowMs = 2_099))
+
+        autosave.markMeaningfulEdit(nowMs = 1_000)
+        assertFalse(autosave.shouldAutosave(nowMs = 2_999))
+        assertTrue(autosave.shouldAutosave(nowMs = 3_000))
+        assertFalse(autosave.shouldAutosave(nowMs = 3_001), "autosave should fire once per dirty burst")
+    }
+
+    @Test
+    fun autosaveCanBeCancelledAfterManualSaveOrProjectLoad() {
+        val autosave = ProjectAutosaveDebouncer(delayMs = 2_000)
+
+        autosave.markMeaningfulEdit(nowMs = 100)
+        autosave.cancelPending()
+
+        assertFalse(autosave.shouldAutosave(nowMs = 5_000))
+    }
+
+    @Test
     fun projectLibraryListsOnlyM8DroidProjectsNewestFirst() {
         val dir = createTempDir(prefix = "m8-projects-")
         try {
