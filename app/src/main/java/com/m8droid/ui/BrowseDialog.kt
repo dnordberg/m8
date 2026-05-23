@@ -71,9 +71,12 @@ fun BrowseDialog(
     val sdSelected by viewModel.sdSelected.collectAsState()
     val loadStatus by viewModel.loadStatus.collectAsState()
     val previewStatus by viewModel.previewStatus.collectAsState()
-    val viewingSd = sourceIndex == viewModel.sdTabIndex
-    val viewingProjects = sourceIndex == viewModel.projectTabIndex
-    var viewingRecent by remember { mutableStateOf(true) }
+    var fileTab by remember { mutableStateOf(FileHubTabs.defaultLabel) }
+    val viewingRecent = fileTab == "RECENT"
+    val viewingOpenDevice = fileTab == "OPEN DEVICE"
+    val viewingDownload = fileTab == "DOWNLOAD"
+    val viewingSd = viewingOpenDevice
+    val viewingProjects = false
     val downloadedStates = remember(items, sdEntries) { DownloadStore.markDownloaded(items, sdEntries) }
     val downloadedByKey = remember(downloadedStates) { downloadedStates.associateBy { remoteKey(it.item) } }
     val selectedDownloaded = selected?.let { downloadedByKey[remoteKey(it)]?.entry }
@@ -122,62 +125,44 @@ fun BrowseDialog(
 
                 Spacer(Modifier.height(8.dp))
 
-                FileActionBar(
+                NewSongBanner(
                     status = fileActionStatus ?: saveStatus,
-                    onNewSong = {
-                        requestSongLoad { fileActionStatus = onNewSong() }
-                    },
-                    onOpenDeviceSong = { requestSongLoad { onOpenDeviceSong() } },
+                    onClick = { requestSongLoad { fileActionStatus = onNewSong() } },
                 )
 
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(8.dp))
 
-                Text(
-                    text = if (viewingRecent) "RECENT" else "DOWNLOAD / LIBRARY",
-                    color = M8_DIM,
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace,
-                )
-                Spacer(Modifier.height(4.dp))
-
-                // File hub tabs: Recent first by default, then remote download sources and local libraries.
+                // Three primary File modes matching the phone mockups: Recent, Open Device, Download.
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, M8_DIM.copy(alpha = 0.6f), RoundedCornerShape(6.dp))
+                        .padding(4.dp),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    val tabs = FileHubTabs.labels(sources.map { it.displayName })
-                    tabs.forEachIndexed { i, label ->
-                        val browseIndex = i - 1
-                        val active = if (i == 0) viewingRecent else !viewingRecent && browseIndex == sourceIndex
+                    FileHubTabs.topTabLabels.forEach { label ->
+                        val active = fileTab == label
                         Box(
                             modifier = Modifier
                                 .weight(1f)
-                                .border(
-                                    1.dp,
-                                    if (active) M8_GREEN else M8_DIM,
-                                    RoundedCornerShape(4.dp),
-                                )
                                 .background(
-                                    if (active) M8_GREEN.copy(alpha = 0.15f) else Color.Transparent,
-                                    RoundedCornerShape(4.dp),
+                                    if (active) M8_GREEN else Color.Transparent,
+                                    RoundedCornerShape(5.dp),
                                 )
                                 .clickable {
-                                    if (i == 0) {
-                                        viewingRecent = true
-                                    } else {
-                                        viewingRecent = false
-                                        if (browseIndex == viewModel.projectTabIndex) onRefreshProjects()
-                                        viewModel.selectSource(browseIndex)
+                                    fileTab = label
+                                    when (label) {
+                                        "OPEN DEVICE" -> requestSongLoad { onOpenDeviceSong() }
+                                        "DOWNLOAD" -> if (items.isEmpty() && !loading) viewModel.refresh()
                                     }
                                 }
-                                .padding(vertical = 5.dp),
+                                .padding(vertical = 9.dp),
                             contentAlignment = Alignment.Center,
                         ) {
                             Text(
                                 text = label,
-                                color = if (active) M8_GREEN else M8_DIM,
-                                fontSize = 10.sp,
+                                color = if (active) M8_BG else M8_DIM,
+                                fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace,
                             )
@@ -185,7 +170,51 @@ fun BrowseDialog(
                     }
                 }
 
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(10.dp))
+
+                if (viewingDownload) {
+                    Text(
+                        text = "DOWNLOAD SOURCES",
+                        color = M8_DIM,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                        letterSpacing = 2.sp,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        FileHubTabs.downloadSourceLabels(sources.map { it.displayName }).forEachIndexed { i, label ->
+                            val active = i == sourceIndex
+                            Box(
+                                modifier = Modifier
+                                    .border(
+                                        1.dp,
+                                        if (active) M8_GREEN else M8_DIM.copy(alpha = 0.6f),
+                                        RoundedCornerShape(5.dp),
+                                    )
+                                    .background(
+                                        if (active) M8_GREEN.copy(alpha = 0.12f) else Color.Transparent,
+                                        RoundedCornerShape(5.dp),
+                                    )
+                                    .clickable { viewModel.selectSource(i) }
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = label,
+                                    color = if (active) M8_GREEN else M8_DIM,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace,
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(10.dp))
+                }
 
                 // Body: list (left) + detail (right) in a Row, stacked on narrow screens
                 Row(modifier = Modifier.fillMaxWidth().weight(1f)) {
@@ -358,27 +387,25 @@ fun BrowseDialog(
 }
 
 @Composable
-private fun FileActionBar(
+private fun NewSongBanner(
     status: String?,
-    onNewSong: () -> Unit,
-    onOpenDeviceSong: () -> Unit,
+    onClick: () -> Unit,
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(1.dp, M8_DIM.copy(alpha = 0.6f), RoundedCornerShape(6.dp))
-            .padding(8.dp),
-    ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            CompactButton(FileHubTabs.newActionLabel, onNewSong)
-            CompactButton(FileHubTabs.openActionLabel, onOpenDeviceSong)
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, Color(0xFFFFB38A).copy(alpha = 0.6f), RoundedCornerShape(6.dp))
+                .clickable { onClick() }
+                .padding(vertical = 12.dp),
+            contentAlignment = Alignment.Center,
+        ) {
             Text(
-                text = "New clears current song; Open uses device picker",
-                color = M8_DIM,
-                fontSize = 9.sp,
+                text = FileHubTabs.newSongBannerLabel,
+                color = Color(0xFFFFB38A),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
                 fontFamily = FontFamily.Monospace,
-                modifier = Modifier.weight(1f),
-                maxLines = 1,
             )
         }
         if (!status.isNullOrBlank() && !status.equals("CURRENT FRESH SONG", ignoreCase = true)) {
