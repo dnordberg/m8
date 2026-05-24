@@ -357,6 +357,67 @@ class M8sParserTest {
         assertEquals("---", defaults[127].name)
     }
 
+    @Test
+    fun `instrument pool parser reads envelope and lfo modulation blocks`() {
+        val bytes = v4SongWithFxBlock()
+        val off = 0x13A3E
+        bytes[off + 0] = 0x00 // WAVSYNTH
+        "MODDED".toByteArray(Charsets.US_ASCII).copyInto(bytes, off + 1)
+        bytes[off + 13] = 0x01
+        bytes[off + 18] = 0x04 // SAW
+        bytes[off + 23] = 0x01 // LP filter
+        bytes[off + 24] = 0x40 // cutoff
+        bytes[off + 25] = 0x20 // resonance
+        bytes[off + 26] = 0x90.toByte() // amp
+        val mod = off + 33
+        // env1: type, attack, hold, decay, sustain, release, dest, amount
+        bytes[mod + 0] = 0x00
+        bytes[mod + 1] = 0x02
+        bytes[mod + 2] = 0x03
+        bytes[mod + 3] = 0x44
+        bytes[mod + 4] = 0xC0.toByte()
+        bytes[mod + 5] = 0x55
+        bytes[mod + 6] = ModDestination.AMP.toByte()
+        bytes[mod + 7] = 0xE0.toByte()
+        // env2
+        bytes[mod + 8] = 0x01
+        bytes[mod + 9] = 0x00
+        bytes[mod + 10] = 0x00
+        bytes[mod + 11] = 0x30
+        bytes[mod + 12] = 0x00
+        bytes[mod + 13] = 0x10
+        bytes[mod + 14] = ModDestination.CUTOFF.toByte()
+        bytes[mod + 15] = 0xF0.toByte()
+        // lfo1: shape, speed, amount, dest, retrigger
+        bytes[mod + 16] = 0x01
+        bytes[mod + 17] = 0x7F
+        bytes[mod + 18] = 0xE8.toByte()
+        bytes[mod + 19] = ModDestination.PITCH.toByte()
+        bytes[mod + 20] = 0x01
+        // lfo2
+        bytes[mod + 21] = 0x04
+        bytes[mod + 22] = 0x20
+        bytes[mod + 23] = 0xA0.toByte()
+        bytes[mod + 24] = ModDestination.PAN.toByte()
+        bytes[mod + 25] = 0x00
+
+        val parsed = M8sParser.parse(bytes)
+        val inst = parsed.instruments[0]
+
+        assertEquals("MODDED", inst.name)
+        assertEquals(0x02, inst.modulation.env1.attack)
+        assertEquals(ModDestination.AMP, inst.modulation.env1.dest)
+        assertEquals(0xE0, inst.modulation.env1.amount)
+        assertEquals(ModDestination.CUTOFF, inst.modulation.env2.dest)
+        assertEquals(0xF0, inst.modulation.env2.amount)
+        assertEquals(LfoShape.SINE, inst.modulation.lfo1.shape)
+        assertEquals(0x7F, inst.modulation.lfo1.speed)
+        assertEquals(ModDestination.PITCH, inst.modulation.lfo1.dest)
+        assertEquals(LfoShape.SQUARE, inst.modulation.lfo2.shape)
+        assertEquals(ModDestination.PAN, inst.modulation.lfo2.dest)
+        assertTrue(!inst.modulation.lfo2.retrigger)
+    }
+
     private fun parseFixture(path: String): M8sParser.ParsedSong {
         val bytes = javaClass.classLoader!!.getResourceAsStream(path)!!
             .use { it.readBytes() }

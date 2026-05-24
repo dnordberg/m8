@@ -81,6 +81,14 @@ enum class LfoShape(val label: String) {
     }
 }
 
+object ModDestination {
+    const val OFF = 0
+    const val CUTOFF = 1
+    const val PITCH = 2
+    const val AMP = 3
+    const val PAN = 4
+}
+
 /** FM Synth algorithm (operator routing) - M8 has 12 */
 enum class FmAlgorithm(val label: String) {
     ALG_A("A>B>C>D"),
@@ -392,7 +400,7 @@ class M8Instrument(
                 filter = FilterParams(FilterType.LP, 0x58, 0x48)
                 amp = AmpParams(0x90, LimiterType.CLIP, 0x80, 0xC0, 0x00, 0x00, 0x00)
                 modulation.env1 = Envelope(attack = 0x01, decay = 0x26, sustain = 0x99, release = 0x26)
-                modulation.env2 = Envelope(attack = 0x00, decay = 0x33, amount = 0xA0, dest = 1) // Filter env
+                modulation.env2 = Envelope(attack = 0x00, decay = 0x33, amount = 0xA0, dest = ModDestination.CUTOFF) // Filter env
             },
             // 2: Pad - Triangle
             M8Instrument("PAD", InstrumentType.WAVSYNTH).apply {
@@ -427,7 +435,8 @@ class M8Instrument(
                 filter = FilterParams(FilterType.LP, 0x8C, 0x38)
                 amp = AmpParams(0x80, LimiterType.CLIP, 0x80, 0xC0, 0x00, 0x30, 0x00)
                 modulation.env1 = Envelope(attack = 0x00, decay = 0x33, sustain = 0x1A, release = 0x26)
-                modulation.env2 = Envelope(attack = 0x00, decay = 0x26, amount = 0xB0, dest = 1) // Filter
+                modulation.env2 = Envelope(attack = 0x00, decay = 0x26, amount = 0xB0, dest = ModDestination.CUTOFF) // Filter
+                modulation.lfo1 = Lfo(LfoShape.SINE, 0x42, 0x90, dest = ModDestination.PITCH)
             },
             // 6: Sub
             M8Instrument("SUB", InstrumentType.WAVSYNTH).apply {

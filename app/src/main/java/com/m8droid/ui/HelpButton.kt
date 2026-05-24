@@ -50,6 +50,7 @@ fun HelpMenu(
     Box(
         modifier = modifier
             .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.safeDrawing)
             .background(Color(0xCC000000))
             .clickable { onDismiss() },
         contentAlignment = Alignment.Center,

@@ -30,6 +30,7 @@ fun AppHeaderBar(
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
             .height(44.dp)
             .background(AppTheme.BgPanel)
             .padding(horizontal = AppTheme.SpaceLg),

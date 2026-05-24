@@ -29,7 +29,7 @@ data class ChapterInfo(
 
 val chapters = listOf(
     ChapterInfo(0, "DRUMS", "Beats, phrases, chains, and table motion", 11, 0, "🥁"),
-    ChapterInfo(1, "SYNTHS", "Bass patches, filters, envelopes, and playback", 7, 0, "🎹"),
+    ChapterInfo(1, "SYNTHS", "Bass patches, filters, envelopes, LFOs, and playback", 8, 0, "🎹"),
     ChapterInfo(2, "SAMPLING", "Load, trigger, loop, and manage samples", 5, 0, "🎤"),
     ChapterInfo(3, "FX", "Slides, retrigs, tables, and per-step motion", 6, 0, "⚡"),
     ChapterInfo(4, "SONG STRUCTURE", "Build songs with chains and arrangements", 4, 0, "🏗"),

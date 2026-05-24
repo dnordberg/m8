@@ -120,12 +120,19 @@ class M8Synth {
         var samplePos = 0.0
         var sampleInitialized = false
 
+        // Instrument modulation
+        var lfo1Phase = 0.0
+        var lfo2Phase = 0.0
+
         fun trigger(f: Double, v: Double) {
             freq = f; vol = v
             samplePos = 0.0
             sampleInitialized = false
             envStage = 1; envTime = 0.0; envLevel = 0.0
             fenvLevel = 1.0; fenvTime = 0.0
+            val mod = trackModulations[track]
+            if (mod.lfo1.retrigger) lfo1Phase = 0.0
+            if (mod.lfo2.retrigger) lfo2Phase = 0.0
             noteOn = true; active = true
             // Clear SVF so a stale filter tail doesn't bleed into the new note
             svfLo = 0.0; svfBd = 0.0
@@ -169,8 +176,9 @@ class M8Synth {
             fenvTime += dt
             fenvLevel = exp(-fenvTime * 6.0).coerceIn(0.0, 1.0)
 
-            // Freq with FX modulation
-            val f = fxEngine?.getFreqModifier(track, freq, sampleIdx) ?: freq
+            // Freq with FX + instrument modulation. Debug helpers are intentionally
+            // non-mutating; runtime FX state advances only through this render path.
+            val f = runtimeModulatedFrequency(track, sampleIdx)
             val phInc = f / SR
 
             // --- Oscillator (PolyBLEP where needed) ---
@@ -213,7 +221,7 @@ class M8Synth {
             if (phase >= 1.0) phase -= floor(phase)
 
             // --- 2-pole SVF (Chamberlin, stability-clamped) ---
-            val cutNorm = pr.cutoff + pr.filtEnv * fenvLevel
+            val cutNorm = debugModulatedCutoff(track, -1)
             val cutHz = 20.0 * 2.0.pow(cutNorm.coerceIn(0.0, 1.0) * 10.0)
             val q = max(0.5, 1.0 - pr.reso * 0.95)
             val svfF = min(2.0 * sin(PI * (cutHz / SR).coerceIn(0.0, 0.48)), 2.0 * q - 0.01)
@@ -226,7 +234,9 @@ class M8Synth {
             if (!svfBd.isFinite()) svfBd = 0.0
             if (!svfLo.isFinite()) svfLo = 0.0
 
-            return svfLo * envLevel * vol
+            val out = svfLo * envLevel * vol * debugModulatedAmp(track, -1)
+            advanceVoiceLfos(track)
+            return out
         }
     }
 
@@ -237,6 +247,7 @@ class M8Synth {
     private val trackSamplers = Array(8) { SamplerParams() }
     private val trackMacroSynths = Array(8) { MacroSynthParams() }
     private val trackHyperSynths = Array(8) { HyperSynthParams() }
+    private val trackModulations = Array(8) { ModulationParams() }
     private val runtimeTrackAmp = IntArray(8) { -1 }
     private val runtimeTrackPan = IntArray(8) { -1 }
     private val runtimeTrackDelaySend = IntArray(8) { -1 }
@@ -270,6 +281,12 @@ class M8Synth {
         trackSamplers[track] = inst.sampler.copy()
         trackMacroSynths[track] = inst.macroSynth.copy()
         trackHyperSynths[track] = inst.hyperSynth.copy()
+        trackModulations[track] = inst.modulation.copy(
+            env1 = inst.modulation.env1.copy(),
+            env2 = inst.modulation.env2.copy(),
+            lfo1 = inst.modulation.lfo1.copy(),
+            lfo2 = inst.modulation.lfo2.copy(),
+        )
     }
 
     fun applyInstrument(trackIndex: Int, instrument: M8Instrument) = configureVoice(trackIndex, instrument)
@@ -304,6 +321,78 @@ class M8Synth {
     fun getVoiceFreq(track: Int): Double = if (track in 0..7) voices[track].freq else 0.0
     fun getSamplePosition(track: Int): Double = if (track in 0..7) voices[track].samplePos else 0.0
     fun isVoiceActive(track: Int): Boolean = track in 0..7 && voices[track].active
+
+    fun debugModulatedFrequency(track: Int, sampleIdx: Int): Double {
+        if (track !in 0..7) return 0.0
+        val voice = voices[track]
+        return applyPitchModulation(track, voice.freq)
+    }
+
+    private fun runtimeModulatedFrequency(track: Int, sampleIdx: Int): Double {
+        val voice = voices[track]
+        val fxFreq = fxEngine?.getFreqModifier(track, voice.freq, sampleIdx) ?: voice.freq
+        return applyPitchModulation(track, fxFreq)
+    }
+
+    private fun applyPitchModulation(track: Int, baseFreq: Double): Double {
+        val semitones = modulationSum(track, ModDestination.PITCH) * 2.0
+        return baseFreq * 2.0.pow(semitones / 12.0)
+    }
+
+    fun debugModulatedCutoff(track: Int, sampleIdx: Int): Double {
+        if (track !in 0..7) return 0.0
+        val voice = voices[track]
+        val pr = voicePresets[track]
+        val routedCutoffEnv = trackModulations[track].env2.dest == ModDestination.CUTOFF
+        val legacyFilterEnvelope = if (routedCutoffEnv) 0.0 else pr.filtEnv * voice.fenvLevel
+        return (pr.cutoff + legacyFilterEnvelope + modulationSum(track, ModDestination.CUTOFF)).coerceIn(0.0, 1.0)
+    }
+
+    fun debugModulatedAmp(track: Int, sampleIdx: Int): Double {
+        if (track !in 0..7) return 1.0
+        return (1.0 + modulationSum(track, ModDestination.AMP) * 0.75).coerceIn(0.0, 2.0)
+    }
+
+    private fun modulationSum(track: Int, destination: Int): Double {
+        val mod = trackModulations[track]
+        val voice = voices[track]
+        var value = 0.0
+        value += envContribution(mod.env2, destination, voice.fenvLevel)
+        value += lfoContribution(mod.lfo1, destination, voice.lfo1Phase)
+        value += lfoContribution(mod.lfo2, destination, voice.lfo2Phase)
+        return value
+    }
+
+    private fun advanceVoiceLfos(track: Int) {
+        val mod = trackModulations[track]
+        val voice = voices[track]
+        voice.lfo1Phase = advanceLfoPhase(voice.lfo1Phase, mod.lfo1)
+        voice.lfo2Phase = advanceLfoPhase(voice.lfo2Phase, mod.lfo2)
+    }
+
+    private fun envContribution(env: Envelope, destination: Int, level: Double): Double =
+        if (env.dest == destination) modAmount(env.amount) * level else 0.0
+
+    private fun lfoContribution(lfo: Lfo, destination: Int, phase: Double): Double =
+        if (lfo.dest == destination) modAmount(lfo.amount) * lfoValue(lfo.shape, phase) else 0.0
+
+    private fun modAmount(amount: Int): Double = ((amount.coerceIn(0, 0xFF) - 0x80) / 127.0).coerceIn(-1.0, 1.0)
+
+    private fun advanceLfoPhase(phase: Double, lfo: Lfo): Double {
+        val hz = 0.05 + (lfo.speed.coerceIn(0, 0xFF) / 255.0) * 16.0
+        val next = phase + hz / SR
+        return next - floor(next)
+    }
+
+    private fun lfoValue(shape: LfoShape, phase: Double): Double = when (shape) {
+        LfoShape.TRIANGLE -> 1.0 - 4.0 * abs(phase - 0.5)
+        LfoShape.SINE -> sin(phase * TWO_PI)
+        LfoShape.RAMP_DOWN -> 1.0 - 2.0 * phase
+        LfoShape.RAMP_UP -> 2.0 * phase - 1.0
+        LfoShape.SQUARE -> if (phase < 0.5) 1.0 else -1.0
+        LfoShape.RANDOM -> sin(floor(phase * 64.0) * 12.9898) % 1.0
+        LfoShape.DRUNK -> sin(phase * TWO_PI) * 0.6 + sin(phase * TWO_PI * 0.37) * 0.4
+    }.coerceIn(-1.0, 1.0)
 
     fun releaseTrack(track: Int) {
         if (track !in 0..7) return

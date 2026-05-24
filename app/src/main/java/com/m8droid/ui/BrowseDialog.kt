@@ -105,7 +105,7 @@ fun BrowseDialog(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .systemBarsPadding()
+                .windowInsetsPadding(WindowInsets.safeDrawing)
                 .padding(FileHubLayout.edgePaddingDp.dp),
             contentAlignment = Alignment.TopCenter,
         ) {

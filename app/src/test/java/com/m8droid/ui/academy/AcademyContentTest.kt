@@ -43,11 +43,12 @@ class AcademyContentTest {
         val synthQuests = getChapterQuests(1)
         val titles = synthQuests.map { it.title }
 
-        assertEquals(7, synthQuests.size)
+        assertEquals(8, synthQuests.size)
         assertTrue(synthQuests.all { it.id.startsWith("ch2_") })
         assertTrue(titles.contains("Bass Patch"))
         assertTrue(titles.contains("Shape the Filter"))
         assertTrue(titles.contains("Envelope Feel"))
+        assertTrue(titles.contains("Modulation Motion"))
         assertTrue(titles.indexOf("Bass Patch") > titles.indexOf("Ready to Shape"))
         assertEquals(0, findNextQuest(1, drumsComplete))
     }
@@ -93,5 +94,15 @@ class AcademyContentTest {
         assertTrue(titles.contains("Retrig Fills"))
         assertTrue(fxQuests.any { it.briefing.contains("PSL") && it.briefing.contains("PBN") })
         assertTrue(fxQuests.any { it.briefing.contains("RET") })
+    }
+
+    @Test
+    fun `synth chapter introduces modulation motion`() {
+        val synthQuests = getChapterQuests(1)
+        val titles = synthQuests.map { it.title }
+
+        assertEquals(8, synthQuests.size)
+        assertTrue(titles.contains("Modulation Motion"))
+        assertTrue(synthQuests.any { it.briefing.contains("ENV") && it.briefing.contains("LFO") })
     }
 }

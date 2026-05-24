@@ -152,6 +152,13 @@ val chapter2Quests = listOf(
         xpReward = 125,
         hintText = "INSTRUMENT + EDIT + PLAY. Small changes are easiest to hear while the loop runs.",
     ),
+    Quest(
+        id = "ch2_q8", chapter = 2, title = "Modulation Motion",
+        briefing = "ENV and LFO modulation make instruments breathe without extra phrase rows. ENV can open cutoff for a pluck; LFO can move pitch or amp while the note sustains.",
+        conditions = listOf(QuestCondition.OnScreen(M8Emulator.SCREEN_INSTRUMENT), QuestCondition.EditModeActive(true), QuestCondition.IsPlaying(true)),
+        xpReward = 125,
+        hintText = "Stay on INSTRUMENT with playback running. Listen for filter envelope movement and LFO wobble in the demo patches.",
+    ),
 )
 
 val chapter3Quests = listOf(

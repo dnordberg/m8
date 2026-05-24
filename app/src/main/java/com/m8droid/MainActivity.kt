@@ -221,7 +221,7 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color.Black)
-                .systemBarsPadding(),
+                .navigationBarsPadding(),
         ) {
             when (appMode) {
                 AppMode.ACADEMY -> {
@@ -280,7 +280,11 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
                     val trackerQuickStatus = remember(displayTick) { viewModel.trackerEditStatus }
                     Column(modifier = Modifier.fillMaxSize()) {
                         AppHeaderBar(
-                            subtitle = if (academyState == AcademyState.QUEST_ACTIVE) "QUEST" else "CLASSIC",
+                            subtitle = if (academyState == AcademyState.QUEST_ACTIVE) {
+                                "QUEST"
+                            } else {
+                                com.m8droid.emulator.M8Emulator.SCREEN_NAMES.getOrNull(viewModel.currentScreen) ?: "PROJECT"
+                            },
                             onLoad = { showLoadDialog = true },
                             onSave = { viewModel.saveCurrentSong() },
                             dirty = isSongDirty,

@@ -60,6 +60,18 @@ class M8DemoSongTest {
     }
 
     @Test
+    fun `startup demo instruments include envelope and lfo modulation`() {
+        val defaults = M8Instrument.createDefaults()
+        val bass = defaults[1]
+        val pluck = defaults[5]
+
+        assertEquals(ModDestination.CUTOFF, bass.modulation.env2.dest)
+        assertTrue(bass.modulation.env2.amount > 0x80)
+        assertEquals(ModDestination.PITCH, pluck.modulation.lfo1.dest)
+        assertTrue(pluck.modulation.lfo1.amount > 0x80)
+    }
+
+    @Test
     fun `old demo remains available under explicit old demo loader`() {
         val oldDemo = M8Song().apply { loadOldDemoSong() }
         val startupDemo = M8Song().apply { loadDemoSong() }

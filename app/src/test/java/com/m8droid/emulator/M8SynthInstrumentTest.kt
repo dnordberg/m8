@@ -241,6 +241,74 @@ class M8SynthInstrumentTest {
         assertTrue(leftPeak > rightPeak * 3, "expected runtime pan override to make output left-heavy, L=$leftPeak R=$rightPeak")
     }
 
+    @Test
+    fun `envelope modulation opens filter cutoff after note trigger`() {
+        val synth = M8Synth()
+        synth.applyInstrument(
+            0,
+            stableInstrument("ENV CUTOFF", InstrumentType.WAVSYNTH).apply {
+                wavSynth.shape = WavShape.SAW
+                filter.cutoff = 0x20
+                modulation.env2 = Envelope(attack = 0x00, decay = 0x40, sustain = 0x00, release = 0x10, dest = ModDestination.CUTOFF, amount = 0xF0)
+            },
+        )
+        val row = Array(8) { IntArray(3) }
+        row[0][0] = 60
+        row[0][2] = 255
+
+        synth.triggerRow(row)
+        val opened = synth.debugModulatedCutoff(0, 0)
+        synth.generateChunk()
+        val decayed = synth.debugModulatedCutoff(0, 0)
+
+        assertTrue(opened > 0.6, "envelope should push cutoff open at trigger, cutoff=$opened")
+        assertTrue(decayed < opened, "envelope modulation should decay over time, opened=$opened decayed=$decayed")
+    }
+
+    @Test
+    fun `lfo modulation moves pitch across chunks`() {
+        val synth = M8Synth()
+        synth.applyInstrument(
+            0,
+            stableInstrument("LFO PITCH", InstrumentType.WAVSYNTH).apply {
+                modulation.lfo1 = Lfo(LfoShape.SINE, speed = 0xFF, amount = 0xF0, dest = ModDestination.PITCH)
+            },
+        )
+        val row = Array(8) { IntArray(3) }
+        row[0][0] = 60
+        row[0][2] = 255
+
+        synth.triggerRow(row)
+        val first = synth.debugModulatedFrequency(0, 0)
+        repeat(4) { synth.generateChunk() }
+        val later = synth.debugModulatedFrequency(0, 0)
+
+        assertNotEquals(first, later)
+        assertTrue(later > first, "fast sine LFO should bend pitch upward after several chunks, first=$first later=$later")
+    }
+
+    @Test
+    fun `amp modulation changes generated level over time`() {
+        val synth = M8Synth()
+        synth.applyInstrument(
+            0,
+            stableInstrument("AMP LFO", InstrumentType.WAVSYNTH).apply {
+                wavSynth.shape = WavShape.SINE
+                modulation.lfo1 = Lfo(LfoShape.SINE, speed = 0xFF, amount = 0xF0, dest = ModDestination.AMP)
+            },
+        )
+        val row = Array(8) { IntArray(3) }
+        row[0][0] = 60
+        row[0][2] = 255
+
+        synth.triggerRow(row)
+        val first = peakChannel(synth.generateChunk(), 0)
+        repeat(4) { synth.generateChunk() }
+        val later = peakChannel(synth.generateChunk(), 0)
+
+        assertNotEquals(first, later)
+    }
+
     private fun samplerInstrument() = M8Instrument("SAMPLE", InstrumentType.SAMPLER).apply {
         amp.amp = 0xFF
         amp.pan = 0x80
