@@ -20,7 +20,7 @@ Release candidate criteria:
 - [ ] Verify Academy fresh-song flow end-to-end on device: start Academy, complete Basics → Synths → Sampling quests, no blank chapter/fallthrough.
 - [ ] Verify core tracker workflow on device: SONG → CHAIN → PHRASE → TABLE editing, preview row, playback, runtime FX audibly affect output.
 - [ ] Verify file/project safety on device: new/open/save/autosave/duplicate/rename/delete/share, with dirty-confirm behavior and no accidental data loss.
-- [ ] Verify external import path: shared/opened `.m8droid` project can be imported or clearly rejected with a useful message.
+- [x] Verify external import path: shared/opened `.m8droid` project can be imported or clearly rejected with a useful message.
 - [ ] Fix only crash/data-loss/usability blockers found during smoke testing.
 - [ ] Cut a stable git tag and APK artifact once smoke passes.
 
@@ -39,7 +39,7 @@ Principles:
 Post-stable roadmap:
 
 1. Reliability hardening
-   - [ ] Add project import from shared/opened `.m8droid` files.
+   - [x] Add project import from shared/opened `.m8droid` files.
    - [ ] Add crash-safe save writes: temp file + checksum + atomic replace where possible.
    - [ ] Add startup recovery UI when autosave/manual save conflict or last project fails to load.
    - [ ] Add missing sample/project warnings instead of silent failure.
@@ -64,7 +64,7 @@ Post-stable roadmap:
    - [ ] Keep golden-ish audio tests for every sound engine change.
 
 5. Android-native sharing and backup
-   - [ ] Project import/export round-trip via Android share sheet.
+   - [x] Project import/export round-trip via Android share sheet.
    - [ ] Backup/export all projects as a zip.
    - [ ] Optional SD-card/Drive-friendly sync folder once local reliability is proven.
    - [ ] Export audio loop/WAV after project reliability is stable.

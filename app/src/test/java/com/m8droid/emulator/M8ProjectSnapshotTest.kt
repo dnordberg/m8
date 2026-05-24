@@ -247,6 +247,47 @@ class M8ProjectSnapshotTest {
         }
     }
 
+    @Test
+    fun projectLibraryImportsExternalProjectBytesIntoManagedDirectory() {
+        val dir = createTempDir(prefix = "m8-projects-")
+        val outside = createTempDir(prefix = "m8-projects-outside-")
+        try {
+            val externalProject = writeProject(outside, "shared idea.m8droid", "SHARED IDEA", tempo = 147)
+
+            val imported = M8ProjectLibrary.importProject(dir, externalProject.readBytes(), externalProject.name)
+
+            assertEquals("shared_idea.m8droid", imported.name)
+            assertEquals(dir.canonicalFile.path, imported.parentFile!!.canonicalFile.path)
+            assertTrue(imported.exists())
+            assertTrue(externalProject.exists(), "import must copy, not move, shared files")
+            val restored = M8ProjectLibrary.load(imported)
+            assertEquals("SHARED IDEA", restored.song.name)
+            assertEquals(147, restored.song.tempo)
+        } finally {
+            dir.deleteRecursively()
+            outside.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun projectLibraryImportsWithUniqueNamesAndRejectsInvalidProjectBytes() {
+        val dir = createTempDir(prefix = "m8-projects-")
+        try {
+            val first = writeProject(dir, "Shared_Idea.m8droid", "ORIGINAL", tempo = 120)
+            val incoming = M8ProjectSnapshot.encode(M8Song().apply { name = "IMPORTED" }, M8Instrument.createDefaults())
+
+            val imported = M8ProjectLibrary.importProject(dir, incoming, first.name)
+
+            assertEquals("Shared_Idea_2.m8droid", imported.name)
+            assertEquals("IMPORTED", M8ProjectLibrary.load(imported).song.name)
+            assertThrows(IllegalArgumentException::class.java) {
+                M8ProjectLibrary.importProject(dir, "not a project".toByteArray(), "bad.m8droid")
+            }
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
     private fun writeProject(
         dir: File,
         name: String,

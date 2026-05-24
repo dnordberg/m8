@@ -941,9 +941,44 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         val bytes = resolver.openInputStream(uri)?.use { it.readBytes() }
             ?: error("Could not open selected song")
         val title = displayNameFor(uri) ?: uri.lastPathSegment ?: "selected.m8s"
+        if (title.endsWith(".m8droid", ignoreCase = true) || looksLikeM8DroidProject(bytes)) {
+            val imported = importProjectBytes(bytes, title)
+            loadSavedProject(imported.absolutePath)
+            val status = "IMPORTED ${imported.name}"
+            _projectSaveStatus.value = status
+            return status
+        }
         val parsed = M8sParser.parse(bytes)
         replaceSong(parsed, recentLocation = uri.toString(), recentTitle = parsed.header.name.ifBlank { title })
         return "LOADED '${parsed.header.name.ifBlank { title }}'"
+    }
+
+    fun importProjectFromUri(uri: Uri, loadAfterImport: Boolean = true): String {
+        val resolver = getApplication<Application>().contentResolver
+        val bytes = resolver.openInputStream(uri)?.use { it.readBytes() }
+            ?: error("Could not open selected project")
+        val title = displayNameFor(uri) ?: uri.lastPathSegment ?: "shared_project.m8droid"
+        val imported = importProjectBytes(bytes, title)
+        return if (loadAfterImport) {
+            loadSavedProject(imported.absolutePath)
+            val status = "IMPORTED ${imported.name}"
+            _projectSaveStatus.value = status
+            status
+        } else {
+            val status = "IMPORTED ${imported.name} — OPEN FROM PROJECTS"
+            _projectSaveStatus.value = status
+            status
+        }
+    }
+
+    private fun importProjectBytes(bytes: ByteArray, title: String): File {
+        val imported = M8ProjectLibrary.importProject(projectDir, bytes, title)
+        refreshSavedProjects()
+        return imported
+    }
+
+    private fun looksLikeM8DroidProject(bytes: ByteArray): Boolean {
+        return runCatching { M8ProjectSnapshot.decode(bytes) }.isSuccess
     }
 
     private fun restoreLastLoadedOnStartup() {

@@ -1,6 +1,7 @@
 package com.m8droid
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
 import android.view.HapticFeedbackConstants
@@ -57,6 +58,32 @@ class MainActivity : ComponentActivity() {
                     onShareProject = { path -> shareSavedProject(path) },
                 )
             }
+        }
+        window.decorView.post { handleInboundProjectIntent(intent) }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleInboundProjectIntent(intent)
+    }
+
+    private fun handleInboundProjectIntent(intent: Intent?) {
+        val uri = inboundProjectUri(intent) ?: return
+        val shouldLoad = !viewModel.shouldConfirmBeforeReplacingSong()
+        runCatching { viewModel.importProjectFromUri(uri, loadAfterImport = shouldLoad) }
+            .onSuccess { Toast.makeText(this, it, Toast.LENGTH_SHORT).show() }
+            .onFailure { error ->
+                Toast.makeText(this, "ERROR: ${error.message ?: "project import failed"}", Toast.LENGTH_SHORT).show()
+            }
+    }
+
+    private fun inboundProjectUri(intent: Intent?): Uri? {
+        if (intent == null) return null
+        return when (intent.action) {
+            Intent.ACTION_VIEW -> intent.data
+            Intent.ACTION_SEND -> intent.getParcelableExtra(Intent.EXTRA_STREAM)
+            else -> null
         }
     }
 

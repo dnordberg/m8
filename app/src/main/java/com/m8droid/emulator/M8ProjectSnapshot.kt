@@ -379,6 +379,17 @@ object M8ProjectLibrary {
         return requireManagedProjectFile(projectDir, File(path))
     }
 
+    fun importProject(projectDir: File, bytes: ByteArray, requestedName: String): File {
+        // Validate before writing so bogus shared files are rejected clearly and
+        // never appear in the managed Projects list.
+        runCatching { M8ProjectSnapshot.decode(bytes) }
+            .getOrElse { throw IllegalArgumentException("Not an m8droid project", it) }
+        projectDir.mkdirs()
+        val target = uniqueProjectFile(projectDir.canonicalFile, requestedName.removeSuffix(".m8droid"))
+        target.writeBytes(bytes)
+        return target
+    }
+
     private fun requireManagedProjectFile(projectDir: File, file: File): File {
         val root = projectDir.canonicalFile
         val candidate = file.canonicalFile
