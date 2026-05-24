@@ -8,14 +8,30 @@ Working branch: `feat/note-phrase-m8s-sampler-synth`
 
 Make M8droid feel like a real Android-native M8-style instrument: direct note input and phrase editing first, then real song loading, sample playback, stronger synth modes, saving, and MIDI. Keep this Android-first. No iOS port work.
 
+## Stable Release Focus — next milestone
+
+Freeze new feature expansion. The next goal is a stable, testable Android build that Daniel can use seriously without losing work.
+
+Release candidate criteria:
+
+- [x] Build and unit tests pass: `./gradlew testDebugUnitTest assembleDebug`.
+- [x] Project save/load/export/share path exists for `.m8droid` files.
+- [ ] Install latest APK on a real Android device and run a smoke session.
+- [ ] Verify Academy fresh-song flow end-to-end on device: start Academy, complete Basics → Synths → Sampling quests, no blank chapter/fallthrough.
+- [ ] Verify core tracker workflow on device: SONG → CHAIN → PHRASE → TABLE editing, preview row, playback, runtime FX audibly affect output.
+- [ ] Verify file/project safety on device: new/open/save/autosave/duplicate/rename/delete/share, with dirty-confirm behavior and no accidental data loss.
+- [ ] Verify external import path: shared/opened `.m8droid` project can be imported or clearly rejected with a useful message.
+- [ ] Fix only crash/data-loss/usability blockers found during smoke testing.
+- [ ] Cut a stable git tag and APK artifact once smoke passes.
+
 ## Priority 0 — Guardrails
 
 - [x] Previous Android roadmap branch merged into `main`.
 - [x] Tag current branch before starting this next slice.
 - [x] Create isolated feature branch.
 - [x] Remove iOS port/scaffold from this branch; it is explicitly out of scope.
-- [ ] Keep `./gradlew testDebugUnitTest assembleDebug` passing after every meaningful slice.
-- [ ] Commit and push every completed slice so Daniel can pick it up from another machine.
+- [x] Keep `./gradlew testDebugUnitTest assembleDebug` passing after every meaningful slice.
+- [x] Commit and push every completed slice so Daniel can pick it up from another machine.
 
 ## Priority 1 — Note input + phrase editing
 
@@ -116,7 +132,7 @@ Once note/phrase editing exists, saving becomes mandatory and relatively cheap.
 - [x] Add app-native project load/restore UI from the SD/Projects folder. The LOAD dialog now has a PROJECTS tab backed by `M8ProjectLibrary`, with dirty-confirm reuse and live restore into the emulator/instrument pool.
 - [x] Add autosave after meaningful edits. The ViewModel now debounces dirty project edits and writes one `AUTOSAVED <song>.m8droid` snapshot after a quiet window; manual saves/project loads cancel pending autosaves.
 - [x] Add project list operations: recent projects are surfaced in File hub and PROJECTS supports duplicate, rename, and delete with safe app-local `.m8droid` paths.
-- [ ] Add export/share for project files.
+- [x] Add export/share for project files.
 - [ ] Add import from shared file intent or SD browser.
 - [x] Add tests for round-trip save/load of phrases, chains, tables, instruments, tempo, transpose, mixer, and global FX settings. `.m8droid` snapshot v2 preserves mixer/chorus/delay/reverb while still reading v1 snapshots.
 
