@@ -6,6 +6,9 @@ import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.security.MessageDigest
 import java.io.File
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 
 /** A local Android project snapshot. V1 is app-native, not Dirtywave .m8s export. */
 object M8ProjectSnapshot {
@@ -356,6 +359,36 @@ object M8ProjectLibrary {
 
     fun load(file: File): M8ProjectSnapshot.Restored = M8ProjectSnapshot.decode(file.readBytes())
 
+    fun saveProject(projectDir: File, song: M8Song, instruments: Array<M8Instrument>): File {
+        projectDir.mkdirs()
+        val root = projectDir.canonicalFile
+        val safeStem = safeProjectStem(song.name.ifBlank { "NEW SONG" })
+        val target = File(root, "$safeStem.m8droid")
+        val temp = File(root, ".$safeStem.${System.nanoTime()}.tmp")
+        val bytes = M8ProjectSnapshot.encode(song, instruments)
+        val expectedSignature = M8ProjectSnapshot.signature(song, instruments)
+        try {
+            temp.writeBytes(bytes)
+            val restored = load(temp)
+            require(M8ProjectSnapshot.signature(restored.song, restored.instruments) == expectedSignature) {
+                "Project verification failed"
+            }
+            try {
+                Files.move(
+                    temp.toPath(),
+                    target.toPath(),
+                    StandardCopyOption.REPLACE_EXISTING,
+                    StandardCopyOption.ATOMIC_MOVE,
+                )
+            } catch (_: AtomicMoveNotSupportedException) {
+                Files.move(temp.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            }
+            return target
+        } finally {
+            if (temp.exists()) temp.delete()
+        }
+    }
+
     fun rename(projectDir: File, file: File, requestedName: String): File {
         val source = requireManagedProjectFile(projectDir, file)
         val target = uniqueProjectFile(projectDir.canonicalFile, requestedName)
@@ -400,11 +433,7 @@ object M8ProjectLibrary {
     }
 
     private fun uniqueProjectFile(dir: File, requestedName: String): File {
-        val safeStem = requestedName
-            .replace(Regex("[^A-Za-z0-9._-]+"), "_")
-            .trim('_', '.')
-            .ifEmpty { "Untitled_Project" }
-            .take(100)
+        val safeStem = safeProjectStem(requestedName)
         val base = File(dir, "$safeStem.m8droid")
         if (!base.exists()) return base
         var i = 2
@@ -413,5 +442,13 @@ object M8ProjectLibrary {
             if (!candidate.exists()) return candidate
             i++
         }
+    }
+
+    private fun safeProjectStem(requestedName: String): String {
+        return requestedName
+            .replace(Regex("[^A-Za-z0-9._-]+"), "_")
+            .trim('_', '.')
+            .ifEmpty { "Untitled_Project" }
+            .take(100)
     }
 }

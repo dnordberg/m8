@@ -833,12 +833,7 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     fun saveCurrentSong(): String = saveCurrentSong(statusPrefix = "SAVED")
 
     private fun saveCurrentSong(statusPrefix: String): String {
-        val safeName = song.name.ifBlank { "NEW SONG" }
-            .replace(Regex("[^A-Za-z0-9._-]+"), "_")
-            .trim('_')
-            .ifEmpty { "NEW_SONG" }
-        val target = File(projectDir, "$safeName.m8droid")
-        target.writeBytes(M8ProjectSnapshot.encode(song, instruments))
+        val target = M8ProjectLibrary.saveProject(projectDir, song, instruments)
         dirtyGuard.markClean(currentProjectSignature())
         _isSongDirty.value = false
         cancelPendingAutosave()

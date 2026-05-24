@@ -288,6 +288,31 @@ class M8ProjectSnapshotTest {
         }
     }
 
+    @Test
+    fun projectLibrarySavesCurrentProjectWithVerifiedAtomicReplace() {
+        val dir = createTempDir(prefix = "m8-projects-")
+        try {
+            val oldSong = M8Song().apply {
+                name = "SAFE SONG"
+                tempo = 111
+            }
+            val oldFile = M8ProjectLibrary.saveProject(dir, oldSong, M8Instrument.createDefaults())
+            assertEquals("SAFE_SONG.m8droid", oldFile.name)
+
+            val newSong = M8Song().apply {
+                name = "SAFE SONG"
+                tempo = 166
+            }
+            val saved = M8ProjectLibrary.saveProject(dir, newSong, M8Instrument.createDefaults())
+
+            assertEquals(oldFile.canonicalFile, saved.canonicalFile)
+            assertEquals(166, M8ProjectLibrary.load(saved).song.tempo)
+            assertTrue(dir.listFiles { file -> file.name.endsWith(".tmp") }!!.isEmpty())
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
     private fun writeProject(
         dir: File,
         name: String,
