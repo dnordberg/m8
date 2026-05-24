@@ -41,7 +41,7 @@ Post-stable roadmap:
 1. Reliability hardening
    - [x] Add project import from shared/opened `.m8droid` files.
    - [x] Add crash-safe save writes: temp file + checksum + atomic replace where possible.
-   - [ ] Add startup recovery UI when autosave/manual save conflict or last project fails to load.
+   - [x] Add startup recovery UI when autosave/manual save conflict or last project fails to load.
    - [ ] Add missing sample/project warnings instead of silent failure.
    - [ ] Add a simple diagnostics/export-log action for bug reports.
 

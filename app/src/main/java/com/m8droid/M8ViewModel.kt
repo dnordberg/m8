@@ -108,6 +108,8 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     val isSongDirty: StateFlow<Boolean> = _isSongDirty
     private val _projectSaveStatus = MutableStateFlow<String?>(null)
     val projectSaveStatus: StateFlow<String?> = _projectSaveStatus
+    private val _startupRecovery = MutableStateFlow<StartupRecovery.Failure?>(null)
+    val startupRecovery: StateFlow<StartupRecovery.Failure?> = _startupRecovery
     private val _savedProjects = MutableStateFlow<List<M8ProjectLibrary.SavedProject>>(emptyList())
     val savedProjects: StateFlow<List<M8ProjectLibrary.SavedProject>> = _savedProjects
     private val _recentSongs = MutableStateFlow<List<RecentSongStore.Entry>>(emptyList())
@@ -990,8 +992,14 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
             _projectSaveStatus.value = "RESTORED ${last.title}"
             Log.i(TAG, "Restored last loaded '${last.title}'")
         }.onFailure {
+            _startupRecovery.value = StartupRecovery.fromFailure(last, it)
+            _projectSaveStatus.value = "RESTORE FAILED: ${last.title}"
             Log.w(TAG, "Could not restore last loaded song '${last.location}'", it)
         }
+    }
+
+    fun dismissStartupRecovery() {
+        _startupRecovery.value = null
     }
 
     private fun applyRestoredProject(restored: M8ProjectSnapshot.Restored) {

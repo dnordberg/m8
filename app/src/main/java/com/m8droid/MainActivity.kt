@@ -225,6 +225,7 @@ private fun M8App(
     val savedProjects by viewModel.savedProjects.collectAsState()
     val recentSongs by viewModel.recentSongs.collectAsState()
     val projectSaveStatus by viewModel.projectSaveStatus.collectAsState()
+    val startupRecovery by viewModel.startupRecovery.collectAsState()
     val hapticView = LocalView.current
     val openSongLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
@@ -424,6 +425,25 @@ private fun M8App(
                     }
                 }
             }
+        }
+
+        if (startupRecovery != null) {
+            AlertDialog(
+                onDismissRequest = { viewModel.dismissStartupRecovery() },
+                title = { Text(startupRecovery!!.title) },
+                text = { Text("${startupRecovery!!.detail}\n\nYour existing project files were left untouched.") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        viewModel.dismissStartupRecovery()
+                        showLoadDialog = true
+                    }) { Text(startupRecovery!!.primaryAction.uppercase()) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { viewModel.dismissStartupRecovery() }) {
+                        Text(startupRecovery!!.dismissAction.uppercase())
+                    }
+                },
+            )
         }
 
         if (showAcademyFreshStartConfirm) {
