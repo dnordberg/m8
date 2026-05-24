@@ -24,6 +24,57 @@ Release candidate criteria:
 - [ ] Fix only crash/data-loss/usability blockers found during smoke testing.
 - [ ] Cut a stable git tag and APK artifact once smoke passes.
 
+## Post-Stable Direction — reliable, successful, still M8
+
+After the first stable Android beta, keep the product focused on being a dependable M8-style instrument rather than a feature grab bag.
+
+Principles:
+
+- Reliability first: no lost work, no crashy file flows, predictable audio startup, recoverable project state.
+- M8 semantics first: SONG/CHAIN/PHRASE/TABLE behavior should stay close to real M8 where it matters.
+- Android-native comfort: touch affordances, share/import, autosave, backup, and guided onboarding should feel natural on a phone.
+- Musical success: users should quickly make a loop, save it, reopen it, share it, and improve it.
+- Add depth in thin vertical slices: each slice must include tests, APK, smoke checklist, and commit/push.
+
+Post-stable roadmap:
+
+1. Reliability hardening
+   - [ ] Add project import from shared/opened `.m8droid` files.
+   - [ ] Add crash-safe save writes: temp file + checksum + atomic replace where possible.
+   - [ ] Add startup recovery UI when autosave/manual save conflict or last project fails to load.
+   - [ ] Add missing sample/project warnings instead of silent failure.
+   - [ ] Add a simple diagnostics/export-log action for bug reports.
+
+2. Make-first-session successful
+   - [ ] Add a short “make your first loop” guided path independent of the broader Academy.
+   - [ ] Add tiny starter templates: beat, bassline, melody, sampler kit.
+   - [ ] Add one-tap duplicate/extend pattern flow so users can build beyond a single phrase.
+   - [ ] Add clearer success states: saved, exported, shared, project restored.
+
+3. M8 tracker depth
+   - [ ] Finish higher-value runtime FX parity before chasing obscure commands.
+   - [ ] Improve table/parameter-lock behavior for the commands users actually hear immediately.
+   - [ ] Add groove timing at scheduler so imported songs feel less flat.
+   - [ ] Add modulation block parsing/application for downloaded/imported instruments.
+
+4. Sound quality and instruments
+   - [ ] Improve sampler slice mode and loop crossfade.
+   - [ ] Improve MacroSynth/WAVSYNTH mappings with documented reference patches.
+   - [ ] Add per-instrument mixer chain basics: drive, filter/EQ-ish shaping, sends.
+   - [ ] Keep golden-ish audio tests for every sound engine change.
+
+5. Android-native sharing and backup
+   - [ ] Project import/export round-trip via Android share sheet.
+   - [ ] Backup/export all projects as a zip.
+   - [ ] Optional SD-card/Drive-friendly sync folder once local reliability is proven.
+   - [ ] Export audio loop/WAV after project reliability is stable.
+
+6. MIDI and external gear
+   - [ ] USB MIDI note input to selected instrument.
+   - [ ] MIDI clock sync.
+   - [ ] MIDI OUT per track: channel, note, velocity, CC/program sends.
+   - [ ] Settings UI for device/channel mapping.
+
 ## Priority 0 — Guardrails
 
 - [x] Previous Android roadmap branch merged into `main`.
