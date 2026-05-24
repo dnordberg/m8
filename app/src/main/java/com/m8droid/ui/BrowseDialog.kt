@@ -34,11 +34,15 @@ import com.m8droid.emulator.M8Instrument
 import com.m8droid.emulator.M8ProjectLibrary
 import com.m8droid.emulator.M8sParser
 import com.m8droid.emulator.RecentSongStore
+import com.m8droid.ui.academy.AcademyTheme
 
-private val M8_GREEN = Color(0xFF00FF00)
-private val M8_BG = Color(0xFF0A0A1A)
-private val M8_BG_DIM = Color(0xCC0A0A1A)
-private val M8_DIM = Color(0xFF008800)
+private val M8_GREEN = AcademyTheme.AccentMagenta
+private val M8_BG = AcademyTheme.BgRoot
+private val M8_BG_DIM = AcademyTheme.BgCard.copy(alpha = 0.86f)
+private val M8_DIM = AcademyTheme.TextDim
+private val M8_CARD = AcademyTheme.BgCard
+private val M8_CARD_HI = AcademyTheme.BgCardHi
+private val M8_CYAN = AcademyTheme.AccentCyan
 
 @Composable
 fun BrowseDialog(
@@ -114,7 +118,7 @@ fun BrowseDialog(
                     .fillMaxWidth(FileHubLayout.dialogWidthFraction)
                     .fillMaxHeight(FileHubLayout.dialogHeightFraction)
                     .background(M8_BG, RoundedCornerShape(8.dp))
-                    .border(1.dp, M8_GREEN, RoundedCornerShape(8.dp)),
+                    .border(1.dp, AcademyTheme.BorderDim, RoundedCornerShape(8.dp)),
             ) {
                 Column(modifier = Modifier.fillMaxSize().padding(12.dp)) {
                 // Header
@@ -123,14 +127,14 @@ fun BrowseDialog(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = "FILE",
+                        text = "▣ FILE HUB",
                         color = M8_GREEN,
-                        fontSize = 18.sp,
+                        fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
                         fontFamily = FontFamily.Monospace,
                         modifier = Modifier.weight(1f),
                     )
-                    CloseButton(onClick = onDismiss, tint = M8_GREEN)
+                    CloseButton(onClick = onDismiss, tint = AcademyTheme.TextNormal)
                 }
 
                 Spacer(Modifier.height(8.dp))
@@ -146,7 +150,8 @@ fun BrowseDialog(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, M8_DIM.copy(alpha = 0.6f), RoundedCornerShape(6.dp))
+                        .background(M8_CARD, RoundedCornerShape(8.dp))
+                        .border(1.dp, AcademyTheme.BorderDim, RoundedCornerShape(8.dp))
                         .padding(4.dp),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
@@ -156,7 +161,7 @@ fun BrowseDialog(
                             modifier = Modifier
                                 .weight(1f)
                                 .background(
-                                    if (active) M8_GREEN else Color.Transparent,
+                                    if (active) M8_CYAN.copy(alpha = 0.18f) else Color.Transparent,
                                     RoundedCornerShape(5.dp),
                                 )
                                 .clickable {
@@ -171,7 +176,7 @@ fun BrowseDialog(
                         ) {
                             Text(
                                 text = label,
-                                color = if (active) M8_BG else M8_DIM,
+                                color = if (active) M8_CYAN else AcademyTheme.TextNormal,
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace,
@@ -414,14 +419,15 @@ private fun NewSongBanner(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .border(1.dp, Color(0xFFFFB38A).copy(alpha = 0.6f), RoundedCornerShape(6.dp))
+                .background(M8_CARD, RoundedCornerShape(8.dp))
+                .border(1.dp, AcademyTheme.AccentYellow.copy(alpha = 0.65f), RoundedCornerShape(8.dp))
                 .clickable { onClick() }
                 .padding(vertical = 12.dp),
             contentAlignment = Alignment.Center,
         ) {
             Text(
                 text = FileHubTabs.newSongBannerLabel,
-                color = Color(0xFFFFB38A),
+                color = AcademyTheme.AccentYellow,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
                 fontFamily = FontFamily.Monospace,
@@ -538,11 +544,11 @@ private fun SdList(
                         .fillMaxWidth()
                         .padding(vertical = 1.dp)
                         .background(
-                            if (isSelected) M8_GREEN.copy(alpha = 0.2f) else Color.Transparent,
+                            if (isSelected) M8_CYAN.copy(alpha = 0.18f) else M8_CARD,
                         )
                         .border(
                             1.dp,
-                            if (isSelected) M8_GREEN else M8_DIM.copy(alpha = 0.4f),
+                            if (isSelected) M8_CYAN else AcademyTheme.BorderDim,
                             RoundedCornerShape(3.dp),
                         )
                         .clickable { onSelect(e) }
@@ -583,9 +589,10 @@ private fun RecentList(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 2.dp)
-                    .border(1.dp, M8_DIM.copy(alpha = 0.45f), RoundedCornerShape(3.dp))
+                    .background(M8_CARD, RoundedCornerShape(8.dp))
+                    .border(1.dp, AcademyTheme.BorderDim, RoundedCornerShape(8.dp))
                     .clickable { onSelect(entry) }
-                    .padding(horizontal = 6.dp, vertical = 5.dp),
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
             ) {
                 Text(
                     text = entry.title,
@@ -649,8 +656,8 @@ private fun ProjectList(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 1.dp)
-                    .background(if (isSelected) M8_GREEN.copy(alpha = 0.2f) else Color.Transparent)
-                    .border(1.dp, if (isSelected) M8_GREEN else M8_DIM.copy(alpha = 0.4f), RoundedCornerShape(3.dp))
+                    .background(if (isSelected) M8_CYAN.copy(alpha = 0.18f) else M8_CARD)
+                    .border(1.dp, if (isSelected) M8_CYAN else AcademyTheme.BorderDim, RoundedCornerShape(3.dp))
                     .clickable { onSelect(project) }
                     .padding(horizontal = 6.dp, vertical = 4.dp),
             ) {
@@ -970,11 +977,11 @@ private fun ItemList(
                     .fillMaxWidth()
                     .padding(vertical = 2.dp)
                     .background(
-                        if (isSelected) M8_GREEN.copy(alpha = 0.2f) else Color.Transparent,
+                        if (isSelected) M8_CYAN.copy(alpha = 0.18f) else M8_CARD,
                     )
                     .border(
                         1.dp,
-                        if (isSelected) M8_GREEN else M8_DIM.copy(alpha = 0.4f),
+                        if (isSelected) M8_CYAN else AcademyTheme.BorderDim,
                         RoundedCornerShape(3.dp),
                     )
                     .clickable { onSelect(item) }
