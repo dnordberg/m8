@@ -29,6 +29,24 @@ class M8DemoSongTest {
     }
 
     @Test
+    fun `startup demo bass showcases audible table automation`() {
+        val song = M8Song().apply { loadDemoSong() }
+        val bassPhrase = song.chains[0x02].rows[0].phrase
+        val openingStep = song.phrases[bassPhrase].steps[0]
+
+        assertEquals(M8FxEngine.FX_TBL, openingStep.fx1Cmd, "bass should immediately enable a table so FX are phone-testable")
+        assertEquals(0x00, openingStep.fx1Val)
+        assertEquals(M8FxEngine.FX_TIC, openingStep.fx2Cmd, "bass table should use explicit tick-rate control")
+        assertEquals(0x01, openingStep.fx2Val)
+
+        val table = song.tables[0x00]
+        assertTrue(table.rows.any { it.transpose == 12 }, "table should include an obvious octave jump")
+        assertTrue(table.rows.any { it.volume != M8Song.EMPTY && it.volume < 0x70 }, "table should include audible volume gating")
+        assertTrue(table.rows.any { it.fx1Cmd == M8FxEngine.FX_PAN }, "table should move pan so automation is visible/audible")
+        assertTrue(table.rows.any { it.fx2Cmd == M8FxEngine.FX_SDL }, "table should bump delay send for a tail")
+    }
+
+    @Test
     fun `old demo remains available under explicit old demo loader`() {
         val oldDemo = M8Song().apply { loadOldDemoSong() }
         val startupDemo = M8Song().apply { loadDemoSong() }

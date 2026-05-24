@@ -121,4 +121,47 @@ class M8FxEngineTest {
         assertTrue(!engine.processTick(track = 0, tick = 1).releaseNote)
         assertTrue(engine.processTick(track = 0, tick = 2).releaseNote)
     }
+
+    @Test
+    fun `TBL command applies table transpose and volume on tick`() {
+        val engine = M8FxEngine()
+        val tables = Array(256) { Table() }
+        tables[3].rows[0].transpose = 12
+        tables[3].rows[0].volume = 0x40
+        val step = PhraseStep(
+            note = 60,
+            instrument = 0,
+            volume = 0x7F,
+            fx1Cmd = M8FxEngine.FX_TBL,
+            fx1Val = 3,
+        )
+        engine.processStepFx(track = 0, step = step, currentTick = 0, baseNote = 60)
+
+        val tickResult = engine.processTableTick(track = 0, tables = tables)
+
+        assertEquals(12, tickResult.noteOffset)
+        assertEquals(0x40, tickResult.volumeOverride)
+    }
+
+    @Test
+    fun `TIC command waits configured ticks before advancing table row`() {
+        val engine = M8FxEngine()
+        val tables = Array(256) { Table() }
+        tables[2].rows[0].transpose = 7
+        tables[2].rows[1].transpose = 12
+        val step = PhraseStep(
+            note = 60,
+            instrument = 0,
+            volume = 0x7F,
+            fx1Cmd = M8FxEngine.FX_TBL,
+            fx1Val = 2,
+            fx2Cmd = M8FxEngine.FX_TIC,
+            fx2Val = 2,
+        )
+        engine.processStepFx(track = 0, step = step, currentTick = 0, baseNote = 60)
+
+        assertEquals(7, engine.processTableTick(track = 0, tables = tables).noteOffset)
+        assertEquals(7, engine.processTableTick(track = 0, tables = tables).noteOffset)
+        assertEquals(12, engine.processTableTick(track = 0, tables = tables).noteOffset)
+    }
 }

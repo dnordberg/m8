@@ -388,8 +388,24 @@ class M8Emulator {
         SCREEN_PHRASE -> {
             val phraseIndex = currentPhraseIndex()
             val step = currentPhraseStep()
-            val note = if (step == null) "---" else trackerNoteName(step.note)
-            "PHRASE ${M8Song.hex2(phraseIndex)}:${M8Song.hex2(cursorY.coerceIn(0, 15))} $note"
+            val row = M8Song.hex2(cursorY.coerceIn(0, 15))
+            val column = phraseEditColumn.coerceIn(0, 8)
+            if (step == null) {
+                "PHRASE ${M8Song.hex2(phraseIndex)}:$row ---"
+            } else if (column in 3..8) {
+                val slot = when (column) {
+                    3, 4 -> 1
+                    5, 6 -> 2
+                    else -> 3
+                }
+                val (cmd, value) = phraseFxPair(step, slot)
+                val name = M8FxEngine.fxName(cmd)
+                val help = fxValueHint(cmd, value)
+                "PHRASE ${M8Song.hex2(phraseIndex)}:$row FX$slot $name ${M8Song.hex2(value)} $help"
+            } else {
+                val note = trackerNoteName(step.note)
+                "PHRASE ${M8Song.hex2(phraseIndex)}:$row $note"
+            }
         }
         else -> "NO TRACKER CELL"
     }
@@ -426,6 +442,30 @@ class M8Emulator {
     }
 
     private fun signed3(value: Int): String = String.format("%+03d", value)
+
+    private fun phraseFxPair(step: PhraseStep, slot: Int): Pair<Int, Int> = when (slot) {
+        1 -> step.fx1Cmd to step.fx1Val
+        2 -> step.fx2Cmd to step.fx2Val
+        else -> step.fx3Cmd to step.fx3Val
+    }
+
+    private fun fxValueHint(cmd: Int, value: Int): String = when (cmd) {
+        M8FxEngine.FX_TBL -> "table automation"
+        M8FxEngine.FX_TIC -> "table speed"
+        M8FxEngine.FX_PAN -> if (value < 0x70) "pan left" else if (value > 0x90) "pan right" else "pan center"
+        M8FxEngine.FX_AMP -> "amp level"
+        M8FxEngine.FX_VOL -> "volume level"
+        M8FxEngine.FX_SDL -> "delay send"
+        M8FxEngine.FX_RET -> "retrigger"
+        M8FxEngine.FX_KIL -> "kill tick"
+        M8FxEngine.FX_DEL -> "delay note"
+        M8FxEngine.FX_ARP -> "arp semitones"
+        M8FxEngine.FX_PVB, M8FxEngine.FX_PVX -> "vibrato"
+        M8FxEngine.FX_CUT -> "filter cutoff"
+        M8FxEngine.FX_RES -> "resonance"
+        M8FxEngine.FX_NONE -> "no command"
+        else -> "value ${M8Song.hex2(value)}"
+    }
 
     private fun trackerNoteName(note: Int): String {
         if (note == M8Song.EMPTY) return "---"

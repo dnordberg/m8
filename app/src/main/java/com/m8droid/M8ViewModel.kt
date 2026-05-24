@@ -487,6 +487,19 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 }
             }
+            val tableResult = fxEngine.processTableTick(track, song.tables)
+            if (tableResult.volumeOverride >= 0 || tableResult.ampOverride >= 0) {
+                synth.setRuntimeTrackAmp(
+                    track,
+                    if (tableResult.ampOverride >= 0) tableResult.ampOverride else tableResult.volumeOverride,
+                )
+            }
+            if (tableResult.panOverride >= 0) {
+                synth.setRuntimeTrackPan(track, tableResult.panOverride)
+            }
+            if (tableResult.delaySendOverride >= 0) {
+                synth.setRuntimeTrackDelaySend(track, tableResult.delaySendOverride)
+            }
         }
     }
 

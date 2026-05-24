@@ -131,15 +131,123 @@ val chapter2Quests = listOf(
         xpReward = 100,
         hintText = "Instrument screen + EDIT + PLAY completes the synth basics.",
     ),
+    Quest(
+        id = "ch2_q5", chapter = 2, title = "Bass Patch",
+        briefing = "Build the musical context for a bass patch: return to PHRASE and place a low note into the loop so the synth has a bass job to do.",
+        conditions = listOf(QuestCondition.OnScreen(M8Emulator.SCREEN_PHRASE), QuestCondition.PhraseStepHasNote),
+        xpReward = 100,
+        hintText = "Go to PHRASE, choose a note row, and enter a note. Low octave notes work best for bass practice.",
+    ),
+    Quest(
+        id = "ch2_q6", chapter = 2, title = "Shape the Filter",
+        briefing = "Go back to INSTRUMENT with edit mode on. Filter, cutoff, resonance, and oscillator settings live here — tweak while the phrase plays.",
+        conditions = listOf(QuestCondition.OnScreen(M8Emulator.SCREEN_INSTRUMENT), QuestCondition.EditModeActive(true)),
+        xpReward = 100,
+        hintText = "Open INSTRUMENT and press EDIT. Use the cursor/hex controls to explore tone-shaping fields.",
+    ),
+    Quest(
+        id = "ch2_q7", chapter = 2, title = "Envelope Feel",
+        briefing = "Keep the bass loop playing on INSTRUMENT in edit mode. Now listen for attack/decay/release feel as you adjust the patch.",
+        conditions = listOf(QuestCondition.OnScreen(M8Emulator.SCREEN_INSTRUMENT), QuestCondition.EditModeActive(true), QuestCondition.IsPlaying(true)),
+        xpReward = 125,
+        hintText = "INSTRUMENT + EDIT + PLAY. Small changes are easiest to hear while the loop runs.",
+    ),
+)
+
+val chapter3Quests = listOf(
+    Quest(
+        id = "ch3_q1", chapter = 3, title = "Open the Sample Crate",
+        briefing = "Sampling starts in the File hub. Open the PROJECT screen — that's where app-native files, downloads, projects, and samples are managed.",
+        conditions = listOf(QuestCondition.OnScreen(M8Emulator.SCREEN_PROJECT)),
+        xpReward = 50,
+        hintText = "Use the File/Open control to reach the PROJECT/File hub screen.",
+    ),
+    Quest(
+        id = "ch3_q2", chapter = 3, title = "Load a Sampler Slot",
+        briefing = "Visit INSTRUMENT and enter edit mode. Sampler instruments use the same patch slots as synths, but point at audio files on the virtual SD.",
+        conditions = listOf(QuestCondition.OnScreen(M8Emulator.SCREEN_INSTRUMENT), QuestCondition.EditModeActive(true)),
+        xpReward = 75,
+        hintText = "Go to INSTRUMENT, press EDIT, and inspect the sampler-oriented fields.",
+    ),
+    Quest(
+        id = "ch3_q3", chapter = 3, title = "Trigger a Sample",
+        briefing = "Trigger a phrase note so the selected sampler/synth slot fires from the tracker instead of just sitting in the browser.",
+        conditions = listOf(QuestCondition.OnScreen(M8Emulator.SCREEN_PHRASE), QuestCondition.PhraseStepHasNote),
+        xpReward = 100,
+        hintText = "On PHRASE, enter or keep a note in the selected step. The same tracker trigger path drives sampler instruments.",
+    ),
+    Quest(
+        id = "ch3_q4", chapter = 3, title = "Sampler Loop Check",
+        briefing = "Start playback with your phrase note in place. Looping playback is where one-shots, loop points, and pitch changes become obvious.",
+        conditions = listOf(QuestCondition.OnScreen(M8Emulator.SCREEN_PHRASE), QuestCondition.PhraseStepHasNote, QuestCondition.IsPlaying(true)),
+        xpReward = 100,
+        hintText = "Stay on PHRASE and press PLAY. Listen for the sample or patch repeating in time.",
+    ),
+    Quest(
+        id = "ch3_q5", chapter = 3, title = "Back to the Crate",
+        briefing = "Return to PROJECT/File hub after auditioning. Good sample workflow is load, trigger, listen, then manage the source file.",
+        conditions = listOf(QuestCondition.OnScreen(M8Emulator.SCREEN_PROJECT)),
+        xpReward = 75,
+        hintText = "Open the File hub again so you can swap or manage sample/project files.",
+    ),
 )
 
 val chapter2Intro = listOf(
     DialogueLine("PROF. KICK", "Welcome to SYNTHS. Drums gave you timing; now we'll shape the sounds themselves.", AcademyTheme.AccentMagenta),
-    DialogueLine("PROF. KICK", "The Instrument screen is your lab: oscillators, envelopes, and playback context all meet there.", AcademyTheme.AccentMagenta),
+    DialogueLine("PROF. KICK", "The Instrument screen is your lab: oscillators, filters, envelopes, and playback context all meet there.", AcademyTheme.AccentMagenta),
 )
 
 val chapter2Complete = listOf(
-    DialogueLine("PROF. KICK", "Nice — the synth lab is open. Next we'll get into sampling and loading your own audio.", AcademyTheme.AccentMagenta),
+    DialogueLine("PROF. KICK", "Nice — you built a bass context and practiced shaping it while it played. Next we'll get into sampling and loading your own audio.", AcademyTheme.AccentMagenta),
+)
+
+val chapter3Intro = listOf(
+    DialogueLine("PROF. KICK", "Welcome to SAMPLING. A tracker gets dangerous when tiny sounds become playable instruments.", AcademyTheme.AccentMagenta),
+    DialogueLine("PROF. KICK", "We'll move between the File hub, Instrument page, and Phrase triggers — the real loop for sample-based writing.", AcademyTheme.AccentMagenta),
+)
+
+val chapter3Complete = listOf(
+    DialogueLine("PROF. KICK", "Good crate-digging. You practiced the sample workflow: find it, load it, trigger it, loop it, and return to manage your files.", AcademyTheme.AccentMagenta),
+)
+
+val chapter4Quests = listOf(
+    Quest(
+        id = "ch4_q1", chapter = 4, title = "Per-Step FX",
+        briefing = "Open PHRASE with edit mode on. FX columns are where individual tracker rows bend volume, pan, delay, retrigger, and other behavior.",
+        conditions = listOf(QuestCondition.OnScreen(M8Emulator.SCREEN_PHRASE), QuestCondition.EditModeActive(true)),
+        xpReward = 75,
+        hintText = "Go to PHRASE and press EDIT. Look to the FX columns beside the note/instrument/volume fields.",
+    ),
+    Quest(
+        id = "ch4_q2", chapter = 4, title = "Table Automation",
+        briefing = "Visit TABLE. Tables are tick-level automation lanes: the new runtime path can advance table rows, apply transpose, and lock volume/pan/send motion.",
+        conditions = listOf(QuestCondition.OnScreen(M8Emulator.SCREEN_TABLE)),
+        xpReward = 75,
+        hintText = "Open TABLE and inspect the rows as tiny automation steps.",
+    ),
+    Quest(
+        id = "ch4_q3", chapter = 4, title = "Hear the Motion",
+        briefing = "Return to PHRASE and start playback. Runtime FX and tables only matter once you can hear the row loop moving.",
+        conditions = listOf(QuestCondition.OnScreen(M8Emulator.SCREEN_PHRASE), QuestCondition.IsPlaying(true)),
+        xpReward = 100,
+        hintText = "Stay on PHRASE and press PLAY so per-step changes repeat audibly.",
+    ),
+    Quest(
+        id = "ch4_q4", chapter = 4, title = "Back to Arrangement",
+        briefing = "Go back to SONG with playback running. FX motion belongs inside phrases, but the Song screen is where you arrange those moving parts.",
+        conditions = listOf(QuestCondition.OnScreen(M8Emulator.SCREEN_SONG), QuestCondition.IsPlaying(true)),
+        xpReward = 100,
+        hintText = "Return to SONG while playback continues.",
+    ),
+)
+
+val chapter4Intro = listOf(
+    DialogueLine("PROF. KICK", "Welcome to FX. This is where tracker rows stop being static notes and start becoming motion.", AcademyTheme.AccentMagenta),
+    DialogueLine("PROF. KICK", "We'll connect PHRASE FX columns with TABLE automation so you can hear per-step changes while the loop runs.", AcademyTheme.AccentMagenta),
+)
+
+val chapter4Complete = listOf(
+    DialogueLine("PROF. KICK", "Now you're thinking like a tracker: notes trigger sounds, FX shape the row, and tables add movement between rows.", AcademyTheme.AccentMagenta),
 )
 
 enum class AcademyScreen {
@@ -284,18 +392,24 @@ internal fun getChapterQuests(chapter: Int): List<Quest> {
     return when (chapter) {
         0 -> chapter1Quests
         1 -> chapter2Quests
-        // Chapters 3-6 will be added in later Academy slices.
+        2 -> chapter3Quests
+        3 -> chapter4Quests
+        // Chapters 5-6 will be added in later Academy slices.
         else -> emptyList()
     }
 }
 
 private fun getChapterIntro(chapter: Int): List<DialogueLine> = when (chapter) {
     1 -> chapter2Intro
+    2 -> chapter3Intro
+    3 -> chapter4Intro
     else -> chapter1Intro
 }
 
 private fun getChapterComplete(chapter: Int): List<DialogueLine> = when (chapter) {
     1 -> chapter2Complete
+    2 -> chapter3Complete
+    3 -> chapter4Complete
     else -> chapter1Complete
 }
 

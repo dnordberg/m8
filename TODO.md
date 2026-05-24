@@ -94,7 +94,7 @@ These are the “sounds/behaves like a real M8” gaps. Do not chase hardware-on
 
 - [x] MACROSYNTH / Mutable Instruments-style models: first-pass CSAW, morph/saw-square/sine-triangle, square/saw sub, triple saw/square, and noise/drum-like mappings are present. Remaining: deeper Braids parity/formant/chord engines.
 - [x] HYPERSYNTH: first-pass 8-detuned-oscillator supersaw behavior with chord intervals, swarm/detune, shift, and sub-osc controls.
-- [ ] Runtime per-step FX command engine: first playback slice wires `VOL`, `AMP`, `PAN`, `SDL`, and `KIL` into row/synth runtime behavior; `KIL`, `RET`, `DEL`, `HOP`, and `SNG` now run from the playback flow. Remaining: fuller arp/slide/table/parameter-lock command parity for `T`, `O`, `X`, `Y`, etc.
+- [ ] Runtime per-step FX command engine: first playback slice wires `VOL`, `AMP`, `PAN`, `SDL`, and `KIL` into row/synth runtime behavior; `KIL`, `RET`, `DEL`, `HOP`, and `SNG` now run from the playback flow. `TBL`/`TIC` table automation now affects runtime transpose/volume/pan/delay send and the startup demo exposes it audibly. Remaining: fuller arp/slide/table/parameter-lock command parity for `O`, `X`, `Y`, etc.
 - [ ] Modulation block: parse and apply 2 envelopes + 2 LFOs with assignable destinations. `DECISIONS.md` says this was explicitly skipped in both `.m8i` and `.m8s`; without it, downloaded instruments are static snapshots.
 - [ ] MIDI OUT: support each track driving external synths on its own channel + CCs. This is a bigger M8 hardware-user use case than MIDI input.
 - [ ] Per-instrument mixer chain: add 3-band EQ, limiter, drive, sample-rate reduction, and FX sends. Current implementation mostly has master delay/chorus/reverb, not real per-voice processing.
@@ -146,7 +146,7 @@ Once note/phrase editing exists, saving becomes mandatory and relatively cheap.
 - [x] Academy quests: first beat plus real tracker loop basics — place a chain, link a phrase, enter a note, visit phrase/chain/table/song flow before Synths.
 - [x] Tutorial panel positioning: bottom-sheet tutorial overlay with compact/half/expanded states, drag handle, and scrollable content.
 - [x] Academy fresh start: entering Academy starts a controlled blank tutorial project (with dirty-song confirmation) instead of inheriting the demo/current file.
-- [ ] Academy quests: bass patch and deeper synth/sampler practice.
+- [x] Academy quests: bass patch and deeper synth/sampler practice. Synths now continues into bass context, filter, and envelope-feel quests; Sampling now has playable File hub → sampler slot → phrase trigger → loop check quests.
 - [ ] WebSocket remote screen/controller polish.
 - [ ] SD card backup/sync helper for real hardware companion use.
 

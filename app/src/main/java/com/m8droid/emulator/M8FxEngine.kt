@@ -144,6 +144,7 @@ class M8FxEngine {
         var tableRow: Int = 0,
         var tableTick: Int = 0,
         var tableTickRate: Int = 1,
+        var tableNoteOffset: Int = 0,
 
         // Chance
         var lastChance: Boolean = true,
@@ -158,6 +159,11 @@ class M8FxEngine {
             killTick = -1
             delayTicks = 0
             delayedNote = -1
+            tableIndex = -1
+            tableRow = 0
+            tableTick = 0
+            tableTickRate = 1
+            tableNoteOffset = 0
         }
     }
 
@@ -300,9 +306,10 @@ class M8FxEngine {
                     result.transposeChange = value - 0x80  // Signed: 80=0, 81=+1, 7F=-1
                 }
                 FX_TBL -> {
-                    state.tableIndex = value
+                    state.tableIndex = value.coerceIn(0, 255)
                     state.tableRow = 0
                     state.tableTick = 0
+                    state.tableNoteOffset = 0
                 }
                 FX_THO -> {
                     state.tableRow = value and 0x0F
@@ -326,12 +333,76 @@ class M8FxEngine {
     }
 
     /**
+     * Compute one active table tick for a track. M8 tables are per-tick
+     * automation lanes selected by TBL, optionally rate-limited by TIC.
+     */
+    data class TableTickResult(
+        val noteOffset: Int = 0,
+        val volumeOverride: Int = -1,
+        val ampOverride: Int = -1,
+        val panOverride: Int = -1,
+        val delaySendOverride: Int = -1,
+    )
+
+    fun processTableTick(track: Int, tables: Array<Table>): TableTickResult {
+        val state = trackStates[track]
+        val tableIndex = state.tableIndex
+        if (tableIndex !in tables.indices) {
+            state.tableNoteOffset = 0
+            return TableTickResult()
+        }
+
+        val row = tables[tableIndex].rows[state.tableRow.coerceIn(0, 15)]
+        state.tableNoteOffset = row.transpose
+
+        var ampOverride = -1
+        var panOverride = -1
+        var delaySendOverride = -1
+        val fxSlots = arrayOf(
+            row.fx1Cmd to row.fx1Val,
+            row.fx2Cmd to row.fx2Val,
+            row.fx3Cmd to row.fx3Val,
+        )
+        for ((cmd, value) in fxSlots) {
+            when (cmd) {
+                FX_AMP -> ampOverride = value.coerceIn(0, 0xFF)
+                FX_PAN -> panOverride = value.coerceIn(0, 0xFF)
+                FX_SDL -> delaySendOverride = value.coerceIn(0, 0xFF)
+                FX_THO -> {
+                    state.tableRow = value and 0x0F
+                    state.tableTick = 0
+                }
+                FX_TIC -> state.tableTickRate = value.coerceAtLeast(1)
+            }
+        }
+
+        state.tableTick++
+        if (state.tableTick >= state.tableTickRate) {
+            state.tableTick = 0
+            state.tableRow = (state.tableRow + 1) and 0x0F
+        }
+
+        return TableTickResult(
+            noteOffset = row.transpose,
+            volumeOverride = row.volume.takeIf { it != M8Song.EMPTY } ?: -1,
+            ampOverride = ampOverride,
+            panOverride = panOverride,
+            delaySendOverride = delaySendOverride,
+        )
+    }
+
+    /**
      * Compute per-sample frequency modification from active tick FX.
      * Call this for every audio sample.
      */
     fun getFreqModifier(track: Int, baseFreq: Double, sampleIndex: Int): Double {
         val state = trackStates[track]
         var freq = baseFreq
+
+        // Table transpose
+        if (state.tableNoteOffset != 0) {
+            freq *= Math.pow(2.0, state.tableNoteOffset / 12.0)
+        }
 
         // Arpeggio
         if (state.arpActive) {

@@ -37,13 +37,49 @@ class AcademyContentTest {
     }
 
     @Test
-    fun `synths chapter has playable quests after drums are complete`() {
+    fun `synths chapter teaches bass patch and deeper shaping after drums are complete`() {
         val drumsComplete = getChapterQuests(0).map { it.id }.toSet()
 
         val synthQuests = getChapterQuests(1)
+        val titles = synthQuests.map { it.title }
 
-        assertEquals(4, synthQuests.size)
+        assertEquals(7, synthQuests.size)
         assertTrue(synthQuests.all { it.id.startsWith("ch2_") })
+        assertTrue(titles.contains("Bass Patch"))
+        assertTrue(titles.contains("Shape the Filter"))
+        assertTrue(titles.contains("Envelope Feel"))
+        assertTrue(titles.indexOf("Bass Patch") > titles.indexOf("Ready to Shape"))
         assertEquals(0, findNextQuest(1, drumsComplete))
+    }
+
+    @Test
+    fun `sampling chapter has playable sample practice quests`() {
+        val synthsComplete = getChapterQuests(1).map { it.id }.toSet()
+
+        val samplerQuests = getChapterQuests(2)
+        val titles = samplerQuests.map { it.title }
+
+        assertEquals(5, samplerQuests.size)
+        assertTrue(samplerQuests.all { it.id.startsWith("ch3_") })
+        assertTrue(titles.contains("Open the Sample Crate"))
+        assertTrue(titles.contains("Load a Sampler Slot"))
+        assertTrue(titles.contains("Trigger a Sample"))
+        assertTrue(titles.contains("Sampler Loop Check"))
+        assertEquals(0, findNextQuest(2, synthsComplete))
+    }
+
+    @Test
+    fun `fx chapter teaches runtime fx and table motion`() {
+        val samplerComplete = getChapterQuests(2).map { it.id }.toSet()
+
+        val fxQuests = getChapterQuests(3)
+        val titles = fxQuests.map { it.title }
+
+        assertEquals(4, fxQuests.size)
+        assertTrue(fxQuests.all { it.id.startsWith("ch4_") })
+        assertTrue(titles.contains("Per-Step FX"))
+        assertTrue(titles.contains("Table Automation"))
+        assertTrue(titles.contains("Hear the Motion"))
+        assertEquals(0, findNextQuest(3, samplerComplete))
     }
 }

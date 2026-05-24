@@ -622,6 +622,33 @@ class M8EmulatorEditTest {
     }
 
     @Test
+    fun `phrase fx status exposes command labels and value hints`() {
+        val emulator = M8Emulator().apply {
+            screen = M8Emulator.SCREEN_PHRASE
+            song.songGrid[0][1] = 0
+            song.chains[0].rows[0].phrase = 2
+            resetPlayheadAndResolve()
+            cursorX = 1
+            cursorY = 0
+        }
+        val step = emulator.song.phrases[2].steps[0]
+        step.note = 60
+        step.fx1Cmd = M8FxEngine.FX_TBL
+        step.fx1Val = 0x00
+        step.fx2Cmd = M8FxEngine.FX_TIC
+        step.fx2Val = 0x01
+        step.fx3Cmd = M8FxEngine.FX_PAN
+        step.fx3Val = 0x40
+
+        emulator.phraseEditColumn = 3
+        assertEquals("PHRASE 02:00 FX1 TBL 00 table automation", emulator.trackerEditStatus())
+        emulator.phraseEditColumn = 5
+        assertEquals("PHRASE 02:00 FX2 TIC 01 table speed", emulator.trackerEditStatus())
+        emulator.phraseEditColumn = 7
+        assertEquals("PHRASE 02:00 FX3 PAN 40 pan left", emulator.trackerEditStatus())
+    }
+
+    @Test
     fun `fresh tracker loop resolves song chain phrase edits before note entry`() {
         val emulator = M8Emulator().apply {
             song.songGrid.forEach { row -> java.util.Arrays.fill(row, M8Song.EMPTY) }

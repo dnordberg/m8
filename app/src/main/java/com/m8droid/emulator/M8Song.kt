@@ -290,9 +290,9 @@ class M8Song {
             steps[15].set(G4, 3, 0x34, M8FxEngine.FX_CUT, 0x70)
         }
 
-        // B — bassline: driving C minor saw pattern.
+        // B — bassline: driving C minor saw pattern, with table automation on the first hit.
         phrases[0x02].apply {
-            steps[ 0].set(C3,  1, 0x70)
+            steps[ 0].set(C3,  1, 0x70, M8FxEngine.FX_TBL, 0x00, M8FxEngine.FX_TIC, 0x01)
             steps[ 1].set(OFF, 1, EE)
             steps[ 3].set(C3,  1, 0x58)
             steps[ 4].set(OFF, 1, EE)
@@ -364,6 +364,18 @@ class M8Song {
         chains[0x05].apply { rows[0] = ChainRow(0x04, 0); rows[1] = ChainRow(0x04, 0) }
         chains[0x06].apply { rows[0] = ChainRow(0x06, 0); rows[1] = ChainRow(0x07, 0) }
         chains[0x07].apply { rows[0] = ChainRow(0x06, 0); rows[1] = ChainRow(0x06, 0) }
+
+        // Table 00 — bass motion: octave pops, volume gates, pan wiggle, and delay throws.
+        tables[0x00].apply {
+            rows[0] = TableRow(transpose = 0,  volume = 0x70, fx1Cmd = M8FxEngine.FX_PAN, fx1Val = 0x80)
+            rows[1] = TableRow(transpose = 12, volume = 0x54, fx1Cmd = M8FxEngine.FX_PAN, fx1Val = 0x40)
+            rows[2] = TableRow(transpose = 0,  volume = 0x64, fx1Cmd = M8FxEngine.FX_PAN, fx1Val = 0xC0)
+            rows[3] = TableRow(transpose = 7,  volume = 0x48, fx1Cmd = M8FxEngine.FX_PAN, fx1Val = 0x80, fx2Cmd = M8FxEngine.FX_SDL, fx2Val = 0x48)
+            rows[4] = TableRow(transpose = 0,  volume = 0x70, fx1Cmd = M8FxEngine.FX_PAN, fx1Val = 0x80)
+            rows[5] = TableRow(transpose = -12, volume = 0x40, fx1Cmd = M8FxEngine.FX_PAN, fx1Val = 0x60)
+            rows[6] = TableRow(transpose = 0,  volume = 0x60, fx1Cmd = M8FxEngine.FX_PAN, fx1Val = 0xA0)
+            rows[7] = TableRow(transpose = 12, volume = 0x50, fx1Cmd = M8FxEngine.FX_PAN, fx1Val = 0x80, fx2Cmd = M8FxEngine.FX_SDL, fx2Val = 0x58)
+        }
 
         // 8-row mini-arrangement. Columns A-D map to drums, bass, chords, melody.
         songGrid[0] = intArrayOf(0x00, 0x02, 0x04, 0x06, EE, EE, EE, EE)
