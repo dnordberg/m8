@@ -237,6 +237,9 @@ class M8ProjectSnapshotTest {
             assertThrows(IllegalArgumentException::class.java) {
                 M8ProjectLibrary.delete(dir, externalProject)
             }
+            assertThrows(IllegalArgumentException::class.java) {
+                M8ProjectLibrary.exportableProjectFile(dir, externalProject.absolutePath)
+            }
             assertTrue(externalProject.exists())
         } finally {
             dir.deleteRecursively()

@@ -61,6 +61,7 @@ fun BrowseDialog(
     onRenameProject: (String, String) -> String = { _, _ -> "RENAMED" },
     onDuplicateProject: (String, String) -> String = { _, _ -> "DUPLICATED" },
     onDeleteProject: (String) -> String = { "DELETED" },
+    onShareProject: (String) -> String = { "SHARING" },
     shouldConfirmSongReplace: () -> Boolean = { false },
     onSaveCurrentSong: () -> String = { "SAVED" },
     saveStatus: String? = null,
@@ -321,6 +322,11 @@ fun BrowseDialog(
                                     projectLoadStatus = runCatching { onDuplicateProject(project.path, name) }
                                         .getOrElse { "ERROR: ${it.message ?: "duplicate failed"}" }
                                     onRefreshProjects()
+                                },
+                                onShare = {
+                                    val project = selectedProject ?: return@ProjectDetailPane
+                                    projectLoadStatus = runCatching { onShareProject(project.path) }
+                                        .getOrElse { "ERROR: ${it.message ?: "share failed"}" }
                                 },
                                 onDelete = {
                                     val project = selectedProject ?: return@ProjectDetailPane
@@ -689,6 +695,7 @@ private fun ProjectDetailPane(
     onLoad: () -> Unit,
     onRename: (String) -> Unit,
     onDuplicate: (String) -> Unit,
+    onShare: () -> Unit,
     onDelete: () -> Unit,
 ) {
     Column(
@@ -766,6 +773,10 @@ private fun ProjectDetailPane(
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             CompactButton("RENAME") { onRename(projectName) }
             CompactButton("DUPLICATE") { onDuplicate("${projectName}_copy") }
+            CompactButton("SHARE") { onShare() }
+        }
+        Spacer(Modifier.height(6.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             CompactButton(if (confirmDelete) "CONFIRM DELETE" else "DELETE") {
                 if (confirmDelete) onDelete() else confirmDelete = true
             }

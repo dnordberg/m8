@@ -375,6 +375,10 @@ object M8ProjectLibrary {
         return source.delete()
     }
 
+    fun exportableProjectFile(projectDir: File, path: String): File {
+        return requireManagedProjectFile(projectDir, File(path))
+    }
+
     private fun requireManagedProjectFile(projectDir: File, file: File): File {
         val root = projectDir.canonicalFile
         val candidate = file.canonicalFile

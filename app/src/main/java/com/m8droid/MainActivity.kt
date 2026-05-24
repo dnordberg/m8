@@ -1,6 +1,8 @@
 package com.m8droid
 
+import android.content.Intent
 import android.os.Bundle
+import android.widget.Toast
 import android.view.HapticFeedbackConstants
 import android.view.InputDevice
 import android.view.KeyEvent
@@ -10,6 +12,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
+import androidx.core.content.FileProvider
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -48,8 +51,32 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             M8Theme {
-                M8App(viewModel, showHotkeys)
+                M8App(
+                    viewModel = viewModel,
+                    showHotkeys = showHotkeys,
+                    onShareProject = { path -> shareSavedProject(path) },
+                )
             }
+        }
+    }
+
+    fun shareSavedProject(path: String): String {
+        return runCatching {
+            val file = viewModel.exportableSavedProjectFile(path)
+            val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "application/octet-stream"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                putExtra(Intent.EXTRA_SUBJECT, file.name)
+                putExtra(Intent.EXTRA_TITLE, file.name)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(Intent.createChooser(shareIntent, "Share M8 project"))
+            viewModel.markProjectExported(path)
+        }.getOrElse { error ->
+            val message = "ERROR: ${error.message ?: "share failed"}"
+            Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+            message
         }
     }
 
@@ -146,7 +173,11 @@ private fun M8Theme(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
+private fun M8App(
+    viewModel: M8ViewModel,
+    showHotkeys: MutableState<Boolean>,
+    onShareProject: (String) -> String,
+) {
     val displayTick by viewModel.displayTick.collectAsState()
     val tutorial = viewModel.tutorial
     var showHelpMenu by remember { mutableStateOf(false) }
@@ -410,6 +441,7 @@ private fun M8App(viewModel: M8ViewModel, showHotkeys: MutableState<Boolean>) {
                 onRenameProject = { path, name -> viewModel.renameSavedProject(path, name) },
                 onDuplicateProject = { path, name -> viewModel.duplicateSavedProject(path, name) },
                 onDeleteProject = { path -> viewModel.deleteSavedProject(path) },
+                onShareProject = { path -> onShareProject(path) },
                 shouldConfirmSongReplace = { viewModel.shouldConfirmBeforeReplacingSong() },
                 onSaveCurrentSong = { viewModel.saveCurrentSong() },
                 saveStatus = projectSaveStatus,

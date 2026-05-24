@@ -889,6 +889,17 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         return status
     }
 
+    fun exportableSavedProjectFile(path: String): File {
+        return M8ProjectLibrary.exportableProjectFile(projectDir, path)
+    }
+
+    fun markProjectExported(path: String): String {
+        val file = M8ProjectLibrary.exportableProjectFile(projectDir, path)
+        val status = "SHARING ${file.name}"
+        _projectSaveStatus.value = status
+        return status
+    }
+
     fun refreshRecentSongs() {
         _recentSongs.value = recentSongStore.list()
     }
