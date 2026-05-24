@@ -307,7 +307,7 @@ class M8Song {
         }
         phrases[0x03].apply {
             steps[ 0].set(C3,  1, 0x70)
-            steps[ 2].set(C4,  1, 0x52)
+            steps[ 2].set(C4,  1, 0x52, M8FxEngine.FX_PSL, 0x90)
             steps[ 3].set(OFF, 1, EE)
             steps[ 4].set(Eb3, 1, 0x64)
             steps[ 6].set(G3,  1, 0x58)
@@ -350,7 +350,7 @@ class M8Song {
             steps[ 3].set(G5,  5, 0x50)
             steps[ 4].set(Eb5, 5, 0x5A)
             steps[ 6].set(F5,  5, 0x50)
-            steps[ 8].set(G5,  5, 0x64, M8FxEngine.FX_PVB, 0x24)
+            steps[ 8].set(G5,  5, 0x64, M8FxEngine.FX_PVB, 0x24, M8FxEngine.FX_PBN, 0x90)
             steps[10].set(Eb5, 5, 0x52)
             steps[12].set(C5,  5, 0x62)
             steps[14].set(OFF, 5, EE)

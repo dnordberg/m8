@@ -122,12 +122,15 @@ class M8FxEngine {
 
         // Pitch bend
         var pitchBend: Double = 0.0,
+        var pitchBendSemitones: Double = 0.0,
         var pitchBendActive: Boolean = false,
 
         // Retrigger
         var retrigSpeed: Int = 0,
         var retrigVolRamp: Double = 0.0,
         var retrigTick: Int = 0,
+        var retrigBaseVolume: Int = 0x7F,
+        var retrigCount: Int = 0,
         var retrigActive: Boolean = false,
 
         // Kill
@@ -153,9 +156,14 @@ class M8FxEngine {
         fun reset() {
             arpActive = false
             portaActive = false
+            currentFreq = 0.0
             vibratoActive = false
+            pitchBend = 0.0
+            pitchBendSemitones = 0.0
             pitchBendActive = false
             retrigActive = false
+            retrigTick = 0
+            retrigCount = 0
             killTick = -1
             delayTicks = 0
             delayedNote = -1
@@ -203,7 +211,12 @@ class M8FxEngine {
             state.killTick = -1
             state.vibratoPhase = 0.0
             state.pitchBend = 0.0
+            state.pitchBendSemitones = 0.0
             state.pitchBendActive = false
+            if (step.fx1Cmd != FX_PSL && step.fx2Cmd != FX_PSL && step.fx3Cmd != FX_PSL) {
+                state.portaActive = false
+                state.currentFreq = 0.0
+            }
         }
 
         // Process each FX slot
@@ -226,7 +239,7 @@ class M8FxEngine {
                 FX_PSL -> {
                     if (baseNote > 0) {
                         state.portaTarget = M8Synth.noteToFreq(baseNote)
-                        state.portaSpeed = value / 255.0 * 0.1
+                        state.portaSpeed = (value.coerceAtLeast(1) / 255.0 * 0.18).coerceAtLeast(0.002)
                         state.portaActive = true
                     }
                 }
@@ -254,12 +267,10 @@ class M8FxEngine {
                 FX_RET -> {
                     state.retrigSpeed = ((value shr 4) and 0x0F).coerceAtLeast(1)
                     val volParam = value and 0x0F
-                    state.retrigVolRamp = when {
-                        volParam < 8 -> -(8 - volParam) / 8.0 * 0.1
-                        volParam > 8 -> (volParam - 8) / 8.0 * 0.1
-                        else -> 0.0
-                    }
+                    state.retrigVolRamp = (volParam - 8) * 2.25
                     state.retrigTick = 0
+                    state.retrigCount = 0
+                    state.retrigBaseVolume = step.volume.takeIf { it != M8Song.EMPTY } ?: 0x7F
                     state.retrigActive = true
                 }
                 FX_DEL -> {
@@ -424,15 +435,18 @@ class M8FxEngine {
 
         // Pitch bend
         if (state.pitchBendActive) {
-            state.currentFreq += state.pitchBend
-            freq *= Math.pow(2.0, state.currentFreq / 12.0)
+            state.pitchBendSemitones += state.pitchBend
+            freq *= Math.pow(2.0, state.pitchBendSemitones / 12.0)
         }
 
         // Portamento
         if (state.portaActive && state.portaTarget > 0.0) {
-            val diff = state.portaTarget - freq
-            freq += diff * state.portaSpeed
+            if (state.currentFreq <= 0.0) state.currentFreq = baseFreq
+            val diff = state.portaTarget - state.currentFreq
+            state.currentFreq += diff * state.portaSpeed
+            freq = state.currentFreq
             if (kotlin.math.abs(diff) < 0.1) {
+                state.currentFreq = state.portaTarget
                 state.portaActive = false
             }
         }
@@ -451,6 +465,7 @@ class M8FxEngine {
         val delayedNote: Int = -1,
         val delayedInstrument: Int = -1,
         val delayedVolume: Int = -1,
+        val retriggerVolumeOverride: Int = -1,
     )
 
     fun processTick(track: Int, tick: Int): TickResult {
@@ -460,6 +475,7 @@ class M8FxEngine {
         var delayedNote = -1
         var delayedInstrument = -1
         var delayedVolume = -1
+        var retriggerVolumeOverride = -1
 
         // Kill
         if (state.killTick >= 0 && tick >= state.killTick) {
@@ -472,7 +488,11 @@ class M8FxEngine {
             state.retrigTick++
             if (state.retrigTick >= state.retrigSpeed) {
                 state.retrigTick = 0
+                state.retrigCount++
                 retrigger = true
+                retriggerVolumeOverride = (state.retrigBaseVolume + state.retrigVolRamp * state.retrigCount)
+                    .roundToInt()
+                    .coerceIn(0, 0xFF)
             }
         }
 
@@ -495,6 +515,7 @@ class M8FxEngine {
             delayedNote = delayedNote,
             delayedInstrument = delayedInstrument,
             delayedVolume = delayedVolume,
+            retriggerVolumeOverride = retriggerVolumeOverride,
         )
     }
 

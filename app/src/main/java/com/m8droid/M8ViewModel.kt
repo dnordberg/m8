@@ -483,7 +483,7 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
                         track = track,
                         note = row[0],
                         instrument = row[1],
-                        volume = row[2],
+                        volume = if (tickResult.retriggerVolumeOverride >= 0) tickResult.retriggerVolumeOverride else row[2],
                     )
                 }
             }

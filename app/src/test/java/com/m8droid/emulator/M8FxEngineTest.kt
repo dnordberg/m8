@@ -54,6 +54,72 @@ class M8FxEngineTest {
     }
 
     @Test
+    fun `RET command applies per retrigger volume ramp`() {
+        val engine = M8FxEngine()
+        val step = PhraseStep(
+            note = 60,
+            instrument = 0,
+            volume = 0x70,
+            fx1Cmd = M8FxEngine.FX_RET,
+            fx1Val = 0x24,
+        )
+        engine.processStepFx(track = 0, step = step, currentTick = 0, baseNote = 60)
+
+        assertEquals(-1, engine.processTick(track = 0, tick = 1).retriggerVolumeOverride)
+        val firstRetrig = engine.processTick(track = 0, tick = 2)
+        engine.processTick(track = 0, tick = 3)
+        val secondRetrig = engine.processTick(track = 0, tick = 4)
+
+        assertTrue(firstRetrig.retrigger)
+        assertEquals(0x67, firstRetrig.retriggerVolumeOverride)
+        assertTrue(secondRetrig.retrigger)
+        assertEquals(0x5E, secondRetrig.retriggerVolumeOverride)
+    }
+
+    @Test
+    fun `PSL command slides frequency toward target over successive samples`() {
+        val engine = M8FxEngine()
+        val startFreq = M8Synth.noteToFreq(60)
+        val targetFreq = M8Synth.noteToFreq(72)
+        engine.processStepFx(
+            track = 0,
+            step = PhraseStep(note = 72, instrument = 0, volume = 0x70, fx1Cmd = M8FxEngine.FX_PSL, fx1Val = 0x80),
+            currentTick = 0,
+            baseNote = 72,
+        )
+
+        val first = engine.getFreqModifier(track = 0, baseFreq = startFreq, sampleIndex = 0)
+        val later = engine.getFreqModifier(track = 0, baseFreq = startFreq, sampleIndex = 64)
+
+        assertTrue(first > startFreq, "slide starts above the previous note")
+        assertTrue(later > first, "slide continues moving toward the target")
+        assertTrue(later < targetFreq, "slide should not jump straight to the target")
+    }
+
+    @Test
+    fun `PBN command bends pitch and resets bend accumulation on new note`() {
+        val engine = M8FxEngine()
+        val baseFreq = M8Synth.noteToFreq(60)
+        engine.processStepFx(
+            track = 0,
+            step = PhraseStep(note = 60, instrument = 0, volume = 0x70, fx1Cmd = M8FxEngine.FX_PBN, fx1Val = 0x90),
+            currentTick = 0,
+            baseNote = 60,
+        )
+        repeat(8) { engine.getFreqModifier(track = 0, baseFreq = baseFreq, sampleIndex = it) }
+        val bent = engine.getFreqModifier(track = 0, baseFreq = baseFreq, sampleIndex = 9)
+        assertTrue(bent > baseFreq)
+
+        engine.processStepFx(
+            track = 0,
+            step = PhraseStep(note = 62, instrument = 0, volume = 0x70),
+            currentTick = 0,
+            baseNote = 62,
+        )
+        assertEquals(baseFreq, engine.getFreqModifier(track = 0, baseFreq = baseFreq, sampleIndex = 10), 0.0001)
+    }
+
+    @Test
     fun `DEL command reports delayed note only after delay expires`() {
         val engine = M8FxEngine()
         val step = PhraseStep(

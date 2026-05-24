@@ -75,11 +75,23 @@ class AcademyContentTest {
         val fxQuests = getChapterQuests(3)
         val titles = fxQuests.map { it.title }
 
-        assertEquals(4, fxQuests.size)
+        assertEquals(6, fxQuests.size)
         assertTrue(fxQuests.all { it.id.startsWith("ch4_") })
         assertTrue(titles.contains("Per-Step FX"))
         assertTrue(titles.contains("Table Automation"))
         assertTrue(titles.contains("Hear the Motion"))
         assertEquals(0, findNextQuest(3, samplerComplete))
+    }
+
+    @Test
+    fun `fx chapter teaches slide bend and retrigger polish`() {
+        val fxQuests = getChapterQuests(3)
+        val titles = fxQuests.map { it.title }
+
+        assertEquals(6, fxQuests.size)
+        assertTrue(titles.contains("Slide Into Notes"))
+        assertTrue(titles.contains("Retrig Fills"))
+        assertTrue(fxQuests.any { it.briefing.contains("PSL") && it.briefing.contains("PBN") })
+        assertTrue(fxQuests.any { it.briefing.contains("RET") })
     }
 }

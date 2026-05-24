@@ -47,6 +47,19 @@ class M8DemoSongTest {
     }
 
     @Test
+    fun `startup demo includes slide bend and retrig flourish`() {
+        val song = M8Song().apply { loadDemoSong() }
+        val bassVariation = song.phrases[song.chains[0x02].rows[1].phrase]
+        val melodyVariation = song.phrases[song.chains[0x06].rows[1].phrase]
+
+        assertEquals(M8FxEngine.FX_PSL, bassVariation.steps[2].fx1Cmd)
+        assertTrue(bassVariation.steps[2].fx1Val > 0)
+        assertEquals(M8FxEngine.FX_RET, bassVariation.steps[14].fx1Cmd)
+        assertEquals(M8FxEngine.FX_PBN, melodyVariation.steps[8].fx2Cmd)
+        assertTrue(melodyVariation.steps[8].fx2Val > 0x80)
+    }
+
+    @Test
     fun `old demo remains available under explicit old demo loader`() {
         val oldDemo = M8Song().apply { loadOldDemoSong() }
         val startupDemo = M8Song().apply { loadDemoSong() }
