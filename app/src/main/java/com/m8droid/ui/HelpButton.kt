@@ -46,6 +46,7 @@ fun HelpMenu(
     onDismiss: () -> Unit,
     onStartTutorial: () -> Unit,
     onShowHotkeys: () -> Unit,
+    onExportDiagnostics: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Box(
@@ -107,6 +108,18 @@ fun HelpMenu(
                 onClick = {
                     onDismiss()
                     onShowHotkeys()
+                },
+            )
+
+            HelpMenuItem(
+                icon = "⇪",
+                title = "EXPORT DIAGNOSTICS",
+                subtitle = "Share a compact bug report with project state and warnings",
+                badge = "TXT",
+                accent = AcademyTheme.AccentMagenta,
+                onClick = {
+                    onDismiss()
+                    onExportDiagnostics()
                 },
             )
 

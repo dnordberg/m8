@@ -68,9 +68,10 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
 
     private val emulator = M8Emulator()
     private val synth = M8Synth() // kept for visualization API compat
-    private val projectDir = File(application.filesDir, "m8sd/Projects").apply { mkdirs() }
+    private val sdRoot = File(application.filesDir, "m8sd").apply { mkdirs() }
+    private val projectDir = File(sdRoot, "Projects").apply { mkdirs() }
     private val recentSongStore = RecentSongStore(File(application.filesDir, "m8sd/recent_songs.tsv"))
-    private val sampleCache = SampleCache(File(application.filesDir, "m8sd"))
+    private val sampleCache = SampleCache(sdRoot)
     private val localAudioPlayer = M8AudioPlayer()
     private val fxEngine = M8FxEngine()
     private var nativeSynthReady = false
@@ -110,6 +111,8 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     val projectSaveStatus: StateFlow<String?> = _projectSaveStatus
     private val _startupRecovery = MutableStateFlow<StartupRecovery.Failure?>(null)
     val startupRecovery: StateFlow<StartupRecovery.Failure?> = _startupRecovery
+    private val _projectWarnings = MutableStateFlow<ProjectHealth.Warnings?>(null)
+    val projectWarnings: StateFlow<ProjectHealth.Warnings?> = _projectWarnings
     private val _savedProjects = MutableStateFlow<List<M8ProjectLibrary.SavedProject>>(emptyList())
     val savedProjects: StateFlow<List<M8ProjectLibrary.SavedProject>> = _savedProjects
     private val _recentSongs = MutableStateFlow<List<RecentSongStore.Entry>>(emptyList())
@@ -1002,12 +1005,17 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         _startupRecovery.value = null
     }
 
+    fun dismissProjectWarnings() {
+        _projectWarnings.value = null
+    }
+
     private fun applyRestoredProject(restored: M8ProjectSnapshot.Restored) {
         val wasPlaying = emulator.playing
         emulator.playing = false
         M8ProjectSnapshot.restoreInto(restored, song, instruments)
         resetLoadedSongState(wasPlaying)
         markProjectClean()
+        refreshProjectWarnings()
     }
 
     private fun resetLoadedSongState(wasPlaying: Boolean) {
@@ -1214,8 +1222,36 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
             emulator.playRow = 0
         }
         markProjectClean()
+        refreshProjectWarnings()
         if (!recentLocation.isNullOrBlank()) recordRecent(recentLocation, recentTitle, RecentSongStore.Kind.SONG)
         Log.i(TAG, "Loaded song '${song.name}' @ ${song.tempo} BPM with $installed instrument slots")
+    }
+
+    private fun refreshProjectWarnings() {
+        val warnings = ProjectHealth.checkSamples(instruments, sdRoot)
+        _projectWarnings.value = warnings.takeIf { it.hasWarnings }
+        if (warnings.hasWarnings) Log.w(TAG, warnings.userMessage())
+    }
+
+    fun exportDiagnosticsFile(): File {
+        val report = DiagnosticReport.render(
+            song = song,
+            instruments = instruments,
+            isDirty = _isSongDirty.value,
+            status = _projectSaveStatus.value,
+            warnings = _projectWarnings.value ?: ProjectHealth.checkSamples(instruments, sdRoot),
+            recent = recentSongStore.list().map { "${it.kind}: ${it.title}" },
+        )
+        val dir = File(getApplication<Application>().cacheDir, "diagnostics").apply { mkdirs() }
+        val safeName = song.name.ifBlank { "m8droid" }
+            .replace(Regex("[^A-Za-z0-9._-]+"), "_")
+            .trim('_')
+            .take(48)
+            .ifBlank { "m8droid" }
+        val file = File(dir, "$safeName-diagnostics.txt")
+        file.writeText(report)
+        _projectSaveStatus.value = "DIAGNOSTICS READY ${file.name}"
+        return file
     }
 
     fun playFromCursor() {

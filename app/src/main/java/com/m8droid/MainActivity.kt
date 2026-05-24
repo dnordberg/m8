@@ -1,6 +1,7 @@
 package com.m8droid
 
 import android.content.Intent
+import android.content.ClipData
 import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
@@ -56,6 +57,7 @@ class MainActivity : ComponentActivity() {
                     viewModel = viewModel,
                     showHotkeys = showHotkeys,
                     onShareProject = { path -> shareSavedProject(path) },
+                    onShareDiagnostics = { shareDiagnostics() },
                 )
             }
         }
@@ -104,6 +106,24 @@ class MainActivity : ComponentActivity() {
             val message = "ERROR: ${error.message ?: "share failed"}"
             Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
             message
+        }
+    }
+
+    private fun shareDiagnostics() {
+        runCatching {
+            val file = viewModel.exportDiagnosticsFile()
+            val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                clipData = ClipData.newUri(contentResolver, file.name, uri)
+                putExtra(Intent.EXTRA_STREAM, uri)
+                putExtra(Intent.EXTRA_SUBJECT, file.name)
+                putExtra(Intent.EXTRA_TITLE, file.name)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(Intent.createChooser(shareIntent, "Share M8 diagnostics"))
+        }.onFailure { error ->
+            Toast.makeText(this, "ERROR: ${error.message ?: "diagnostics export failed"}", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -204,6 +224,7 @@ private fun M8App(
     viewModel: M8ViewModel,
     showHotkeys: MutableState<Boolean>,
     onShareProject: (String) -> String,
+    onShareDiagnostics: () -> Unit,
 ) {
     val displayTick by viewModel.displayTick.collectAsState()
     val tutorial = viewModel.tutorial
@@ -226,6 +247,7 @@ private fun M8App(
     val recentSongs by viewModel.recentSongs.collectAsState()
     val projectSaveStatus by viewModel.projectSaveStatus.collectAsState()
     val startupRecovery by viewModel.startupRecovery.collectAsState()
+    val projectWarnings by viewModel.projectWarnings.collectAsState()
     val hapticView = LocalView.current
     val openSongLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
@@ -446,6 +468,17 @@ private fun M8App(
             )
         }
 
+        if (projectWarnings != null) {
+            AlertDialog(
+                onDismissRequest = { viewModel.dismissProjectWarnings() },
+                title = { Text("Project warnings") },
+                text = { Text(projectWarnings!!.userMessage()) },
+                confirmButton = {
+                    TextButton(onClick = { viewModel.dismissProjectWarnings() }) { Text("OK") }
+                },
+            )
+        }
+
         if (showAcademyFreshStartConfirm) {
             AlertDialog(
                 onDismissRequest = { showAcademyFreshStartConfirm = false },
@@ -511,6 +544,7 @@ private fun M8App(
                 onDismiss = { showHelpMenu = false },
                 onStartTutorial = { viewModel.toggleTutorial() },
                 onShowHotkeys = { showHotkeys.value = true },
+                onExportDiagnostics = onShareDiagnostics,
             )
         }
 
