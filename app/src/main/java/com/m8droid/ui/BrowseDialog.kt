@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -21,8 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
+import androidx.activity.compose.BackHandler
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.m8droid.browse.BrowseViewModel
 import com.m8droid.browse.ContentKind
@@ -103,25 +103,37 @@ fun BrowseDialog(
         onRefreshProjects()
     }
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
+    BackHandler(enabled = pendingSongLoad == null, onBack = onDismiss)
+
+    // Keep the File hub in the current Compose window instead of using Dialog.
+    // Platform Dialogs animate in from the bottom on Android, which made this
+    // menu feel like a drop-up sheet. This overlay appears immediately.
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.55f))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onDismiss,
+            )
+            .windowInsetsPadding(WindowInsets.safeDrawing)
+            .padding(FileHubLayout.edgePaddingDp.dp),
+        contentAlignment = Alignment.TopCenter,
     ) {
         Box(
             modifier = Modifier
-                .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.safeDrawing)
-                .padding(FileHubLayout.edgePaddingDp.dp),
-            contentAlignment = Alignment.TopCenter,
+                .fillMaxWidth(FileHubLayout.dialogWidthFraction)
+                .fillMaxHeight(FileHubLayout.dialogHeightFraction)
+                .background(M8_BG, RoundedCornerShape(8.dp))
+                .border(1.dp, AcademyTheme.BorderDim, RoundedCornerShape(8.dp))
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = {},
+                ),
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(FileHubLayout.dialogWidthFraction)
-                    .fillMaxHeight(FileHubLayout.dialogHeightFraction)
-                    .background(M8_BG, RoundedCornerShape(8.dp))
-                    .border(1.dp, AcademyTheme.BorderDim, RoundedCornerShape(8.dp)),
-            ) {
-                Column(modifier = Modifier.fillMaxSize().padding(12.dp)) {
+            Column(modifier = Modifier.fillMaxSize().padding(12.dp)) {
                 // Header
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -379,7 +391,6 @@ fun BrowseDialog(
                 }
             }
         }
-    }
     }
 
     val pending = pendingSongLoad
