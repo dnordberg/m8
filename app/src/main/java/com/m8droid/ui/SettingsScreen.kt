@@ -21,11 +21,19 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.m8droid.data.ButtonLayout
 import com.m8droid.data.ServerSettings
+import com.m8droid.ui.academy.AcademyTheme
+
+object SettingsDialogLayout {
+    const val panelWidthFraction = 0.88f
+    const val panelPaddingDp = 12
+    const val cardCornerDp = 8
+}
 
 /**
  * Overlay-style settings dialog. Matches the HelpMenu visual language
- * (full-screen scrim + dark-navy panel with neon-green borders) and lets
- * the user tweak host/port, pick a button layout, and kick a server restart.
+ * (full-screen scrim + Academy dark cards, dim borders, magenta/cyan accents)
+ * and lets the user tweak host/port, pick a button layout, and restart the
+ * audio/display runtime without clearing the current project.
  */
 @Composable
 fun SettingsDialog(
@@ -63,12 +71,12 @@ fun SettingsDialog(
     ) {
         Column(
             modifier = Modifier
-                .fillMaxWidth(0.88f)
-                .background(Color(0xFF0A0A1A), RoundedCornerShape(8.dp))
-                .border(1.dp, Color(0xFF00FF00), RoundedCornerShape(8.dp))
-                .padding(20.dp)
-                .clickable(enabled = false) {},
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+                .fillMaxWidth(SettingsDialogLayout.panelWidthFraction)
+                .background(AcademyTheme.BgRoot, RoundedCornerShape(SettingsDialogLayout.cardCornerDp.dp))
+                .border(1.dp, AcademyTheme.BorderDim, RoundedCornerShape(SettingsDialogLayout.cardCornerDp.dp))
+                .padding(SettingsDialogLayout.panelPaddingDp.dp)
+                .clickable { },
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -76,13 +84,13 @@ fun SettingsDialog(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "SETTINGS",
-                    color = Color(0xFF00FF00),
+                    text = "⚙ SETTINGS",
+                    color = AcademyTheme.AccentMagenta,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace,
                 )
-                CloseButton(onClick = onDismiss)
+                CloseButton(onClick = onDismiss, tint = AcademyTheme.TextNormal)
             }
 
             LabeledField(label = "HOST", value = host, onValueChange = { host = it })
@@ -119,7 +127,7 @@ fun SettingsDialog(
 
             Text(
                 text = "BUTTON LAYOUT",
-                color = Color(0xFF8899AA),
+                color = AcademyTheme.AccentMagenta,
                 fontSize = 10.sp,
                 fontFamily = FontFamily.Monospace,
             )
@@ -146,7 +154,7 @@ fun SettingsDialog(
 
             DialogButton(
                 title = "Restart Server",
-                subtitle = "Save and restart the local emulator",
+                subtitle = "Save settings and restart audio/display without clearing the song",
                 onClick = {
                     onSave(buildSettings())
                     onRestartServer()
@@ -177,7 +185,7 @@ fun SettingsDialog(
 
             Text(
                 text = "Tap anywhere outside to close",
-                color = Color(0xFF666666),
+                color = AcademyTheme.TextDim,
                 fontSize = 10.sp,
                 fontFamily = FontFamily.Monospace,
             )
@@ -195,15 +203,15 @@ private fun LabeledField(
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(
             text = label,
-            color = Color(0xFF8899AA),
+            color = AcademyTheme.AccentMagenta,
             fontSize = 10.sp,
             fontFamily = FontFamily.Monospace,
         )
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Color(0xFF111127), RoundedCornerShape(6.dp))
-                .border(1.dp, Color(0xFF224466), RoundedCornerShape(6.dp))
+                .background(AcademyTheme.BgCard, RoundedCornerShape(8.dp))
+                .border(1.dp, AcademyTheme.BorderDim, RoundedCornerShape(8.dp))
                 .padding(horizontal = 12.dp, vertical = 10.dp),
         ) {
             BasicTextField(
@@ -211,11 +219,11 @@ private fun LabeledField(
                 onValueChange = onValueChange,
                 singleLine = true,
                 textStyle = TextStyle(
-                    color = Color(0xFF00FF00),
+                    color = AcademyTheme.TextBright,
                     fontSize = 13.sp,
                     fontFamily = FontFamily.Monospace,
                 ),
-                cursorBrush = SolidColor(Color(0xFF00FF00)),
+                cursorBrush = SolidColor(AcademyTheme.AccentCyan),
                 keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
             )
         }
@@ -231,22 +239,22 @@ private fun ToggleRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFF111127), RoundedCornerShape(6.dp))
-            .border(1.dp, Color(0xFF224466), RoundedCornerShape(6.dp))
+            .background(AcademyTheme.BgCard, RoundedCornerShape(8.dp))
+            .border(1.dp, AcademyTheme.BorderDim, RoundedCornerShape(8.dp))
             .clickable { onChange(!checked) }
             .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = label,
-            color = Color(0xFF8899AA),
+            color = AcademyTheme.TextNormal,
             fontSize = 10.sp,
             fontFamily = FontFamily.Monospace,
             modifier = Modifier.weight(1f),
         )
         Text(
             text = if (checked) "[ON]" else "[OFF]",
-            color = if (checked) Color(0xFF00FF00) else Color(0xFF555555),
+            color = if (checked) AcademyTheme.AccentGreen else AcademyTheme.TextDim,
             fontSize = 12.sp,
             fontWeight = FontWeight.Bold,
             fontFamily = FontFamily.Monospace,
@@ -261,12 +269,12 @@ private fun LayoutChip(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val border = if (selected) Color(0xFF00FF00) else Color(0xFF224466)
-    val fg = if (selected) Color(0xFF00FF00) else Color(0xFF8899AA)
+    val border = if (selected) AcademyTheme.AccentCyan else AcademyTheme.BorderDim
+    val fg = if (selected) AcademyTheme.AccentCyan else AcademyTheme.TextNormal
     Box(
         modifier = modifier
-            .background(Color(0xFF111127), RoundedCornerShape(6.dp))
-            .border(1.dp, border, RoundedCornerShape(6.dp))
+            .background(if (selected) AcademyTheme.BgCardHi else AcademyTheme.BgCard, RoundedCornerShape(8.dp))
+            .border(1.dp, border, RoundedCornerShape(8.dp))
             .clickable { onClick() }
             .padding(vertical = 12.dp),
         contentAlignment = Alignment.Center,
@@ -291,15 +299,15 @@ private fun DialogButton(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(Color(0xFF111127), RoundedCornerShape(6.dp))
-            .border(1.dp, Color(0xFF224466), RoundedCornerShape(6.dp))
+            .background(AcademyTheme.BgCard, RoundedCornerShape(8.dp))
+            .border(1.dp, AcademyTheme.BorderDim, RoundedCornerShape(8.dp))
             .clickable { onClick() }
             .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         Text(
             text = title,
-            color = Color(0xFF00CC66),
+            color = AcademyTheme.AccentCyan,
             fontSize = 13.sp,
             fontWeight = FontWeight.Bold,
             fontFamily = FontFamily.Monospace,
@@ -307,7 +315,7 @@ private fun DialogButton(
         if (subtitle != null) {
             Text(
                 text = subtitle,
-                color = Color(0xFF8899AA),
+                color = AcademyTheme.TextDim,
                 fontSize = 10.sp,
                 fontFamily = FontFamily.Monospace,
             )

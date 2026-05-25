@@ -272,11 +272,13 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     // Previous songRow value for detecting song-loop wraparound
     @Volatile private var previousSongRow = 0
 
-    fun startLocalEmulator() {
-        // Clean stop any existing audio before restarting
+    fun startLocalEmulator(restoreStartupProject: Boolean = true) {
+        // Clean stop any existing audio before restarting.
+        // Manual restarts must preserve the live project; only app startup should
+        // restore the last-loaded file from disk.
         stopEmulator()
 
-        // Sync sequencer state
+        // Sync sequencer state without mutating song/instrument data.
         songRow = 0
         chainRow = 0
         phraseRow = 0
@@ -286,7 +288,7 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         BuiltInDemoProjects.ensureSeeded(projectDir)
         refreshSavedProjects()
         refreshRecentSongs()
-        restoreLastLoadedOnStartup()
+        if (restoreStartupProject) restoreLastLoadedOnStartup()
 
         // Display render loop — runs on default dispatcher for UI updates
         emulatorRenderJob?.cancel()
@@ -1099,9 +1101,9 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Restart local emulator — useful when user wants a clean-slate server state. */
+    /** Restart local audio/display runtime without reloading or clearing the current project. */
     fun restartServer() {
-        startLocalEmulator()
+        startLocalEmulator(restoreStartupProject = RuntimeRestartPolicy.restoresStartupProjectOnManualRestart)
     }
 
     fun toggleTutorial() {
