@@ -119,7 +119,7 @@ fun BrowseDialog(
             )
             .windowInsetsPadding(WindowInsets.safeDrawing)
             .padding(FileHubLayout.edgePaddingDp.dp),
-        contentAlignment = Alignment.TopCenter,
+        contentAlignment = if (FileHubLayout.panelAlignment == "Center") Alignment.Center else Alignment.TopCenter,
     ) {
         Box(
             modifier = Modifier

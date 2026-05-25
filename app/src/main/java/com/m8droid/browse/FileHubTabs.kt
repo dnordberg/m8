@@ -25,4 +25,5 @@ object FileHubLayout {
     const val dialogWidthFraction: Float = 0.92f
     const val dialogHeightFraction: Float = 0.88f
     const val edgePaddingDp: Int = 22
+    const val panelAlignment: String = "Center"
 }

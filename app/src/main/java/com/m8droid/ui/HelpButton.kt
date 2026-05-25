@@ -52,9 +52,9 @@ fun HelpMenu(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .windowInsetsPadding(WindowInsets.safeDrawing)
             .background(Color(0xCC000000))
-            .clickable { onDismiss() },
+            .clickable { onDismiss() }
+            .windowInsetsPadding(WindowInsets.safeDrawing),
         contentAlignment = Alignment.Center,
     ) {
         Column(

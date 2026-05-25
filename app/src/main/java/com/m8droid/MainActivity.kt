@@ -15,6 +15,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.core.content.FileProvider
+import androidx.core.view.WindowCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -40,6 +41,11 @@ import com.m8droid.ui.*
 import com.m8droid.ui.academy.AcademyShell
 import com.m8droid.ui.academy.QuestOverlay
 
+object AppWindowLayout {
+    const val drawsBehindSystemBars: Boolean = true
+    const val statusBarTransparent: Boolean = true
+}
+
 class MainActivity : ComponentActivity() {
 
     private val viewModel: M8ViewModel by viewModels()
@@ -49,6 +55,13 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        WindowCompat.setDecorFitsSystemWindows(window, !AppWindowLayout.drawsBehindSystemBars)
+        window.statusBarColor = if (AppWindowLayout.statusBarTransparent) {
+            android.graphics.Color.TRANSPARENT
+        } else {
+            android.graphics.Color.BLACK
+        }
+        window.navigationBarColor = android.graphics.Color.BLACK
         viewModel.startMidi()
 
         setContent {
