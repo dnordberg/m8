@@ -208,6 +208,16 @@ class M8Emulator {
      */
     fun canEnterHexDigit(): Boolean = currentHexEntryTarget() != null
 
+    fun canEditSongNameFromScreen(): Boolean = screen == SCREEN_CONFIG && cursorY == 0
+
+    fun setSongNameFromEditor(name: String): Boolean {
+        if (!canEditSongNameFromScreen()) return false
+        val cleaned = name.trim().ifBlank { "NEW SONG" }.take(64)
+        if (song.name == cleaned) return false
+        song.name = cleaned
+        return true
+    }
+
     fun enterHexDigit(digit: Int): Boolean {
         if (digit !in 0..0x0F) return false
         val target = currentHexEntryTarget() ?: return false

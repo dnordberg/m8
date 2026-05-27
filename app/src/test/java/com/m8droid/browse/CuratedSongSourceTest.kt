@@ -13,7 +13,7 @@ class CuratedSongSourceTest {
         assertTrue(songs.isNotEmpty())
         assertTrue(songs.all { it.kind == ContentKind.SONG })
         assertTrue(songs.all { it.fileName.endsWith(".m8s", ignoreCase = true) })
-        assertTrue(songs.all { it.downloadUrl.startsWith("https://") })
+        assertTrue(songs.all { it.downloadUrl.startsWith(HttpClient.ASSET_SCHEME) })
     }
 
     @Test

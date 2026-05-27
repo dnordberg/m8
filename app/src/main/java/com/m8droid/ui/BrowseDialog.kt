@@ -214,15 +214,14 @@ fun BrowseDialog(
                     )
                     Spacer(Modifier.height(6.dp))
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
+                        modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         FileHubTabs.compactDownloadSourceLabels(FileHubTabs.downloadSourceLabels(sources.map { it.displayName })).forEachIndexed { i, label ->
                             val active = i == sourceIndex
                             Box(
                                 modifier = Modifier
+                                    .weight(1f)
                                     .border(
                                         1.dp,
                                         if (active) M8_GREEN else M8_DIM.copy(alpha = 0.6f),
@@ -233,7 +232,7 @@ fun BrowseDialog(
                                         RoundedCornerShape(5.dp),
                                     )
                                     .clickable { viewModel.selectSource(i) }
-                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    .padding(horizontal = 6.dp, vertical = 8.dp),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Text(
@@ -965,6 +964,37 @@ private fun SdDetailPane(
 }
 
 @Composable
+private fun ScrollableDetailColumn(
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val scrollState = rememberScrollState()
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .border(1.dp, M8_DIM, RoundedCornerShape(4.dp)),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(8.dp)
+                .padding(end = (FileHubLayout.detailScrollIndicatorWidthDp + 4).dp)
+                .verticalScroll(scrollState),
+            content = content,
+        )
+        if (scrollState.maxValue > 0) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .fillMaxHeight()
+                    .width(FileHubLayout.detailScrollIndicatorWidthDp.dp)
+                    .background(M8_DIM.copy(alpha = 0.35f), RoundedCornerShape(2.dp)),
+            )
+        }
+    }
+}
+
+@Composable
 private fun NotYetNote(msg: String) {
     Text(
         text = msg,
@@ -1064,13 +1094,7 @@ private fun DetailPane(
     onDownloadAndLoadInstrument: (slot: Int) -> Unit,
     onDismissResult: () -> Unit,
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .border(1.dp, M8_DIM, RoundedCornerShape(4.dp))
-            .padding(8.dp)
-            .verticalScroll(rememberScrollState()),
-    ) {
+    ScrollableDetailColumn {
         if (item == null) {
             Text(
                 text = "Select an item",
@@ -1078,7 +1102,7 @@ private fun DetailPane(
                 fontSize = 11.sp,
                 fontFamily = FontFamily.Monospace,
             )
-            return@Column
+            return@ScrollableDetailColumn
         }
 
         Text(

@@ -122,6 +122,24 @@ class M8EmulatorEditTest {
     }
 
     @Test
+    fun `config song name row exposes text editor seam`() {
+        val emulator = M8Emulator().apply {
+            screen = M8Emulator.SCREEN_CONFIG
+            cursorY = 0
+        }
+
+        assertEquals(true, emulator.canEditSongNameFromScreen())
+        assertEquals(true, emulator.setSongNameFromEditor("  TELEGRAM FIX  "))
+        assertEquals("TELEGRAM FIX", emulator.song.name)
+        assertEquals(false, emulator.setSongNameFromEditor("TELEGRAM FIX"))
+
+        emulator.cursorY = 1
+        assertEquals(false, emulator.canEditSongNameFromScreen())
+        assertEquals(false, emulator.setSongNameFromEditor("SHOULD NOT APPLY"))
+        assertEquals("TELEGRAM FIX", emulator.song.name)
+    }
+
+    @Test
     fun `fx edit changes exactly the highlighted rendered row`() {
         fun assertFxRow(row: Int, readTarget: (M8Emulator) -> Int, readNext: ((M8Emulator) -> Int)? = null) {
             val emulator = M8Emulator().apply {

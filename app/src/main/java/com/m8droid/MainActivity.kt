@@ -27,6 +27,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import com.m8droid.data.ButtonLayout
@@ -368,6 +370,9 @@ private fun M8App(
                     val showNotePicker = remember(displayTick) {
                         viewModel.isEditMode && viewModel.canEnterNoteFromPicker
                     }
+                    val showSongNameEditor = remember(displayTick) {
+                        viewModel.isEditMode && viewModel.canEditSongName
+                    }
                     val showTrackerQuickActions = remember(displayTick) {
                         viewModel.isEditMode && viewModel.canUseTrackerQuickActions
                     }
@@ -453,6 +458,17 @@ private fun M8App(
                                         .padding(bottom = 8.dp),
                                     onNote = {
                                         if (viewModel.enterNoteFromPicker(it)) performEditHaptic()
+                                    },
+                                )
+                            }
+                            if (showSongNameEditor) {
+                                SongNameEditorPad(
+                                    name = viewModel.currentSongName,
+                                    modifier = Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                                    onApply = {
+                                        if (viewModel.setSongNameFromEditor(it)) performEditHaptic()
                                     },
                                 )
                             }
@@ -594,6 +610,69 @@ private fun M8App(
         // Tutorial complete auto-stop
         if (tutorialActive && tutorialComplete) {
             tutorial.stop()
+        }
+    }
+}
+
+@Composable
+private fun SongNameEditorPad(
+    name: String,
+    modifier: Modifier = Modifier,
+    onApply: (String) -> Unit,
+) {
+    var draft by remember(name) { mutableStateOf(name) }
+    Surface(
+        modifier = modifier.fillMaxWidth(0.92f),
+        color = Color(0xEE05080C),
+        shape = MaterialTheme.shapes.medium,
+        tonalElevation = 6.dp,
+        shadowElevation = 6.dp,
+    ) {
+        Column(
+            modifier = Modifier
+                .border(1.dp, Color(0xFF3B5268), MaterialTheme.shapes.medium)
+                .padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                "SONG NAME",
+                color = Color(0xFFFF4FD8),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace,
+            )
+            OutlinedTextField(
+                value = draft,
+                onValueChange = { draft = it.take(64) },
+                singleLine = true,
+                textStyle = LocalTextStyle.current.copy(
+                    color = Color(0xFFE9F5FF),
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 14.sp,
+                ),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Color(0xFF00E5FF),
+                    unfocusedBorderColor = Color(0xFF3B5268),
+                    cursorColor = Color(0xFF00E5FF),
+                    focusedTextColor = Color(0xFFE9F5FF),
+                    unfocusedTextColor = Color(0xFFE9F5FF),
+                ),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                Button(
+                    onClick = { onApply(draft) },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF173042),
+                        contentColor = Color(0xFFE9F5FF),
+                    ),
+                ) {
+                    Text("APPLY", fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                }
+            }
         }
     }
 }

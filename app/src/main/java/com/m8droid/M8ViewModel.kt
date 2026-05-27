@@ -88,6 +88,8 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     val currentScreen: Int get() = emulator.screen
     val isEditMode: Boolean get() = emulator.editMode
     val canEnterHexDigit: Boolean get() = emulator.canEnterHexDigit()
+    val canEditSongName: Boolean get() = emulator.canEditSongNameFromScreen()
+    val currentSongName: String get() = song.name
     val canEnterNoteFromPicker: Boolean get() = emulator.canEnterNoteFromPicker()
     val canUseTrackerQuickActions: Boolean get() = emulator.screen in setOf(M8Emulator.SCREEN_SONG, M8Emulator.SCREEN_CHAIN, M8Emulator.SCREEN_PHRASE)
     val trackerEditStatus: String get() = emulator.trackerEditStatus()
@@ -1134,6 +1136,16 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         val beforeSignature = currentProjectSignature()
         val changed = emulator.enterHexDigit(digit)
         if (changed) noteMeaningfulProjectEdit(beforeSignature)
+        return changed
+    }
+
+    fun setSongNameFromEditor(name: String): Boolean {
+        val beforeSignature = currentProjectSignature()
+        val changed = emulator.setSongNameFromEditor(name)
+        if (changed) {
+            noteMeaningfulProjectEdit(beforeSignature)
+            _displayTick.value++
+        }
         return changed
     }
 

@@ -26,4 +26,6 @@ object FileHubLayout {
     const val dialogHeightFraction: Float = 0.88f
     const val edgePaddingDp: Int = 22
     const val panelAlignment: String = "Center"
+    const val downloadSourcesFillRow: Boolean = true
+    const val detailScrollIndicatorWidthDp: Int = 3
 }

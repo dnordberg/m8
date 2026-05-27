@@ -1,5 +1,6 @@
 package com.m8droid.browse
 
+import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -13,7 +14,7 @@ import java.util.concurrent.TimeUnit
  * Only GETs — we never POST to content sources. All network work is pinned
  * to the IO dispatcher.
  */
-class HttpClient {
+class HttpClient(private val context: Context? = null) {
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -23,6 +24,11 @@ class HttpClient {
 
     suspend fun getBytes(url: String, headers: Map<String, String> = emptyMap()): ByteArray =
         withContext(Dispatchers.IO) {
+            if (url.startsWith(ASSET_SCHEME)) {
+                val assetPath = url.removePrefix(ASSET_SCHEME).trimStart('/')
+                val appContext = context ?: error("No Android context for asset URL $url")
+                return@withContext appContext.assets.open(assetPath).use { it.readBytes() }
+            }
             val req = Request.Builder().url(url).apply {
                 headers.forEach { (k, v) -> header(k, v) }
                 header("User-Agent", USER_AGENT)
@@ -52,6 +58,7 @@ class HttpClient {
         JSONArray(getString(url, headers))
 
     companion object {
+        const val ASSET_SCHEME = "asset://"
         private const val USER_AGENT = "m8droid/0.1 (+https://github.com/m8droid)"
     }
 }

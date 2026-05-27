@@ -4,8 +4,9 @@ package com.m8droid.browse
  * Network-light song source for known downloadable .m8s files.
  *
  * It gives the File/Download view an immediate Songs subsection without relying
- * on GitHub code search auth. The URLs are raw GitHub assets so the existing
- * download pipeline still saves them into m8sd/Songs and loads via M8sParser.
+ * on network or GitHub code search auth. The known-good fixtures are packaged
+ * as Android assets and still flow through the same DownloadStore/M8sParser
+ * path as remote content.
  */
 class CuratedSongSource : ContentSource {
     override val displayName = "Songs"
@@ -26,7 +27,7 @@ class CuratedSongSource : ContentSource {
             title = "V4 Empty Starter",
             author = "Dirtywave / m8droid fixture",
             fileName = "V4EMPTY.m8s",
-            url = "https://raw.githubusercontent.com/dnordberg/m8/feat/note-phrase-m8s-sampler-synth/app/src/test/resources/m8songs/V4EMPTY.m8s",
+            url = "asset://m8songs/V4EMPTY.m8s",
             description = "Clean M8 v4 starter song for testing loading, saving, and editing flows.",
         ),
         Song(
@@ -34,7 +35,7 @@ class CuratedSongSource : ContentSource {
             title = "V4.1 Empty Starter",
             author = "Dirtywave / m8droid fixture",
             fileName = "V4-1EMPTY.m8s",
-            url = "https://raw.githubusercontent.com/dnordberg/m8/feat/note-phrase-m8s-sampler-synth/app/src/test/resources/m8songs/V4-1EMPTY.m8s",
+            url = "asset://m8songs/V4-1EMPTY.m8s",
             description = "M8 v4.1-compatible empty song fixture; useful as a known-good blank remote load.",
         ),
         Song(
@@ -42,7 +43,7 @@ class CuratedSongSource : ContentSource {
             title = "Command Mapping Fixture",
             author = "Dirtywave / m8droid fixture",
             fileName = "CMDMAPPING_4_0.m8s",
-            url = "https://raw.githubusercontent.com/dnordberg/m8/feat/note-phrase-m8s-sampler-synth/app/src/test/resources/m8songs/CMDMAPPING_4_0.m8s",
+            url = "asset://m8songs/CMDMAPPING_4_0.m8s",
             description = "Small song fixture with M8 command data for parser/playback regression checks.",
         ),
     )
@@ -67,7 +68,7 @@ class CuratedSongSource : ContentSource {
                 license = null,
                 downloadCount = null,
                 createdAt = null,
-                landingUrl = song.url.replace("raw.githubusercontent.com", "github.com").replace("/feat/note-phrase-m8s-sampler-synth/", "/blob/feat/note-phrase-m8s-sampler-synth/"),
+                landingUrl = song.url,
             )
         }
     }

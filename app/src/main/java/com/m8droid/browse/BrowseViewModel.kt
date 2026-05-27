@@ -25,7 +25,7 @@ import kotlinx.coroutines.withContext
  */
 class BrowseViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val http = HttpClient()
+    private val http = HttpClient(application)
     private val store = DownloadStore(application)
     private val sampleCache = SampleCache(File(application.filesDir, "m8sd"))
     private val samplePreviewPlayer = SamplePreviewPlayer()

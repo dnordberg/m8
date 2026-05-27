@@ -23,6 +23,16 @@ class FileHubSectionsTest {
     }
 
     @Test
+    fun `curated songs are packaged assets so phone loading does not depend on GitHub raw URLs`() {
+        val items = kotlinx.coroutines.runBlocking { CuratedSongSource().fetchItems() }
+
+        assertTrue(items.isNotEmpty())
+        items.forEach { item ->
+            assertTrue(item.downloadUrl.startsWith(HttpClient.ASSET_SCHEME), item.downloadUrl)
+        }
+    }
+
+    @Test
     fun `new song is the standalone action above tabs`() {
         assertEquals("+ NEW SONG · clears current", FileHubTabs.newSongBannerLabel)
     }
@@ -40,5 +50,11 @@ class FileHubSectionsTest {
         FileHubTabs.compactDownloadSourceLabels(DownloadSources.displayNames()).forEach { label ->
             assertTrue(label.length <= 7, "$label should fit in a phone chip without wrapping")
         }
+    }
+
+    @Test
+    fun `download source chips fill row and detail panes expose scroll indicator`() {
+        assertTrue(FileHubLayout.downloadSourcesFillRow)
+        assertTrue(FileHubLayout.detailScrollIndicatorWidthDp >= 2)
     }
 }
