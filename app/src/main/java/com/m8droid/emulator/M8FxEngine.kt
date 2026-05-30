@@ -122,12 +122,15 @@ class M8FxEngine {
 
         // Pitch bend
         var pitchBend: Double = 0.0,
+        var pitchBendSemitones: Double = 0.0,
         var pitchBendActive: Boolean = false,
 
         // Retrigger
         var retrigSpeed: Int = 0,
         var retrigVolRamp: Double = 0.0,
         var retrigTick: Int = 0,
+        var retrigBaseVolume: Int = 0x7F,
+        var retrigCount: Int = 0,
         var retrigActive: Boolean = false,
 
         // Kill
@@ -144,6 +147,7 @@ class M8FxEngine {
         var tableRow: Int = 0,
         var tableTick: Int = 0,
         var tableTickRate: Int = 1,
+        var tableNoteOffset: Int = 0,
 
         // Chance
         var lastChance: Boolean = true,
@@ -152,12 +156,22 @@ class M8FxEngine {
         fun reset() {
             arpActive = false
             portaActive = false
+            currentFreq = 0.0
             vibratoActive = false
+            pitchBend = 0.0
+            pitchBendSemitones = 0.0
             pitchBendActive = false
             retrigActive = false
+            retrigTick = 0
+            retrigCount = 0
             killTick = -1
             delayTicks = 0
             delayedNote = -1
+            tableIndex = -1
+            tableRow = 0
+            tableTick = 0
+            tableTickRate = 1
+            tableNoteOffset = 0
         }
     }
 
@@ -167,9 +181,14 @@ class M8FxEngine {
     data class FxResult(
         var skipNote: Boolean = false,      // Don't trigger the note (e.g., CHA failed)
         var hopToRow: Int = -1,             // HOP target row (-1 = no hop)
+        var songHopToRow: Int = -1,         // SNG target song row (-1 = no song hop)
         var tempoChange: Int = -1,          // New tempo (-1 = no change)
         var transposeChange: Int = Int.MIN_VALUE,
         var noteOffset: Int = 0,            // Random note offset
+        var volumeOverride: Int = -1,       // Runtime VOL command override (-1 = no change)
+        var ampOverride: Int = -1,          // Runtime AMP command override (-1 = no change)
+        var panOverride: Int = -1,          // Runtime PAN command override (-1 = no change)
+        var delaySendOverride: Int = -1,    // Runtime SDL command override (-1 = no change)
     )
 
     /**
@@ -192,7 +211,12 @@ class M8FxEngine {
             state.killTick = -1
             state.vibratoPhase = 0.0
             state.pitchBend = 0.0
+            state.pitchBendSemitones = 0.0
             state.pitchBendActive = false
+            if (step.fx1Cmd != FX_PSL && step.fx2Cmd != FX_PSL && step.fx3Cmd != FX_PSL) {
+                state.portaActive = false
+                state.currentFreq = 0.0
+            }
         }
 
         // Process each FX slot
@@ -215,7 +239,7 @@ class M8FxEngine {
                 FX_PSL -> {
                     if (baseNote > 0) {
                         state.portaTarget = M8Synth.noteToFreq(baseNote)
-                        state.portaSpeed = value / 255.0 * 0.1
+                        state.portaSpeed = (value.coerceAtLeast(1) / 255.0 * 0.18).coerceAtLeast(0.002)
                         state.portaActive = true
                     }
                 }
@@ -235,7 +259,7 @@ class M8FxEngine {
                     state.vibratoActive = true
                 }
                 FX_VOL -> {
-                    // Handled by caller - adjust voice volume
+                    result.volumeOverride = value.coerceIn(0, 0xFF)
                 }
                 FX_KIL -> {
                     state.killTick = value
@@ -243,12 +267,10 @@ class M8FxEngine {
                 FX_RET -> {
                     state.retrigSpeed = ((value shr 4) and 0x0F).coerceAtLeast(1)
                     val volParam = value and 0x0F
-                    state.retrigVolRamp = when {
-                        volParam < 8 -> -(8 - volParam) / 8.0 * 0.1
-                        volParam > 8 -> (volParam - 8) / 8.0 * 0.1
-                        else -> 0.0
-                    }
+                    state.retrigVolRamp = (volParam - 8) * 2.25
                     state.retrigTick = 0
+                    state.retrigCount = 0
+                    state.retrigBaseVolume = step.volume.takeIf { it != M8Song.EMPTY } ?: 0x7F
                     state.retrigActive = true
                 }
                 FX_DEL -> {
@@ -260,6 +282,9 @@ class M8FxEngine {
                 }
                 FX_HOP -> {
                     result.hopToRow = value and 0x0F
+                }
+                FX_SNG -> {
+                    result.songHopToRow = value.coerceIn(0, 255)
                 }
                 FX_CHA -> {
                     val chance = value / 255.0
@@ -292,9 +317,10 @@ class M8FxEngine {
                     result.transposeChange = value - 0x80  // Signed: 80=0, 81=+1, 7F=-1
                 }
                 FX_TBL -> {
-                    state.tableIndex = value
+                    state.tableIndex = value.coerceIn(0, 255)
                     state.tableRow = 0
                     state.tableTick = 0
+                    state.tableNoteOffset = 0
                 }
                 FX_THO -> {
                     state.tableRow = value and 0x0F
@@ -302,10 +328,78 @@ class M8FxEngine {
                 FX_TIC -> {
                     state.tableTickRate = value.coerceAtLeast(1)
                 }
+                FX_AMP -> {
+                    result.ampOverride = value.coerceIn(0, 0xFF)
+                }
+                FX_PAN -> {
+                    result.panOverride = value.coerceIn(0, 0xFF)
+                }
+                FX_SDL -> {
+                    result.delaySendOverride = value.coerceIn(0, 0xFF)
+                }
             }
         }
 
         return result
+    }
+
+    /**
+     * Compute one active table tick for a track. M8 tables are per-tick
+     * automation lanes selected by TBL, optionally rate-limited by TIC.
+     */
+    data class TableTickResult(
+        val noteOffset: Int = 0,
+        val volumeOverride: Int = -1,
+        val ampOverride: Int = -1,
+        val panOverride: Int = -1,
+        val delaySendOverride: Int = -1,
+    )
+
+    fun processTableTick(track: Int, tables: Array<Table>): TableTickResult {
+        val state = trackStates[track]
+        val tableIndex = state.tableIndex
+        if (tableIndex !in tables.indices) {
+            state.tableNoteOffset = 0
+            return TableTickResult()
+        }
+
+        val row = tables[tableIndex].rows[state.tableRow.coerceIn(0, 15)]
+        state.tableNoteOffset = row.transpose
+
+        var ampOverride = -1
+        var panOverride = -1
+        var delaySendOverride = -1
+        val fxSlots = arrayOf(
+            row.fx1Cmd to row.fx1Val,
+            row.fx2Cmd to row.fx2Val,
+            row.fx3Cmd to row.fx3Val,
+        )
+        for ((cmd, value) in fxSlots) {
+            when (cmd) {
+                FX_AMP -> ampOverride = value.coerceIn(0, 0xFF)
+                FX_PAN -> panOverride = value.coerceIn(0, 0xFF)
+                FX_SDL -> delaySendOverride = value.coerceIn(0, 0xFF)
+                FX_THO -> {
+                    state.tableRow = value and 0x0F
+                    state.tableTick = 0
+                }
+                FX_TIC -> state.tableTickRate = value.coerceAtLeast(1)
+            }
+        }
+
+        state.tableTick++
+        if (state.tableTick >= state.tableTickRate) {
+            state.tableTick = 0
+            state.tableRow = (state.tableRow + 1) and 0x0F
+        }
+
+        return TableTickResult(
+            noteOffset = row.transpose,
+            volumeOverride = row.volume.takeIf { it != M8Song.EMPTY } ?: -1,
+            ampOverride = ampOverride,
+            panOverride = panOverride,
+            delaySendOverride = delaySendOverride,
+        )
     }
 
     /**
@@ -315,6 +409,11 @@ class M8FxEngine {
     fun getFreqModifier(track: Int, baseFreq: Double, sampleIndex: Int): Double {
         val state = trackStates[track]
         var freq = baseFreq
+
+        // Table transpose
+        if (state.tableNoteOffset != 0) {
+            freq *= Math.pow(2.0, state.tableNoteOffset / 12.0)
+        }
 
         // Arpeggio
         if (state.arpActive) {
@@ -336,15 +435,18 @@ class M8FxEngine {
 
         // Pitch bend
         if (state.pitchBendActive) {
-            state.currentFreq += state.pitchBend
-            freq *= Math.pow(2.0, state.currentFreq / 12.0)
+            state.pitchBendSemitones += state.pitchBend
+            freq *= Math.pow(2.0, state.pitchBendSemitones / 12.0)
         }
 
         // Portamento
         if (state.portaActive && state.portaTarget > 0.0) {
-            val diff = state.portaTarget - freq
-            freq += diff * state.portaSpeed
+            if (state.currentFreq <= 0.0) state.currentFreq = baseFreq
+            val diff = state.portaTarget - state.currentFreq
+            state.currentFreq += diff * state.portaSpeed
+            freq = state.currentFreq
             if (kotlin.math.abs(diff) < 0.1) {
+                state.currentFreq = state.portaTarget
                 state.portaActive = false
             }
         }
@@ -357,14 +459,28 @@ class M8FxEngine {
      * Called once per sequencer tick.
      * Returns true if the note should be re-triggered.
      */
-    fun processTick(track: Int, tick: Int): Boolean {
+    data class TickResult(
+        val retrigger: Boolean = false,
+        val releaseNote: Boolean = false,
+        val delayedNote: Int = -1,
+        val delayedInstrument: Int = -1,
+        val delayedVolume: Int = -1,
+        val retriggerVolumeOverride: Int = -1,
+    )
+
+    fun processTick(track: Int, tick: Int): TickResult {
         val state = trackStates[track]
         var retrigger = false
+        var releaseNote = false
+        var delayedNote = -1
+        var delayedInstrument = -1
+        var delayedVolume = -1
+        var retriggerVolumeOverride = -1
 
         // Kill
         if (state.killTick >= 0 && tick >= state.killTick) {
             state.killTick = -1
-            // Caller should release note
+            releaseNote = true
         }
 
         // Retrigger
@@ -372,7 +488,11 @@ class M8FxEngine {
             state.retrigTick++
             if (state.retrigTick >= state.retrigSpeed) {
                 state.retrigTick = 0
+                state.retrigCount++
                 retrigger = true
+                retriggerVolumeOverride = (state.retrigBaseVolume + state.retrigVolRamp * state.retrigCount)
+                    .roundToInt()
+                    .coerceIn(0, 0xFF)
             }
         }
 
@@ -380,11 +500,23 @@ class M8FxEngine {
         if (state.delayTicks > 0) {
             state.delayTicks--
             if (state.delayTicks == 0) {
-                retrigger = true
+                delayedNote = state.delayedNote
+                delayedInstrument = state.delayedInst
+                delayedVolume = state.delayedVol
+                state.delayedNote = -1
+                state.delayedInst = -1
+                state.delayedVol = -1
             }
         }
 
-        return retrigger
+        return TickResult(
+            retrigger = retrigger,
+            releaseNote = releaseNote,
+            delayedNote = delayedNote,
+            delayedInstrument = delayedInstrument,
+            delayedVolume = delayedVolume,
+            retriggerVolumeOverride = retriggerVolumeOverride,
+        )
     }
 
     /** Reset all track states */

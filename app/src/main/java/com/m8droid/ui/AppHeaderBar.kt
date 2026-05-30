@@ -15,10 +15,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
+object AppHeaderLayout {
+    const val reservesTopCutoutSpace = false
+    const val showsInlineSaveButton = false
+    const val horizontalPaddingDp = 12
+    const val actionGapDp = 12
+    const val iconHitSizeDp = 32
+}
+
 @Composable
 fun AppHeaderBar(
     subtitle: String,
     onLoad: () -> Unit,
+    onSave: (() -> Unit)? = null,
+    dirty: Boolean = false,
     onSettings: () -> Unit,
     onHelp: () -> Unit,
     modifier: Modifier = Modifier,
@@ -28,9 +38,10 @@ fun AppHeaderBar(
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
             .height(44.dp)
             .background(AppTheme.BgPanel)
-            .padding(horizontal = AppTheme.SpaceLg),
+            .padding(horizontal = AppHeaderLayout.horizontalPaddingDp.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // Title group — clean wordmark with optional context subtitle
@@ -66,16 +77,16 @@ fun AppHeaderBar(
         HeaderIconButton(onClick = onLoad, tint = AppTheme.TextNormal) { c ->
             AppLoadIcon(tint = c, size = 20.dp)
         }
-        Spacer(Modifier.width(AppTheme.SpaceLg))
+        Spacer(Modifier.width(AppHeaderLayout.actionGapDp.dp))
         HeaderIconButton(onClick = onSettings, tint = AppTheme.TextNormal) { c ->
             AppSystemIcon(tint = c, size = 20.dp)
         }
-        Spacer(Modifier.width(AppTheme.SpaceLg))
+        Spacer(Modifier.width(AppHeaderLayout.actionGapDp.dp))
         HeaderIconButton(onClick = onHelp, tint = AppTheme.TextNormal) { c ->
             AppHelpIcon(tint = c, size = 20.dp)
         }
         if (onAcademy != null) {
-            Spacer(Modifier.width(AppTheme.SpaceLg))
+            Spacer(Modifier.width(AppHeaderLayout.actionGapDp.dp))
             HeaderIconButton(onClick = onAcademy, tint = AppTheme.AccentMagenta) { c ->
                 Text(
                     text = "♟",
@@ -86,7 +97,7 @@ fun AppHeaderBar(
             }
         }
         if (onClose != null) {
-            Spacer(Modifier.width(AppTheme.SpaceLg))
+            Spacer(Modifier.width(AppHeaderLayout.actionGapDp.dp))
             HeaderIconButton(onClick = onClose, tint = AppTheme.TextDim) { c ->
                 Text(
                     text = "✕",
@@ -107,7 +118,7 @@ private fun HeaderIconButton(
 ) {
     Box(
         modifier = Modifier
-            .size(36.dp)
+            .size(AppHeaderLayout.iconHitSizeDp.dp)
             .clip(RoundedCornerShape(AppTheme.CornerSm))
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,

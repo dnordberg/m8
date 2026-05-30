@@ -55,7 +55,7 @@ class M8Synth {
     // ======================== PRESETS ========================
 
     data class Preset(
-        val wave: Int,          // 0=saw,1=pulse,2=sine,3=tri,4=noise,5=fm,6=sample
+        val wave: Int,          // 0=saw,1=pulse,2=sine,3=tri,4=noise,5=fm,6=sample,7=hyper,8=macro
         val cutoff: Double,     // 0-1 filter cutoff
         val reso: Double,       // 0-1 filter resonance
         val atkMs: Double,      // attack ms
@@ -118,12 +118,21 @@ class M8Synth {
 
         // Sampler playback
         var samplePos = 0.0
+        var sampleInitialized = false
+
+        // Instrument modulation
+        var lfo1Phase = 0.0
+        var lfo2Phase = 0.0
 
         fun trigger(f: Double, v: Double) {
             freq = f; vol = v
             samplePos = 0.0
+            sampleInitialized = false
             envStage = 1; envTime = 0.0; envLevel = 0.0
             fenvLevel = 1.0; fenvTime = 0.0
+            val mod = trackModulations[track]
+            if (mod.lfo1.retrigger) lfo1Phase = 0.0
+            if (mod.lfo2.retrigger) lfo2Phase = 0.0
             noteOn = true; active = true
             // Clear SVF so a stale filter tail doesn't bleed into the new note
             svfLo = 0.0; svfBd = 0.0
@@ -167,8 +176,9 @@ class M8Synth {
             fenvTime += dt
             fenvLevel = exp(-fenvTime * 6.0).coerceIn(0.0, 1.0)
 
-            // Freq with FX modulation
-            val f = fxEngine?.getFreqModifier(track, freq, sampleIdx) ?: freq
+            // Freq with FX + instrument modulation. Debug helpers are intentionally
+            // non-mutating; runtime FX state advances only through this render path.
+            val f = runtimeModulatedFrequency(track, sampleIdx)
             val phInc = f / SR
 
             // --- Oscillator (PolyBLEP where needed) ---
@@ -202,6 +212,8 @@ class M8Synth {
                     sin((phase + mod) * TWO_PI)
                 }
                 6 -> readSample(track, this)
+                7 -> readHyperSynth(track, phase)
+                8 -> readMacroSynth(track, phase, phInc)
                 else -> 0.0
             }
 
@@ -209,7 +221,7 @@ class M8Synth {
             if (phase >= 1.0) phase -= floor(phase)
 
             // --- 2-pole SVF (Chamberlin, stability-clamped) ---
-            val cutNorm = pr.cutoff + pr.filtEnv * fenvLevel
+            val cutNorm = debugModulatedCutoff(track, -1)
             val cutHz = 20.0 * 2.0.pow(cutNorm.coerceIn(0.0, 1.0) * 10.0)
             val q = max(0.5, 1.0 - pr.reso * 0.95)
             val svfF = min(2.0 * sin(PI * (cutHz / SR).coerceIn(0.0, 0.48)), 2.0 * q - 0.01)
@@ -222,7 +234,9 @@ class M8Synth {
             if (!svfBd.isFinite()) svfBd = 0.0
             if (!svfLo.isFinite()) svfLo = 0.0
 
-            return svfLo * envLevel * vol
+            val out = svfLo * envLevel * vol * debugModulatedAmp(track, -1)
+            advanceVoiceLfos(track)
+            return out
         }
     }
 
@@ -230,6 +244,13 @@ class M8Synth {
 
     private val voicePresets = PRESETS.copyOf()
     private val trackSamples = arrayOfNulls<WavDecoder.DecodedWav>(8)
+    private val trackSamplers = Array(8) { SamplerParams() }
+    private val trackMacroSynths = Array(8) { MacroSynthParams() }
+    private val trackHyperSynths = Array(8) { HyperSynthParams() }
+    private val trackModulations = Array(8) { ModulationParams() }
+    private val runtimeTrackAmp = IntArray(8) { -1 }
+    private val runtimeTrackPan = IntArray(8) { -1 }
+    private val runtimeTrackDelaySend = IntArray(8) { -1 }
     private val voices = Array(8) { Voice(it) }
     private val dlBufL = DoubleArray(DELAY_LEN)
     private val dlBufR = DoubleArray(DELAY_LEN)
@@ -257,6 +278,15 @@ class M8Synth {
     fun configureVoice(track: Int, inst: M8Instrument) {
         if (track !in 0..7) return
         voicePresets[track] = presetFromInstrument(inst, PRESETS[track])
+        trackSamplers[track] = inst.sampler.copy()
+        trackMacroSynths[track] = inst.macroSynth.copy()
+        trackHyperSynths[track] = inst.hyperSynth.copy()
+        trackModulations[track] = inst.modulation.copy(
+            env1 = inst.modulation.env1.copy(),
+            env2 = inst.modulation.env2.copy(),
+            lfo1 = inst.modulation.lfo1.copy(),
+            lfo2 = inst.modulation.lfo2.copy(),
+        )
     }
 
     fun applyInstrument(trackIndex: Int, instrument: M8Instrument) = configureVoice(trackIndex, instrument)
@@ -266,7 +296,110 @@ class M8Synth {
         trackSamples[track] = sample
     }
 
+    fun setRuntimeTrackAmp(track: Int, value: Int) {
+        if (track !in 0..7) return
+        runtimeTrackAmp[track] = value.coerceIn(0, 0xFF)
+    }
+
+    fun setRuntimeTrackPan(track: Int, value: Int) {
+        if (track !in 0..7) return
+        runtimeTrackPan[track] = value.coerceIn(0, 0xFF)
+    }
+
+    fun setRuntimeTrackDelaySend(track: Int, value: Int) {
+        if (track !in 0..7) return
+        runtimeTrackDelaySend[track] = value.coerceIn(0, 0xFF)
+    }
+
+    fun clearRuntimeTrackOverrides(track: Int) {
+        if (track !in 0..7) return
+        runtimeTrackAmp[track] = -1
+        runtimeTrackPan[track] = -1
+        runtimeTrackDelaySend[track] = -1
+    }
+
     fun getVoiceFreq(track: Int): Double = if (track in 0..7) voices[track].freq else 0.0
+    fun getSamplePosition(track: Int): Double = if (track in 0..7) voices[track].samplePos else 0.0
+    fun isVoiceActive(track: Int): Boolean = track in 0..7 && voices[track].active
+
+    fun debugModulatedFrequency(track: Int, sampleIdx: Int): Double {
+        if (track !in 0..7) return 0.0
+        val voice = voices[track]
+        return applyPitchModulation(track, voice.freq)
+    }
+
+    private fun runtimeModulatedFrequency(track: Int, sampleIdx: Int): Double {
+        val voice = voices[track]
+        val fxFreq = fxEngine?.getFreqModifier(track, voice.freq, sampleIdx) ?: voice.freq
+        return applyPitchModulation(track, fxFreq)
+    }
+
+    private fun applyPitchModulation(track: Int, baseFreq: Double): Double {
+        val semitones = modulationSum(track, ModDestination.PITCH) * 2.0
+        return baseFreq * 2.0.pow(semitones / 12.0)
+    }
+
+    fun debugModulatedCutoff(track: Int, sampleIdx: Int): Double {
+        if (track !in 0..7) return 0.0
+        val voice = voices[track]
+        val pr = voicePresets[track]
+        val routedCutoffEnv = trackModulations[track].env2.dest == ModDestination.CUTOFF
+        val legacyFilterEnvelope = if (routedCutoffEnv) 0.0 else pr.filtEnv * voice.fenvLevel
+        return (pr.cutoff + legacyFilterEnvelope + modulationSum(track, ModDestination.CUTOFF)).coerceIn(0.0, 1.0)
+    }
+
+    fun debugModulatedAmp(track: Int, sampleIdx: Int): Double {
+        if (track !in 0..7) return 1.0
+        return (1.0 + modulationSum(track, ModDestination.AMP) * 0.75).coerceIn(0.0, 2.0)
+    }
+
+    private fun modulationSum(track: Int, destination: Int): Double {
+        val mod = trackModulations[track]
+        val voice = voices[track]
+        var value = 0.0
+        value += envContribution(mod.env2, destination, voice.fenvLevel)
+        value += lfoContribution(mod.lfo1, destination, voice.lfo1Phase)
+        value += lfoContribution(mod.lfo2, destination, voice.lfo2Phase)
+        return value
+    }
+
+    private fun advanceVoiceLfos(track: Int) {
+        val mod = trackModulations[track]
+        val voice = voices[track]
+        voice.lfo1Phase = advanceLfoPhase(voice.lfo1Phase, mod.lfo1)
+        voice.lfo2Phase = advanceLfoPhase(voice.lfo2Phase, mod.lfo2)
+    }
+
+    private fun envContribution(env: Envelope, destination: Int, level: Double): Double =
+        if (env.dest == destination) modAmount(env.amount) * level else 0.0
+
+    private fun lfoContribution(lfo: Lfo, destination: Int, phase: Double): Double =
+        if (lfo.dest == destination) modAmount(lfo.amount) * lfoValue(lfo.shape, phase) else 0.0
+
+    private fun modAmount(amount: Int): Double = ((amount.coerceIn(0, 0xFF) - 0x80) / 127.0).coerceIn(-1.0, 1.0)
+
+    private fun advanceLfoPhase(phase: Double, lfo: Lfo): Double {
+        val hz = 0.05 + (lfo.speed.coerceIn(0, 0xFF) / 255.0) * 16.0
+        val next = phase + hz / SR
+        return next - floor(next)
+    }
+
+    private fun lfoValue(shape: LfoShape, phase: Double): Double = when (shape) {
+        LfoShape.TRIANGLE -> 1.0 - 4.0 * abs(phase - 0.5)
+        LfoShape.SINE -> sin(phase * TWO_PI)
+        LfoShape.RAMP_DOWN -> 1.0 - 2.0 * phase
+        LfoShape.RAMP_UP -> 2.0 * phase - 1.0
+        LfoShape.SQUARE -> if (phase < 0.5) 1.0 else -1.0
+        LfoShape.RANDOM -> sin(floor(phase * 64.0) * 12.9898) % 1.0
+        LfoShape.DRUNK -> sin(phase * TWO_PI) * 0.6 + sin(phase * TWO_PI * 0.37) * 0.4
+    }.coerceIn(-1.0, 1.0)
+
+    fun releaseTrack(track: Int) {
+        if (track !in 0..7) return
+        voices[track].noteOn = false
+        voices[track].envStage = 0
+        voices[track].active = false
+    }
 
     fun triggerRow(rowData: Array<IntArray>) {
         for (t in 0 until min(8, rowData.size)) {
@@ -308,8 +441,16 @@ class M8Synth {
                 val s = voices[t].gen(i)
                 if (s == 0.0) continue
 
-                val tVol = if (mx != null) mx.trackVolumes[t] / 255.0 else voicePresets[t].amp
-                val pan = if (mx != null) mx.trackPans[t] / 255.0 else voicePresets[t].pan
+                val tVol = when {
+                    runtimeTrackAmp[t] >= 0 -> runtimeTrackAmp[t] / 255.0
+                    mx != null -> mx.trackVolumes[t] / 255.0
+                    else -> voicePresets[t].amp
+                }
+                val pan = when {
+                    runtimeTrackPan[t] >= 0 -> runtimeTrackPan[t] / 255.0
+                    mx != null -> mx.trackPans[t] / 255.0
+                    else -> voicePresets[t].pan
+                }
                 val scaled = s * tVol
                 val pL = cos(pan * PI * 0.5)
                 val pR = sin(pan * PI * 0.5)
@@ -318,7 +459,7 @@ class M8Synth {
                 mixL += sL; mixR += sR
 
                 // Delay send
-                val ds = voicePresets[t].dlSend
+                val ds = if (runtimeTrackDelaySend[t] >= 0) runtimeTrackDelaySend[t] / 255.0 else voicePresets[t].dlSend
                 if (ds > 0.0) { dlInL += sL * ds; dlInR += sR * ds }
 
                 val pk = abs(scaled)
@@ -411,8 +552,8 @@ class M8Synth {
                 WavShape.OVERFLOW -> 0
             }
             InstrumentType.FM_SYNTH -> 5
-            InstrumentType.MACROSYNTH -> if (inst.macroSynth.model in 34..37) 4 else 0
-            InstrumentType.HYPERSYNTH -> 0
+            InstrumentType.MACROSYNTH -> 8
+            InstrumentType.HYPERSYNTH -> 7
             InstrumentType.SAMPLER -> 6
             InstrumentType.MIDI_OUT -> fallback.wave
         }
@@ -452,21 +593,156 @@ class M8Synth {
         return minMs + (maxMs - minMs) * x * x
     }
 
+    private fun readHyperSynth(track: Int, ph: Double): Double {
+        val h = trackHyperSynths[track]
+        val swarm = (h.swarm / 255.0).coerceIn(0.0, 1.0)
+        val spreadCents = 2.0 + swarm * 42.0
+        val shift = (h.shift / 255.0).coerceIn(0.0, 1.0)
+        val sub = (h.subOsc / 255.0).coerceIn(0.0, 1.0)
+        val intervals = hyperIntervals(h.chordBank, h.chord, shift)
+        val detunes = doubleArrayOf(-1.0, -0.55, -0.2, 0.0, 0.16, 0.43, 0.78, 1.0)
+        var sum = 0.0
+        for (i in detunes.indices) {
+            val cents = detunes[i] * spreadCents
+            val ratio = 2.0.pow((intervals[i % intervals.size] + cents / 100.0) / 12.0)
+            val p = (ph * ratio + i * 0.137) % 1.0
+            sum += 2.0 * p - 1.0
+        }
+        if (sub > 0.0) sum += sin(ph * 0.5 * TWO_PI) * sub * 2.0
+        return (sum / (8.0 + sub * 2.0)).coerceIn(-1.0, 1.0)
+    }
+
+    private fun hyperIntervals(bank: Int, chord: Int, shift: Double): DoubleArray {
+        val base = when (bank.coerceIn(0, HyperSynthParams.CHORD_BANK_NAMES.lastIndex)) {
+            1 -> doubleArrayOf(0.0, 3.0, 7.0, 10.0)
+            2 -> doubleArrayOf(0.0, 2.0, 7.0, 12.0)
+            3 -> doubleArrayOf(0.0, 5.0, 7.0, 12.0)
+            4 -> doubleArrayOf(0.0, 4.0, 7.0, 10.0)
+            5 -> doubleArrayOf(0.0, 4.0, 7.0, 11.0)
+            6 -> doubleArrayOf(0.0, 3.0, 7.0, 10.0)
+            7 -> doubleArrayOf(0.0, 3.0, 6.0, 9.0)
+            8 -> doubleArrayOf(0.0, 4.0, 8.0, 12.0)
+            9 -> doubleArrayOf(0.0, 7.0, 12.0, 19.0)
+            else -> doubleArrayOf(0.0, 4.0, 7.0, 12.0)
+        }
+        val octave = ((chord and 0x0F) % 3) * 12.0
+        return DoubleArray(4) { i -> base[i] + octave * shift }
+    }
+
+    private fun readMacroSynth(track: Int, ph: Double, phInc: Double): Double {
+        val m = trackMacroSynths[track]
+        val timbre = (m.timbre / 255.0).coerceIn(0.0, 1.0)
+        val color = (m.color / 255.0).coerceIn(0.0, 1.0)
+        var value = when (m.model.coerceIn(0, MacroSynthParams.MODEL_NAMES.lastIndex)) {
+            0 -> { // CSAW: animated saw/pulse blend
+                val saw = polySaw(ph, phInc)
+                val pulse = polyPulse(ph, phInc, 0.2 + timbre * 0.6)
+                saw * (1.0 - color) + pulse * color
+            }
+            1, 2, 3 -> { // Morph / saw-square / sine-triangle families
+                val a = if (m.model == 3) sin(ph * TWO_PI) else polySaw(ph, phInc)
+                val b = if (m.model == 3) 4.0 * abs(ph - 0.5) - 1.0 else polyPulse(ph, phInc, 0.5)
+                a * (1.0 - timbre) + b * timbre
+            }
+            5 -> { // SQUARE SUB
+                polyPulse(ph, phInc, 0.5) * (0.7 + color * 0.2) + sin(ph * 0.5 * TWO_PI) * (0.15 + timbre * 0.35)
+            }
+            6 -> { // SAW SUB
+                polySaw(ph, phInc) * 0.75 + sin(ph * 0.5 * TWO_PI) * (0.1 + timbre * 0.4)
+            }
+            9 -> { // TRIPLE SAW
+                (polySaw(ph, phInc) + polySaw((ph * 1.005 + 0.17) % 1.0, phInc) + polySaw((ph * 0.995 + 0.31) % 1.0, phInc)) / 3.0
+            }
+            10 -> { // TRIPLE SQUARE
+                (polyPulse(ph, phInc, 0.45) + polyPulse((ph * 1.003 + 0.23) % 1.0, phInc, 0.5) + polyPulse((ph * 0.997 + 0.41) % 1.0, phInc, 0.55)) / 3.0
+            }
+            in 34..37, 42, 43 -> { // drum/noise-like models
+                val bit = ((sin((ph * (97.0 + timbre * 400.0)) * TWO_PI) * 43758.5453) % 1.0)
+                (bit * 2.0 - 1.0) * (0.5 + color * 0.5)
+            }
+            else -> polySaw(ph, phInc) * (1.0 - timbre * 0.5) + sin((ph * (1.0 + color * 3.0)) * TWO_PI) * timbre * 0.5
+        }
+        if (m.redux > 0) {
+            val levels = max(2.0, 256.0 - m.redux.toDouble()).toInt()
+            value = kotlin.math.round(value * levels) / levels
+        }
+        return value.coerceIn(-1.0, 1.0)
+    }
+
+    private fun polySaw(ph: Double, phInc: Double): Double {
+        val p = ph % 1.0
+        return (2.0 * p - 1.0) - polyBlep(p, phInc)
+    }
+
+    private fun polyPulse(ph: Double, phInc: Double, pw: Double): Double {
+        val p = ph % 1.0
+        val width = pw.coerceIn(0.05, 0.95)
+        val naive = if (p < width) 1.0 else -1.0
+        return naive + polyBlep(p, phInc) - polyBlep((p - width + 1.0) % 1.0, phInc)
+    }
+
     private fun readSample(track: Int, voice: Voice): Double {
         val sample = trackSamples.getOrNull(track) ?: run {
             voice.release()
             return 0.0
         }
-        val frame = voice.samplePos.toInt()
-        if (frame !in 0 until sample.frameCount) {
-            voice.release()
-            return 0.0
+        val sampler = trackSamplers[track]
+        val startFrame = samplerFrame(sampler.start, sample.frameCount)
+        val endFrame = max(startFrame + 1, samplerFrame(sampler.length, sample.frameCount))
+            .coerceAtMost(sample.frameCount)
+        val loopStart = samplerFrame(sampler.loopStart, sample.frameCount).coerceIn(startFrame, endFrame - 1)
+        val looping = sampler.playMode == 2 || sampler.playMode == 3 || sampler.playMode == 4 || sampler.playMode == 5 || sampler.playMode == 6
+
+        if (!voice.sampleInitialized) {
+            voice.samplePos = startFrame.toDouble()
+            voice.sampleInitialized = true
         }
-        val base = frame * sample.channels
+
+        if (voice.samplePos >= endFrame) {
+            if (looping) {
+                val loopLen = max(1.0, endFrame - loopStart.toDouble())
+                voice.samplePos = loopStart + ((voice.samplePos - loopStart) % loopLen)
+            } else {
+                voice.release()
+                return 0.0
+            }
+        }
+
+        val frame = voice.samplePos.toInt().coerceIn(startFrame, endFrame - 1)
+        val frac = voice.samplePos - frame
+        val nextFrame = when {
+            frame + 1 < endFrame -> frame + 1
+            looping -> loopStart
+            else -> frame
+        }
+        var value = sampleAt(sample, frame) * (1.0 - frac) + sampleAt(sample, nextFrame) * frac
+
+        if (sampler.degrade > 0) {
+            val levels = max(2.0, 256.0 - sampler.degrade.toDouble()).toInt()
+            value = kotlin.math.round(value * levels) / levels
+        }
+
+        val baseStep = sample.sampleRate.toDouble() / SR
+        val noteRatio = (voice.freq / noteToFreq(60)).coerceIn(0.125, 8.0)
+        val detuneRatio = 2.0.pow(((sampler.detune - 0x80) / 128.0) / 12.0)
+        voice.samplePos += baseStep * noteRatio * detuneRatio
+
+        if (voice.samplePos >= endFrame && looping) {
+            val loopLen = max(1.0, endFrame - loopStart.toDouble())
+            voice.samplePos = loopStart + ((voice.samplePos - loopStart) % loopLen)
+        }
+
+        return value
+    }
+
+    private fun samplerFrame(hex: Int, frameCount: Int): Int =
+        ((hex.coerceIn(0, 0xFF) / 255.0) * max(0, frameCount - 1)).toInt()
+
+    private fun sampleAt(sample: WavDecoder.DecodedWav, frame: Int): Double {
+        val safeFrame = frame.coerceIn(0, sample.frameCount - 1)
+        val base = safeFrame * sample.channels
         var value = sample.samples[base].toDouble()
         if (sample.channels == 2) value = (value + sample.samples[base + 1]) * 0.5
-        val step = sample.sampleRate.toDouble() / SR
-        voice.samplePos += step
         return value
     }
 

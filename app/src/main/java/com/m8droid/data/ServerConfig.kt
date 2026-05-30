@@ -21,6 +21,7 @@ data class ServerSettings(
     val buttonLayout: ButtonLayout = ButtonLayout.BEST,
     val gamepadEnabled: Boolean = true,
     val keyboardEnabled: Boolean = true,
+    val hexEditorEnabled: Boolean = false,
 )
 
 class ServerConfig(private val context: Context) {
@@ -32,6 +33,7 @@ class ServerConfig(private val context: Context) {
         private val BUTTON_LAYOUT = stringPreferencesKey("button_layout")
         private val GAMEPAD_ENABLED = booleanPreferencesKey("gamepad_enabled")
         private val KEYBOARD_ENABLED = booleanPreferencesKey("keyboard_enabled")
+        private val HEX_EDITOR_ENABLED = booleanPreferencesKey("hex_editor_enabled")
     }
 
     val settings: Flow<ServerSettings> = context.dataStore.data.map { prefs ->
@@ -44,6 +46,7 @@ class ServerConfig(private val context: Context) {
                 ?: ButtonLayout.BEST,
             gamepadEnabled = prefs[GAMEPAD_ENABLED] ?: true,
             keyboardEnabled = prefs[KEYBOARD_ENABLED] ?: true,
+            hexEditorEnabled = prefs[HEX_EDITOR_ENABLED] ?: false,
         )
     }
 
@@ -55,6 +58,7 @@ class ServerConfig(private val context: Context) {
             prefs[BUTTON_LAYOUT] = settings.buttonLayout.name
             prefs[GAMEPAD_ENABLED] = settings.gamepadEnabled
             prefs[KEYBOARD_ENABLED] = settings.keyboardEnabled
+            prefs[HEX_EDITOR_ENABLED] = settings.hexEditorEnabled
         }
     }
 }

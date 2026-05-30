@@ -1,6 +1,11 @@
 package com.m8droid.tutorial
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import com.m8droid.emulator.M8Emulator
+import com.m8droid.protocol.M8Commands
 
 /**
  * Interactive tutorial system for the M8 tracker.
@@ -31,11 +36,13 @@ class M8Tutorial(private val emulator: M8Emulator) {
         COMPLETE("COMPLETE", null),
     }
 
-    var active = false
+    var active by mutableStateOf(false)
         private set
-    var currentStepIndex = 0
+    var currentStepIndex by mutableIntStateOf(0)
         private set
-    var paused = false
+    var paused by mutableStateOf(false)
+        private set
+    var revision by mutableIntStateOf(0)
         private set
 
     // Snapshot of emulator state when step was shown (for detecting changes)
@@ -48,6 +55,9 @@ class M8Tutorial(private val emulator: M8Emulator) {
 
     val currentStep: Step?
         get() = steps.getOrNull(currentStepIndex)
+
+    val currentStepButtonMask: Int?
+        get() = currentStep?.buttonHint?.let(::buttonMaskForHint)
 
     val progress: Float
         get() = if (steps.isEmpty()) 1f else currentStepIndex.toFloat() / steps.size
@@ -63,27 +73,32 @@ class M8Tutorial(private val emulator: M8Emulator) {
         paused = false
         currentStepIndex = 0
         captureState()
+        bumpRevision()
     }
 
     fun resume() {
         active = true
         paused = false
         captureState()
+        bumpRevision()
     }
 
     fun pause() {
         paused = true
+        bumpRevision()
     }
 
     fun stop() {
         active = false
         paused = false
+        bumpRevision()
     }
 
     fun skip() {
         if (currentStepIndex < steps.size - 1) {
             currentStepIndex++
             captureState()
+            bumpRevision()
         }
     }
 
@@ -91,7 +106,14 @@ class M8Tutorial(private val emulator: M8Emulator) {
         if (currentStepIndex > 0) {
             currentStepIndex--
             captureState()
+            bumpRevision()
         }
+    }
+
+    fun completeCurrentStepFromOverlay(): Int? {
+        val mask = currentStepButtonMask ?: return null
+        skip()
+        return mask
     }
 
     /** Jump to the first step for the current screen (for context-sensitive resume) */
@@ -100,6 +122,7 @@ class M8Tutorial(private val emulator: M8Emulator) {
         if (idx >= 0) {
             currentStepIndex = idx
             captureState()
+            bumpRevision()
         }
     }
 
@@ -111,6 +134,7 @@ class M8Tutorial(private val emulator: M8Emulator) {
             if (currentStepIndex < steps.size) {
                 captureState()
             }
+            bumpRevision()
             return true
         }
         return false
@@ -121,6 +145,22 @@ class M8Tutorial(private val emulator: M8Emulator) {
         stepShownCursorX = emulator.cursorX
         stepShownCursorY = emulator.cursorY
         stepShownPlaying = emulator.playing
+    }
+
+    private fun bumpRevision() {
+        revision++
+    }
+
+    private fun buttonMaskForHint(hint: String): Int? = when {
+        hint.contains("SHIFT + EDIT") -> M8Commands.KEY_SHIFT or M8Commands.KEY_EDIT
+        hint.contains("SHIFT + UP/DN") -> M8Commands.KEY_SHIFT or M8Commands.KEY_DOWN
+        hint.contains("LEFT / RIGHT") -> M8Commands.KEY_RIGHT
+        hint.contains("UP / DOWN") -> M8Commands.KEY_DOWN
+        hint.contains("D-PAD") -> M8Commands.KEY_RIGHT
+        hint.contains("PLAY") -> M8Commands.KEY_PLAY
+        hint.contains("OPT") -> M8Commands.KEY_OPTION
+        hint.contains("EDIT") -> M8Commands.KEY_EDIT
+        else -> null
     }
 
     private fun buildSteps(): List<Step> = listOf(

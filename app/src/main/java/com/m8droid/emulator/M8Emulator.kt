@@ -48,6 +48,10 @@ class M8Emulator {
         // Screens shown in the top tab header / OPT+EDIT cycle. PROJECT is
         // reachable only via Shift+Up and is intentionally kept out of the tab row.
         val SCREEN_NAMES = arrayOf("SONG", "CHAIN", "PHRASE", "INSTR", "TABLE", "MIXER", "FX", "CONFIG")
+
+        // Synth-side note-off sentinel mirrored here so the emulator can produce
+        // row data without taking a hard dependency on M8Synth in tests.
+        const val SYNTH_NOTE_OFF = 0xFF
     }
 
     // --- Data model ---
@@ -83,9 +87,19 @@ class M8Emulator {
     var selectedPhrase = 0
     var selectedInstrument = 0
     var selectedTable = 0
+    var phraseEditColumn = 0 // 0=note,1=inst,2=vol,3/4=FX1 cmd/val,5/6=FX2,7/8=FX3
 
     // Editing
     var editMode = false
+    private var pendingHexEntryTarget: HexEntryTarget? = null
+    private var pendingHexHighNibble: Int? = null
+
+    private data class HexEntryTarget(
+        val screen: Int,
+        val selectedChain: Int,
+        val cursorX: Int,
+        val cursorY: Int,
+    )
 
     // External waveform data from synth (set by ViewModel)
     var liveWaveformData: ByteArray? = null
@@ -122,6 +136,359 @@ class M8Emulator {
     }
 
     /**
+     * Map taps on the 320×240 rendered M8 display to tracker cells. This keeps
+     * phone touch selection in the emulator model instead of inventing a separate
+     * Android-only edit grid.
+     */
+    fun handleDisplayTap(m8X: Int, m8Y: Int) {
+        when (screen) {
+            SCREEN_SONG -> {
+                val trackStartX = 28
+                val trackSpacing = 26
+                val rowStartY = 60
+                val viewOffset = max(0, cursorY - 8)
+                val track = ((m8X - trackStartX) / trackSpacing).coerceIn(0, 7)
+                val row = (viewOffset + ((m8Y - rowStartY) / FONT_H)).coerceIn(0, 255)
+                if (m8X >= trackStartX && m8Y >= rowStartY) {
+                    cursorX = track
+                    cursorY = row
+                    pendingHexEntryTarget = null
+                    pendingHexHighNibble = null
+                    val chainIdx = song.songGrid[cursorY][cursorX]
+                    if (chainIdx != M8Song.EMPTY) selectedChain = chainIdx
+                }
+            }
+            SCREEN_CHAIN -> {
+                val yStart = 16
+                val rowH = FONT_H + 3
+                val row = ((m8Y - (yStart + 14 + rowH)) / rowH).coerceIn(0, 15)
+                if (m8Y >= yStart + 14 + rowH) {
+                    cursorY = row
+                    cursorX = if (m8X >= 58) 1 else 0
+                    pendingHexEntryTarget = null
+                    pendingHexHighNibble = null
+                    val chainRow = song.chains[selectedChain.coerceIn(0, 254)].rows[cursorY]
+                    if (chainRow.phrase != M8Song.EMPTY) selectedPhrase = chainRow.phrase
+                }
+            }
+            SCREEN_PHRASE -> {
+                val trackStartX = 20
+                val trackW = 28
+                val dataStartY = 38
+                if (m8X >= trackStartX && m8Y >= dataStartY) {
+                    val relX = m8X - trackStartX
+                    cursorX = (relX / trackW).coerceIn(0, 7)
+                    cursorY = ((m8Y - dataStartY) / (FONT_H + 2)).coerceIn(0, 15)
+                    phraseEditColumn = if (relX % trackW >= 24) 1 else 0
+                    pendingHexEntryTarget = null
+                    pendingHexHighNibble = null
+                }
+            }
+        }
+    }
+
+    fun handleDisplayLongPress(m8X: Int, m8Y: Int): Boolean {
+        if (!isEditableDisplayCell(m8X, m8Y)) return false
+        handleDisplayTap(m8X, m8Y)
+        editMode = true
+        return true
+    }
+
+    private fun isEditableDisplayCell(m8X: Int, m8Y: Int): Boolean = when (screen) {
+        SCREEN_SONG -> m8X >= 28 && m8Y >= 60
+        SCREEN_CHAIN -> m8Y >= 43
+        SCREEN_PHRASE -> m8X >= 20 && m8Y >= 38
+        else -> false
+    }
+
+    /**
+     * Enter one hex digit into the currently selected rendered hex cell. This is
+     * the emulator-core seam used by phone touch controls: the first digit writes
+     * 0x0N for immediate visual feedback, the second digit completes 0xNN.
+     */
+    fun canEnterHexDigit(): Boolean = currentHexEntryTarget() != null
+
+    fun canEditSongNameFromScreen(): Boolean = screen == SCREEN_CONFIG && cursorY == 0
+
+    fun setSongNameFromEditor(name: String): Boolean {
+        if (!canEditSongNameFromScreen()) return false
+        val cleaned = name.trim().ifBlank { "NEW SONG" }.take(64)
+        if (song.name == cleaned) return false
+        song.name = cleaned
+        return true
+    }
+
+    fun enterHexDigit(digit: Int): Boolean {
+        if (digit !in 0..0x0F) return false
+        val target = currentHexEntryTarget() ?: return false
+        val high = if (pendingHexEntryTarget == target) pendingHexHighNibble else null
+        val value = if (high == null) digit else ((high shl 4) or digit).coerceAtMost(0xFE)
+
+        when (screen) {
+            SCREEN_SONG -> {
+                song.songGrid[cursorY.coerceIn(0, 255)][cursorX.coerceIn(0, 7)] = value
+                selectedChain = value
+                resolveCurrentPhrases()
+            }
+            SCREEN_CHAIN -> {
+                val row = song.chains[selectedChain.coerceIn(0, 254)].rows[cursorY.coerceIn(0, 15)]
+                row.phrase = value
+                selectedPhrase = value
+                resolveCurrentPhrases()
+            }
+            else -> return false
+        }
+
+        pendingHexEntryTarget = if (high == null) target else null
+        pendingHexHighNibble = if (high == null) digit else null
+        return true
+    }
+
+    private fun currentHexEntryTarget(): HexEntryTarget? = when (screen) {
+        SCREEN_SONG -> HexEntryTarget(screen, -1, cursorX.coerceIn(0, 7), cursorY.coerceIn(0, 255))
+        SCREEN_CHAIN -> if (cursorX == 0) {
+            HexEntryTarget(screen, selectedChain.coerceIn(0, 254), cursorX, cursorY.coerceIn(0, 15))
+        } else {
+            null
+        }
+        else -> null
+    }
+
+    fun canEnterNoteFromPicker(): Boolean = currentPhraseNoteStep() != null
+
+    fun enterNoteFromPicker(semitone: Int): Boolean = enterNoteFromPickerWithResult(semitone) >= 0
+
+    /**
+     * Write a picker semitone into the current phrase note cell and return the
+     * resulting MIDI note (0–127), or -1 if no editable note cell is selected.
+     * Callers that want to audition the note can read the return value instead
+     * of recomputing octave/semitone math.
+     */
+    fun enterNoteFromPickerWithResult(semitone: Int): Int {
+        if (semitone !in 0..11) return -1
+        val step = currentPhraseNoteStep() ?: return -1
+        val midi = (60 + (octave - 4) * 12 + semitone).coerceIn(1, 127)
+        step.note = midi
+        return midi
+    }
+
+    fun quickInsertAtSelection(): String = when (screen) {
+        SCREEN_SONG -> {
+            val row = cursorY.coerceIn(0, 255)
+            val track = cursorX.coerceIn(0, 7)
+            song.songGrid[row][track] = 0
+            selectedChain = 0
+            resolveCurrentPhrases()
+            "SONG ${M8Song.hex2(row)}:T$track CHAIN 00"
+        }
+        SCREEN_CHAIN -> {
+            val rowIndex = cursorY.coerceIn(0, 15)
+            val chainIndex = selectedChain.coerceIn(0, 254)
+            val row = song.chains[chainIndex].rows[rowIndex]
+            row.phrase = 0
+            selectedPhrase = 0
+            resolveCurrentPhrases()
+            "CHAIN ${M8Song.hex2(chainIndex)}:${M8Song.hex2(rowIndex)} PHRASE 00"
+        }
+        SCREEN_PHRASE -> {
+            val step = currentPhraseStep() ?: return "NO PHRASE STEP"
+            step.note = if (step.note == M8Song.EMPTY || step.note == M8Song.NOTE_OFF) 60 else step.note
+            "PHRASE ${M8Song.hex2(currentPhraseIndex())}:${M8Song.hex2(cursorY.coerceIn(0, 15))} NOTE ${trackerNoteName(step.note)}"
+        }
+        else -> "NO TRACKER CELL"
+    }
+
+    fun clearSelection(): String = when (screen) {
+        SCREEN_SONG -> {
+            val row = cursorY.coerceIn(0, 255)
+            val track = cursorX.coerceIn(0, 7)
+            song.songGrid[row][track] = M8Song.EMPTY
+            resolveCurrentPhrases()
+            "SONG ${M8Song.hex2(row)}:T$track CLEARED"
+        }
+        SCREEN_CHAIN -> {
+            val rowIndex = cursorY.coerceIn(0, 15)
+            val row = song.chains[selectedChain.coerceIn(0, 254)].rows[rowIndex]
+            row.phrase = M8Song.EMPTY
+            row.transpose = 0
+            resolveCurrentPhrases()
+            "CHAIN ${M8Song.hex2(selectedChain.coerceIn(0, 254))}:${M8Song.hex2(rowIndex)} CLEARED"
+        }
+        SCREEN_PHRASE -> {
+            val step = currentPhraseStep() ?: return "NO PHRASE STEP"
+            step.note = M8Song.EMPTY
+            step.instrument = M8Song.EMPTY
+            step.volume = M8Song.EMPTY
+            step.fx1Cmd = 0
+            step.fx1Val = 0
+            step.fx2Cmd = 0
+            step.fx2Val = 0
+            step.fx3Cmd = 0
+            step.fx3Val = 0
+            "PHRASE ${M8Song.hex2(currentPhraseIndex())}:${M8Song.hex2(cursorY.coerceIn(0, 15))} CLEARED"
+        }
+        else -> "NO TRACKER CELL"
+    }
+
+    fun duplicateSelection(): String {
+        return when (screen) {
+        SCREEN_SONG -> {
+            val row = cursorY.coerceIn(0, 255)
+            val dst = (row + 1).coerceAtMost(255)
+            song.songGrid[dst] = song.songGrid[row].copyOf()
+            resolveCurrentPhrases()
+            "SONG ROW ${M8Song.hex2(row)} DUPED TO ${M8Song.hex2(dst)}"
+        }
+        SCREEN_CHAIN -> {
+            val rowIndex = cursorY.coerceIn(0, 15)
+            val dst = (rowIndex + 1).coerceAtMost(15)
+            val chain = song.chains[selectedChain.coerceIn(0, 254)]
+            chain.rows[dst].phrase = chain.rows[rowIndex].phrase
+            chain.rows[dst].transpose = chain.rows[rowIndex].transpose
+            resolveCurrentPhrases()
+            "CHAIN ROW ${M8Song.hex2(rowIndex)} DUPED TO ${M8Song.hex2(dst)}"
+        }
+        SCREEN_PHRASE -> {
+            val phraseIndex = currentPhraseIndex()
+            if (phraseIndex == M8Song.EMPTY || phraseIndex > 254) return "NO PHRASE STEP"
+            val row = cursorY.coerceIn(0, 15)
+            val dst = (row + 1).coerceAtMost(15)
+            val phrase = song.phrases[phraseIndex]
+            copyPhraseStep(phrase.steps[row], phrase.steps[dst])
+            "PHRASE STEP ${M8Song.hex2(row)} DUPED TO ${M8Song.hex2(dst)}"
+        }
+        else -> "NO TRACKER CELL"
+        }
+    }
+
+    fun transposeSelection(delta: Int): String {
+        return when (screen) {
+        SCREEN_CHAIN -> {
+            val rowIndex = cursorY.coerceIn(0, 15)
+            val chainIndex = selectedChain.coerceIn(0, 254)
+            val row = song.chains[chainIndex].rows[rowIndex]
+            row.transpose = (row.transpose + delta).coerceIn(-128, 127)
+            "CHAIN ${M8Song.hex2(chainIndex)}:${M8Song.hex2(rowIndex)} TSP ${signed3(row.transpose)}"
+        }
+        SCREEN_PHRASE -> {
+            val step = currentPhraseStep() ?: return "NO PHRASE STEP"
+            if (step.note == M8Song.EMPTY || step.note == M8Song.NOTE_OFF) return "NO NOTE"
+            step.note = (step.note + delta).coerceIn(1, 127)
+            "PHRASE ${M8Song.hex2(currentPhraseIndex())}:${M8Song.hex2(cursorY.coerceIn(0, 15))} NOTE ${trackerNoteName(step.note)}"
+        }
+        else -> "NO TRANSPOSE TARGET"
+        }
+    }
+
+    fun trackerEditStatus(): String = when (screen) {
+        SCREEN_SONG -> {
+            val row = cursorY.coerceIn(0, 255)
+            val track = cursorX.coerceIn(0, 7)
+            val chain = song.songGrid[row][track]
+            val value = if (chain == M8Song.EMPTY) "--" else "CHAIN ${M8Song.hex2(chain)}"
+            "SONG ${M8Song.hex2(row)}:T$track $value"
+        }
+        SCREEN_CHAIN -> {
+            val rowIndex = cursorY.coerceIn(0, 15)
+            val chainIndex = selectedChain.coerceIn(0, 254)
+            val row = song.chains[chainIndex].rows[rowIndex]
+            val phrase = if (row.phrase == M8Song.EMPTY) "--" else "PHRASE ${M8Song.hex2(row.phrase)}"
+            "CHAIN ${M8Song.hex2(chainIndex)}:${M8Song.hex2(rowIndex)} $phrase ${signed3(row.transpose)}"
+        }
+        SCREEN_PHRASE -> {
+            val phraseIndex = currentPhraseIndex()
+            val step = currentPhraseStep()
+            val row = M8Song.hex2(cursorY.coerceIn(0, 15))
+            val column = phraseEditColumn.coerceIn(0, 8)
+            if (step == null) {
+                "PHRASE ${M8Song.hex2(phraseIndex)}:$row ---"
+            } else if (column in 3..8) {
+                val slot = when (column) {
+                    3, 4 -> 1
+                    5, 6 -> 2
+                    else -> 3
+                }
+                val (cmd, value) = phraseFxPair(step, slot)
+                val name = M8FxEngine.fxName(cmd)
+                val help = fxValueHint(cmd, value)
+                "PHRASE ${M8Song.hex2(phraseIndex)}:$row FX$slot $name ${M8Song.hex2(value)} $help"
+            } else {
+                val note = trackerNoteName(step.note)
+                "PHRASE ${M8Song.hex2(phraseIndex)}:$row $note"
+            }
+        }
+        else -> "NO TRACKER CELL"
+    }
+
+    private fun currentPhraseNoteStep(): PhraseStep? {
+        if (screen != SCREEN_PHRASE || phraseEditColumn != 0) return null
+        val track = cursorX.coerceIn(0, 7)
+        val phraseIdx = currentPhrasePerTrack.getOrElse(track) { M8Song.EMPTY }
+        if (phraseIdx == M8Song.EMPTY || phraseIdx > 254) return null
+        return song.phrases[phraseIdx].steps[cursorY.coerceIn(0, 15)]
+    }
+
+    private fun currentPhraseIndex(): Int {
+        val track = cursorX.coerceIn(0, 7)
+        return currentPhrasePerTrack.getOrElse(track) { M8Song.EMPTY }
+    }
+
+    private fun currentPhraseStep(): PhraseStep? {
+        val phraseIdx = currentPhraseIndex()
+        if (phraseIdx == M8Song.EMPTY || phraseIdx > 254) return null
+        return song.phrases[phraseIdx].steps[cursorY.coerceIn(0, 15)]
+    }
+
+    private fun copyPhraseStep(source: PhraseStep, target: PhraseStep) {
+        target.note = source.note
+        target.instrument = source.instrument
+        target.volume = source.volume
+        target.fx1Cmd = source.fx1Cmd
+        target.fx1Val = source.fx1Val
+        target.fx2Cmd = source.fx2Cmd
+        target.fx2Val = source.fx2Val
+        target.fx3Cmd = source.fx3Cmd
+        target.fx3Val = source.fx3Val
+    }
+
+    private fun signed3(value: Int): String = String.format("%+03d", value)
+
+    private fun phraseFxPair(step: PhraseStep, slot: Int): Pair<Int, Int> = when (slot) {
+        1 -> step.fx1Cmd to step.fx1Val
+        2 -> step.fx2Cmd to step.fx2Val
+        else -> step.fx3Cmd to step.fx3Val
+    }
+
+    private fun fxValueHint(cmd: Int, value: Int): String = when (cmd) {
+        M8FxEngine.FX_TBL -> "table automation"
+        M8FxEngine.FX_TIC -> "table speed"
+        M8FxEngine.FX_PAN -> if (value < 0x70) "pan left" else if (value > 0x90) "pan right" else "pan center"
+        M8FxEngine.FX_AMP -> "amp level"
+        M8FxEngine.FX_VOL -> "volume level"
+        M8FxEngine.FX_SDL -> "delay send"
+        M8FxEngine.FX_RET -> "retrigger ramp"
+        M8FxEngine.FX_PSL -> "pitch slide"
+        M8FxEngine.FX_PBN -> if (value < 0x80) "bend down" else if (value > 0x80) "bend up" else "bend center"
+        M8FxEngine.FX_KIL -> "kill tick"
+        M8FxEngine.FX_DEL -> "delay note"
+        M8FxEngine.FX_ARP -> "arp semitones"
+        M8FxEngine.FX_PVB, M8FxEngine.FX_PVX -> "vibrato"
+        M8FxEngine.FX_CUT -> "filter cutoff"
+        M8FxEngine.FX_RES -> "resonance"
+        M8FxEngine.FX_NONE -> "no command"
+        else -> "value ${M8Song.hex2(value)}"
+    }
+
+    private fun trackerNoteName(note: Int): String {
+        if (note == M8Song.EMPTY) return "---"
+        if (note == M8Song.NOTE_OFF) return "OFF"
+        val names = arrayOf("C-", "C#", "D-", "D#", "E-", "F-", "F#", "G-", "G#", "A-", "A#", "B-")
+        val semitone = note % 12
+        val octave = (note / 12) - 1
+        return "${names[semitone]}$octave"
+    }
+
+    /**
      * Rewind the sequencer to row 0 and resolve phrase references from
      * the current song grid. Call after replacing song data in place.
      */
@@ -148,7 +515,72 @@ class M8Emulator {
         }
     }
 
+    /**
+     * Install a parsed .m8s song into this live emulator instance.
+     *
+     * The emulator owns a stable [song] object used by UI/rendering/audio paths,
+     * so imports mutate that object in place, install the parsed instrument pool,
+     * and rewind phrase resolution to row 0. Keeping this seam here lets tests
+     * verify parser output reaches the same model the sequencer reads.
+     *
+     * Returns the number of instrument slots copied into [instruments].
+     */
+    fun loadParsedSong(parsed: M8sParser.ParsedSong): Int {
+        val wasPlaying = playing
+        playing = false
+        M8sParser.applyTo(parsed, song)
+        val installed = M8sParser.applyInstruments(parsed.instruments, instruments)
+        resetPlayheadAndResolve()
+        if (wasPlaying) {
+            playing = true
+            playRow = 0
+        }
+        return installed
+    }
+
     // --- Public interface for synth ---
+
+    /**
+     * Resolve the current sequencer position (song row → chain row → phrase row)
+     * into per-track row data in the format the synth consumes:
+     * `intArrayOf(note, instrument, volume, fx1Cmd, fx2Cmd)`.
+     *
+     * Applies chain transpose and the EMPTY/NOTE_OFF storage-to-synth translation
+     * (EMPTY note → 0 "continue", NOTE_OFF → 0xFF, otherwise transposed MIDI note).
+     * Falls back to the per-track instrument index when [PhraseStep.instrument] is
+     * EMPTY and to 0xCC velocity when [PhraseStep.volume] is EMPTY.
+     *
+     * Does NOT apply per-step FX side effects — those live in the FX engine and the
+     * ViewModel's audio-thread loop. This is the pure read of the model so that
+     * touch edits, scheduler triggers, and previews share one resolution path.
+     */
+    fun resolveRowDataAt(songRow: Int, chainRow: Int, phraseRow: Int): Array<IntArray> {
+        val sRow = songRow.coerceIn(0, 255)
+        val cRow = chainRow.coerceIn(0, 15)
+        val pRow = phraseRow.coerceIn(0, 15)
+        return Array(8) { track ->
+            val chainIdx = song.songGrid[sRow][track]
+            if (chainIdx == M8Song.EMPTY || chainIdx > 254) {
+                intArrayOf(0, track, 0, 0, 0)
+            } else {
+                val chainEntry = song.chains[chainIdx].rows[cRow]
+                val phraseIdx = chainEntry.phrase
+                if (phraseIdx == M8Song.EMPTY || phraseIdx > 254) {
+                    intArrayOf(0, track, 0, 0, 0)
+                } else {
+                    val step = song.phrases[phraseIdx].steps[pRow]
+                    val note = when (step.note) {
+                        M8Song.EMPTY -> 0
+                        M8Song.NOTE_OFF -> SYNTH_NOTE_OFF
+                        else -> (step.note + chainEntry.transpose).coerceIn(1, 127)
+                    }
+                    val instrument = if (step.instrument == M8Song.EMPTY) track else step.instrument
+                    val volume = if (step.volume == M8Song.EMPTY) 0xCC else step.volume
+                    intArrayOf(note, instrument, volume, step.fx1Cmd, step.fx2Cmd)
+                }
+            }
+        }
+    }
 
     /**
      * Get the active phrase data for the current play position.
@@ -377,21 +809,39 @@ class M8Emulator {
             cursorY = min(maxY, cursorY + 1)
             normalizeCursorForScreen()
         }
-        if (pressed and M8Commands.KEY_LEFT != 0) cursorX = max(0, cursorX - 1)
-        if (pressed and M8Commands.KEY_RIGHT != 0) {
-            val maxX = when (screen) {
-                SCREEN_SONG -> 7
-                SCREEN_CHAIN -> 1
-                SCREEN_PHRASE -> 8
-                SCREEN_TABLE -> 7
-                SCREEN_MIXER -> 7
-                SCREEN_INSTRUMENT -> 1
-                SCREEN_FX -> 1
-                SCREEN_CONFIG -> 1
-                SCREEN_PROJECT -> 1
-                else -> 7
+        if (pressed and M8Commands.KEY_LEFT != 0) {
+            if (screen == SCREEN_PHRASE) {
+                if (phraseEditColumn > 0) {
+                    phraseEditColumn--
+                } else {
+                    cursorX = max(0, cursorX - 1)
+                }
+            } else {
+                cursorX = max(0, cursorX - 1)
             }
-            cursorX = min(maxX, cursorX + 1)
+        }
+        if (pressed and M8Commands.KEY_RIGHT != 0) {
+            if (screen == SCREEN_PHRASE) {
+                if (phraseEditColumn < 8) {
+                    phraseEditColumn++
+                } else {
+                    cursorX = min(7, cursorX + 1)
+                    phraseEditColumn = 0
+                }
+            } else {
+                val maxX = when (screen) {
+                    SCREEN_SONG -> 7
+                    SCREEN_CHAIN -> 1
+                    SCREEN_TABLE -> 7
+                    SCREEN_MIXER -> 7
+                    SCREEN_INSTRUMENT -> 1
+                    SCREEN_FX -> 1
+                    SCREEN_CONFIG -> 1
+                    SCREEN_PROJECT -> 1
+                    else -> 7
+                }
+                cursorX = min(maxX, cursorX + 1)
+            }
         }
 
         // ======== Play/Stop ========
@@ -426,10 +876,11 @@ class M8Emulator {
     private fun handleEditModeArrows(pressed: Int, shiftHeld: Boolean) {
         when (screen) {
             SCREEN_PHRASE -> {
-                val phraseIdx = currentPhrasePerTrack.getOrElse(cursorX.coerceAtMost(7)) { M8Song.EMPTY }
+                val track = cursorX.coerceIn(0, 7)
+                val phraseIdx = currentPhrasePerTrack.getOrElse(track) { M8Song.EMPTY }
                 if (phraseIdx == M8Song.EMPTY || phraseIdx > 254) return
                 val step = song.phrases[phraseIdx].steps[cursorY]
-                when (cursorX) {
+                when (phraseEditColumn) {
                     0 -> { // Note column
                         val delta = when {
                             pressed and M8Commands.KEY_UP != 0 -> if (shiftHeld) 12 else 1
@@ -1079,9 +1530,10 @@ class M8Emulator {
         val yStart = 14
 
         // Header: which phrase (from cursor track)
-        val phraseIdx = currentPhrasePerTrack.getOrElse(cursorX) { selectedPhrase }
+        val phraseIdx = currentPhrasePerTrack.getOrElse(cursorX.coerceIn(0, 7)) { selectedPhrase }
             .let { if (it == M8Song.EMPTY) selectedPhrase else it }
-        cmds.addAll(drawText("PHRASE ${M8Song.hex2(phraseIdx)}", 4, yStart, cText, cBg))
+        val fieldName = phraseColumnName(phraseEditColumn)
+        cmds.addAll(drawText("PHRASE ${M8Song.hex2(phraseIdx)} T${cursorX.coerceIn(0, 7) + 1} $fieldName", 4, yStart, cText, cBg))
 
         if (editMode) {
             cmds.addAll(drawText("EDIT", 80, yStart, intArrayOf(255, 100, 100), cBg))
@@ -1157,6 +1609,18 @@ class M8Emulator {
         // Waveform at bottom
         cmds.addAll(renderWaveformBottom())
         return cmds
+    }
+
+    private fun phraseColumnName(column: Int): String = when (column.coerceIn(0, 8)) {
+        0 -> "NOTE"
+        1 -> "INST"
+        2 -> "VOL"
+        3 -> "FX1"
+        4 -> "FX1V"
+        5 -> "FX2"
+        6 -> "FX2V"
+        7 -> "FX3"
+        else -> "FX3V"
     }
 
     // ===== INSTRUMENT screen =====

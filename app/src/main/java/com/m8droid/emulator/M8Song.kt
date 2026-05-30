@@ -183,12 +183,235 @@ class M8Song {
         fun hex2(v: Int): String = String.format("%02X", v and 0xFF)
     }
 
+    private fun resetContents() {
+        for (row in songGrid) java.util.Arrays.fill(row, EMPTY)
+        for (chain in chains) chain.rows.forEach { row ->
+            row.phrase = EMPTY
+            row.transpose = 0
+        }
+        for (phrase in phrases) phrase.steps.forEach { step ->
+            step.note = EMPTY
+            step.instrument = EMPTY
+            step.volume = EMPTY
+            step.fx1Cmd = 0
+            step.fx1Val = 0
+            step.fx2Cmd = 0
+            step.fx2Val = 0
+            step.fx3Cmd = 0
+            step.fx3Val = 0
+        }
+        for (table in tables) table.rows.forEach { row ->
+            row.transpose = 0
+            row.volume = EMPTY
+            row.fx1Cmd = 0
+            row.fx1Val = 0
+            row.fx2Cmd = 0
+            row.fx2Val = 0
+            row.fx3Cmd = 0
+            row.fx3Val = 0
+        }
+        for (groove in grooves) java.util.Arrays.fill(groove.ticks, 6)
+        java.util.Arrays.fill(instrumentIndices, EMPTY)
+        resetScales()
+        chorus = ChorusSettings()
+        delay = DelaySettings()
+        reverb = ReverbSettings()
+        mixer = MixerSettings()
+        transpose = 0
+        activeScale = 0
+        quantize = 0
+    }
+
+    private fun resetScales() {
+        val defaults = arrayOf(
+            "CHROMATIC" to BooleanArray(12) { true },
+            "MAJOR" to booleanArrayOf(true, false, true, false, true, true, false, true, false, true, false, true),
+            "MINOR" to booleanArrayOf(true, false, true, true, false, true, false, true, true, false, true, false),
+            "PENTATONIC" to booleanArrayOf(true, false, true, false, true, false, false, true, false, true, false, false),
+            "BLUES" to booleanArrayOf(true, false, false, true, false, true, true, true, false, false, true, false),
+            "DORIAN" to booleanArrayOf(true, false, true, true, false, true, false, true, false, true, true, false),
+            "PHRYGIAN" to booleanArrayOf(true, true, false, true, false, true, false, true, true, false, true, false),
+            "MIXOLYDIAN" to booleanArrayOf(true, false, true, false, true, true, false, true, false, true, true, false),
+        )
+        for (i in scales.indices) {
+            val (name, intervals) = defaults.getOrElse(i) { "CHROMATIC" to BooleanArray(12) { true } }
+            scales[i].name = name
+            scales[i].key = 0
+            for (j in scales[i].intervals.indices) scales[i].intervals[j] = intervals[j]
+        }
+    }
+
+    /**
+     * Startup demo: a compact M8-style techno sketch laid out as four groups:
+     * A drums, B bassline, C piano/pad chords, D melody. Old full demo remains
+     * available through [loadOldDemoSong] and seeded as "Old Demo" in Projects.
+     */
+    fun loadDemoSong() {
+        resetContents()
+        name = "NEON GRID"
+        tempo = 128
+        activeScale = 2 // minor
+
+        val EE = EMPTY
+        val OFF = NOTE_OFF
+        val C2 = 24; val C3 = 36; val Eb3 = 39; val G3 = 43; val Bb3 = 46
+        val C4 = 48; val Eb4 = 51; val G4 = 55; val Bb4 = 58
+        val C5 = 60; val D5 = 62; val Eb5 = 63; val F5 = 65; val G5 = 67; val Bb5 = 70
+
+        fun PhraseStep.set(n: Int, inst: Int, vol: Int,
+                           f1c: Int = 0, f1v: Int = 0,
+                           f2c: Int = 0, f2v: Int = 0) {
+            note = n; instrument = inst; volume = vol
+            fx1Cmd = f1c; fx1Val = f1v; fx2Cmd = f2c; fx2Val = f2v
+        }
+
+        // A — drum beat: four-on-the-floor noise kick/hat groove on instrument 3.
+        phrases[0x00].apply {
+            steps[ 0].set(C2,  3, 0x78, M8FxEngine.FX_CUT, 0x18)
+            steps[ 2].set(G4,  3, 0x38, M8FxEngine.FX_CUT, 0x70)
+            steps[ 4].set(C2,  3, 0x74, M8FxEngine.FX_CUT, 0x18)
+            steps[ 6].set(G4,  3, 0x46, M8FxEngine.FX_CUT, 0x70)
+            steps[ 8].set(C2,  3, 0x78, M8FxEngine.FX_CUT, 0x18)
+            steps[10].set(G4,  3, 0x38, M8FxEngine.FX_CUT, 0x70)
+            steps[12].set(C2,  3, 0x76, M8FxEngine.FX_CUT, 0x18)
+            steps[14].set(G4,  3, 0x50, M8FxEngine.FX_CUT, 0x70)
+        }
+        phrases[0x01].apply {
+            steps[ 0].set(C2, 3, 0x78, M8FxEngine.FX_CUT, 0x18)
+            steps[ 2].set(G4, 3, 0x3C, M8FxEngine.FX_CUT, 0x70)
+            steps[ 3].set(G4, 3, 0x28, M8FxEngine.FX_CUT, 0x70)
+            steps[ 4].set(C2, 3, 0x74, M8FxEngine.FX_CUT, 0x18)
+            steps[ 6].set(G4, 3, 0x4A, M8FxEngine.FX_CUT, 0x70)
+            steps[ 8].set(C2, 3, 0x78, M8FxEngine.FX_CUT, 0x18)
+            steps[10].set(G4, 3, 0x3C, M8FxEngine.FX_CUT, 0x70)
+            steps[12].set(C2, 3, 0x78, M8FxEngine.FX_CUT, 0x18)
+            steps[13].set(G4, 3, 0x30, M8FxEngine.FX_CUT, 0x70)
+            steps[14].set(G4, 3, 0x52, M8FxEngine.FX_CUT, 0x70)
+            steps[15].set(G4, 3, 0x34, M8FxEngine.FX_CUT, 0x70)
+        }
+
+        // B — bassline: driving C minor saw pattern, with table automation on the first hit.
+        phrases[0x02].apply {
+            steps[ 0].set(C3,  1, 0x70, M8FxEngine.FX_TBL, 0x00, M8FxEngine.FX_TIC, 0x01)
+            steps[ 1].set(OFF, 1, EE)
+            steps[ 3].set(C3,  1, 0x58)
+            steps[ 4].set(OFF, 1, EE)
+            steps[ 6].set(Bb3, 1, 0x60)
+            steps[ 7].set(OFF, 1, EE)
+            steps[ 8].set(C3,  1, 0x70)
+            steps[10].set(Eb3, 1, 0x58)
+            steps[11].set(OFF, 1, EE)
+            steps[12].set(G3,  1, 0x62)
+            steps[14].set(Bb3, 1, 0x58)
+            steps[15].set(OFF, 1, EE)
+        }
+        phrases[0x03].apply {
+            steps[ 0].set(C3,  1, 0x70)
+            steps[ 2].set(C4,  1, 0x52, M8FxEngine.FX_PSL, 0x90)
+            steps[ 3].set(OFF, 1, EE)
+            steps[ 4].set(Eb3, 1, 0x64)
+            steps[ 6].set(G3,  1, 0x58)
+            steps[ 7].set(OFF, 1, EE)
+            steps[ 8].set(Bb3, 1, 0x68)
+            steps[10].set(G3,  1, 0x58)
+            steps[12].set(Eb3, 1, 0x62)
+            steps[14].set(C3,  1, 0x70, M8FxEngine.FX_RET, 0x24)
+            steps[15].set(OFF, 1, EE)
+        }
+
+        // C — piano-style chords: C minor / Bb / Eb / G movement on pad voice.
+        phrases[0x04].apply {
+            steps[ 0].set(C4,  2, 0x62, M8FxEngine.FX_ARP, 0x37)
+            steps[ 4].set(Bb3, 2, 0x5A, M8FxEngine.FX_ARP, 0x37)
+            steps[ 8].set(Eb4, 2, 0x60, M8FxEngine.FX_ARP, 0x47)
+            steps[12].set(G3,  2, 0x58, M8FxEngine.FX_ARP, 0x37)
+        }
+        phrases[0x05].apply {
+            steps[ 0].set(C4,  2, 0x58, M8FxEngine.FX_ARP, 0x37)
+            steps[ 6].set(Eb4, 2, 0x54, M8FxEngine.FX_ARP, 0x47)
+            steps[ 8].set(Bb3, 2, 0x58, M8FxEngine.FX_ARP, 0x37)
+            steps[12].set(G4,  2, 0x5A, M8FxEngine.FX_ARP, 0x35)
+        }
+
+        // D — melody: bright pluck hook answering the bass.
+        phrases[0x06].apply {
+            steps[ 0].set(C5,  5, 0x60)
+            steps[ 2].set(Eb5, 5, 0x54)
+            steps[ 4].set(G5,  5, 0x62)
+            steps[ 7].set(F5,  5, 0x4C)
+            steps[ 8].set(Eb5, 5, 0x58)
+            steps[10].set(D5,  5, 0x50)
+            steps[12].set(C5,  5, 0x64, M8FxEngine.FX_PVB, 0x24)
+            steps[15].set(OFF, 5, EE)
+        }
+        phrases[0x07].apply {
+            steps[ 0].set(G5,  5, 0x62)
+            steps[ 1].set(Bb5, 5, 0x54)
+            steps[ 3].set(G5,  5, 0x50)
+            steps[ 4].set(Eb5, 5, 0x5A)
+            steps[ 6].set(F5,  5, 0x50)
+            steps[ 8].set(G5,  5, 0x64, M8FxEngine.FX_PVB, 0x24, M8FxEngine.FX_PBN, 0x90)
+            steps[10].set(Eb5, 5, 0x52)
+            steps[12].set(C5,  5, 0x62)
+            steps[14].set(OFF, 5, EE)
+        }
+
+        chains[0x00].apply { rows[0] = ChainRow(0x00, 0); rows[1] = ChainRow(0x01, 0) }
+        chains[0x01].apply { rows[0] = ChainRow(0x00, 0); rows[1] = ChainRow(0x00, 0) }
+        chains[0x02].apply { rows[0] = ChainRow(0x02, 0); rows[1] = ChainRow(0x03, 0) }
+        chains[0x03].apply { rows[0] = ChainRow(0x02, 0); rows[1] = ChainRow(0x02, 0) }
+        chains[0x04].apply { rows[0] = ChainRow(0x04, 0); rows[1] = ChainRow(0x05, 0) }
+        chains[0x05].apply { rows[0] = ChainRow(0x04, 0); rows[1] = ChainRow(0x04, 0) }
+        chains[0x06].apply { rows[0] = ChainRow(0x06, 0); rows[1] = ChainRow(0x07, 0) }
+        chains[0x07].apply { rows[0] = ChainRow(0x06, 0); rows[1] = ChainRow(0x06, 0) }
+
+        // Table 00 — bass motion: octave pops, volume gates, pan wiggle, and delay throws.
+        tables[0x00].apply {
+            rows[0] = TableRow(transpose = 0,  volume = 0x70, fx1Cmd = M8FxEngine.FX_PAN, fx1Val = 0x80)
+            rows[1] = TableRow(transpose = 12, volume = 0x54, fx1Cmd = M8FxEngine.FX_PAN, fx1Val = 0x40)
+            rows[2] = TableRow(transpose = 0,  volume = 0x64, fx1Cmd = M8FxEngine.FX_PAN, fx1Val = 0xC0)
+            rows[3] = TableRow(transpose = 7,  volume = 0x48, fx1Cmd = M8FxEngine.FX_PAN, fx1Val = 0x80, fx2Cmd = M8FxEngine.FX_SDL, fx2Val = 0x48)
+            rows[4] = TableRow(transpose = 0,  volume = 0x70, fx1Cmd = M8FxEngine.FX_PAN, fx1Val = 0x80)
+            rows[5] = TableRow(transpose = -12, volume = 0x40, fx1Cmd = M8FxEngine.FX_PAN, fx1Val = 0x60)
+            rows[6] = TableRow(transpose = 0,  volume = 0x60, fx1Cmd = M8FxEngine.FX_PAN, fx1Val = 0xA0)
+            rows[7] = TableRow(transpose = 12, volume = 0x50, fx1Cmd = M8FxEngine.FX_PAN, fx1Val = 0x80, fx2Cmd = M8FxEngine.FX_SDL, fx2Val = 0x58)
+        }
+
+        // 8-row mini-arrangement. Columns A-D map to drums, bass, chords, melody.
+        songGrid[0] = intArrayOf(0x00, 0x02, 0x04, 0x06, EE, EE, EE, EE)
+        songGrid[1] = intArrayOf(0x00, 0x02, 0x04, 0x07, EE, EE, EE, EE)
+        songGrid[2] = intArrayOf(0x00, 0x03, 0x04, 0x06, EE, EE, EE, EE)
+        songGrid[3] = intArrayOf(0x00, 0x02, 0x05, 0x07, EE, EE, EE, EE)
+        songGrid[4] = intArrayOf(0x01, 0x02, 0x04, 0x06, EE, EE, EE, EE)
+        songGrid[5] = intArrayOf(0x01, 0x03, 0x05, 0x07, EE, EE, EE, EE)
+        songGrid[6] = intArrayOf(0x00, 0x02, 0x04, 0x06, EE, EE, EE, EE)
+        songGrid[7] = intArrayOf(0x01, 0x02, 0x04, 0x07, EE, EE, EE, EE)
+
+        mixer.apply {
+            trackVolumes[0] = 0xD0 // A drums
+            trackVolumes[1] = 0xE4 // B bass
+            trackVolumes[2] = 0xA8 // C chords
+            trackVolumes[3] = 0xC8 // D melody
+            trackPans[0] = 0x80
+            trackPans[1] = 0x80
+            trackPans[2] = 0xA0
+            trackPans[3] = 0x60
+            trackDelaySend[3] = 0x30
+            trackReverbSend[2] = 0x40
+            trackReverbSend[3] = 0x28
+            masterVolume = 0xE0
+        }
+        delay = DelaySettings(timeL = 0x30, timeR = 0x38, feedback = 0x64, reverbSend = 0x18)
+        reverb = ReverbSettings(size = 0xB8, damping = 0x80, width = 0xFF)
+    }
+
     /**
      * Create a demo song: dark electronic track in C minor at 118 BPM.
      * 8-section arrangement showcasing all 8 instrument tracks with
      * dynamic builds, breakdowns, and full-energy drops.
      */
-    fun loadDemoSong() {
+    fun loadOldDemoSong() {
+        resetContents()
         name = "NIGHTCIRCUIT"
         tempo = 118
 

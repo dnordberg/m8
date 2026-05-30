@@ -1,6 +1,8 @@
 package com.m8droid.emulator
 
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -37,6 +39,391 @@ class M8sParserTest {
         assertEquals(7, song.grooves[0].ticks[1])
     }
 
+    @Test
+    fun `parsed song exposes partial import warnings for unsupported pools`() {
+        val parsed = M8sParser.parse(minimalV4Song())
+
+        assertTrue(parsed.warnings.any { it.contains("instrument", ignoreCase = true) })
+        assertTrue(parsed.warnings.any { it.contains("HP/LP", ignoreCase = false) })
+        assertTrue(parsed.warnings.any { it.contains("scale", ignoreCase = true) })
+        assertTrue(
+            parsed.warnings.none { it.contains("Mixer", ignoreCase = false) },
+            "mixer should no longer appear in deferred warnings",
+        )
+        assertTrue(
+            parsed.warnings.none { w ->
+                w.startsWith("Global FX settings (chorus/delay/reverb) are not imported")
+            },
+            "chorus/delay/reverb levels are now imported — broad FX warning should be gone",
+        )
+    }
+
+    @Test
+    fun `parses mixer levels from V4 song mixer block`() {
+        val bytes = minimalV4Song()
+        // Mixer block is at file offset 0xCE.
+        val mx = 0xCE
+        bytes[mx + 0] = 0xC0.toByte()              // master_volume
+        bytes[mx + 1] = 0x42                        // master_limit (skipped)
+        for (t in 0 until 8) {
+            bytes[mx + 2 + t] = (0x10 + t * 0x10).toByte() // track_volume[t]
+        }
+        bytes[mx + 10] = 0x55                       // chorus_volume
+        bytes[mx + 11] = 0x66                       // delay_volume
+        bytes[mx + 12] = 0x77                       // reverb_volume
+        // 12 bytes of analog/usb input mixer (offsets 13..24 within block) — skipped.
+        bytes[mx + 25] = 0xA5.toByte()              // dj_filter
+
+        val parsed = M8sParser.parse(bytes)
+
+        assertEquals(0xC0, parsed.mixer.masterVolume)
+        for (t in 0 until 8) {
+            assertEquals(0x10 + t * 0x10, parsed.mixer.trackVolumes[t])
+        }
+        assertEquals(0x55, parsed.mixer.chorusVolume)
+        assertEquals(0x66, parsed.mixer.delayVolume)
+        assertEquals(0x77, parsed.mixer.reverbVolume)
+        assertEquals(0xA5, parsed.mixer.djFilter)
+    }
+
+    @Test
+    fun `parses global FX block from V4 song file`() {
+        val bytes = v4SongWithFxBlock()
+        val fx = 0x1A5C1
+        bytes[fx + 0] = 0x11   // chorus_mod_depth
+        bytes[fx + 1] = 0x22   // chorus_mod_freq
+        bytes[fx + 2] = 0x33   // chorus_reverb_send
+        // 3 unused (offsets 3..5)
+        bytes[fx + 6] = 0x44   // delay_time_l
+        bytes[fx + 7] = 0x55   // delay_time_r
+        bytes[fx + 8] = 0x66   // delay_feedback
+        bytes[fx + 9] = 0x77   // delay_width
+        bytes[fx + 10] = 0x18  // delay_reverb_send
+        // 1 unused (offset 11)
+        bytes[fx + 12] = 0xC0.toByte() // reverb_size
+        bytes[fx + 13] = 0x70          // reverb_damping
+        bytes[fx + 14] = 0x20          // reverb_mod_depth
+        bytes[fx + 15] = 0x30          // reverb_mod_freq
+        bytes[fx + 16] = 0xAA.toByte() // reverb_width — final byte of the 17-byte block
+
+        val parsed = M8sParser.parse(bytes)
+
+        assertEquals(0x11, parsed.fx.chorusModDepth)
+        assertEquals(0x22, parsed.fx.chorusModFreq)
+        assertEquals(0x33, parsed.fx.chorusReverbSend)
+        assertEquals(0x44, parsed.fx.delayTimeL)
+        assertEquals(0x55, parsed.fx.delayTimeR)
+        assertEquals(0x66, parsed.fx.delayFeedback)
+        assertEquals(0x77, parsed.fx.delayWidth)
+        assertEquals(0x18, parsed.fx.delayReverbSend)
+        assertEquals(0xC0, parsed.fx.reverbSize)
+        assertEquals(0x70, parsed.fx.reverbDamping)
+        assertEquals(0x20, parsed.fx.reverbModDepth)
+        assertEquals(0x30, parsed.fx.reverbModFreq)
+        assertEquals(0xAA, parsed.fx.reverbWidth)
+    }
+
+    @Test
+    fun `applyTo writes parsed FX into song chorus delay and reverb`() {
+        val bytes = v4SongWithFxBlock()
+        val fx = 0x1A5C1
+        bytes[fx + 0] = 0x10           // chorus_mod_depth
+        bytes[fx + 1] = 0x20           // chorus_mod_freq
+        bytes[fx + 2] = 0x30           // chorus_reverb_send
+        bytes[fx + 6] = 0x38           // delay_time_l
+        bytes[fx + 7] = 0x40           // delay_time_r
+        bytes[fx + 8] = 0x70           // delay_feedback
+        bytes[fx + 9] = 0xFF.toByte()  // delay_width
+        bytes[fx + 10] = 0x18          // delay_reverb_send
+        bytes[fx + 12] = 0xD0.toByte() // reverb_size
+        bytes[fx + 13] = 0x80.toByte() // reverb_damping
+        bytes[fx + 14] = 0x18          // reverb_mod_depth
+        bytes[fx + 15] = 0x20          // reverb_mod_freq
+
+        val parsed = M8sParser.parse(bytes)
+        val song = M8Song()
+        // Capture pre-apply HP/LP defaults; they should be preserved.
+        val delayHpBefore = song.delay.filterHP
+        val delayLpBefore = song.delay.filterLP
+        val reverbHpBefore = song.reverb.filterHP
+        val reverbLpBefore = song.reverb.filterLP
+
+        M8sParser.applyTo(parsed, song)
+
+        assertEquals(0x10, song.chorus.modDepth)
+        assertEquals(0x20, song.chorus.modFreq)
+        assertEquals(0x30, song.chorus.reverbSend)
+
+        assertEquals(0x38, song.delay.timeL)
+        assertEquals(0x40, song.delay.timeR)
+        assertEquals(0x70, song.delay.feedback)
+        assertEquals(0xFF, song.delay.width)
+        assertEquals(0x18, song.delay.reverbSend)
+
+        assertEquals(0xD0, song.reverb.size)
+        assertEquals(0x80, song.reverb.damping)
+        assertEquals(0x18, song.reverb.modDepth)
+        assertEquals(0x20, song.reverb.modFreq)
+
+        // HP/LP cutoff fields aren't carried in the V4 layout that m8-files
+        // knows — leave whatever was on the destination song.
+        assertEquals(delayHpBefore, song.delay.filterHP)
+        assertEquals(delayLpBefore, song.delay.filterLP)
+        assertEquals(reverbHpBefore, song.reverb.filterHP)
+        assertEquals(reverbLpBefore, song.reverb.filterLP)
+    }
+
+    @Test
+    fun `applyTo writes parsed mixer levels and resets stale per-track pan and sends`() {
+        val bytes = minimalV4Song()
+        val mx = 0xCE
+        bytes[mx + 0] = 0xB0.toByte()
+        bytes[mx + 2] = 0x40   // track 0 volume
+        bytes[mx + 9] = 0x90.toByte()   // track 7 volume
+        bytes[mx + 10] = 0x88.toByte()  // chorus
+        bytes[mx + 25] = 0x80.toByte()  // dj_filter (centred)
+        val parsed = M8sParser.parse(bytes)
+
+        // Seed the destination with non-default pans/sends to verify reset.
+        val song = M8Song()
+        song.mixer.trackPans[0] = 0x10
+        song.mixer.trackChorusSend[3] = 0x77
+        song.mixer.trackDelaySend[5] = 0x66
+        song.mixer.trackReverbSend[7] = 0x55
+
+        M8sParser.applyTo(parsed, song)
+
+        assertEquals(0xB0, song.mixer.masterVolume)
+        assertEquals(0x40, song.mixer.trackVolumes[0])
+        assertEquals(0x90, song.mixer.trackVolumes[7])
+        assertEquals(0x88, song.mixer.chorusVolume)
+        assertEquals(0x80, song.mixer.djFilter)
+        // Per-track pan and FX sends should have been reset to neutral
+        // because real M8 stores those on the instrument, not the mixer.
+        for (t in 0 until 8) {
+            assertEquals(0x80, song.mixer.trackPans[t], "trackPans[$t] not neutral")
+            assertEquals(0x00, song.mixer.trackChorusSend[t], "chorusSend[$t] not cleared")
+            assertEquals(0x00, song.mixer.trackDelaySend[t], "delaySend[$t] not cleared")
+            assertEquals(0x00, song.mixer.trackReverbSend[t], "reverbSend[$t] not cleared")
+        }
+    }
+
+    @Test
+    fun `parses V4 scale definitions from scale block`() {
+        val bytes = v4SongWithScaleBlock()
+        val scale = 0x1AA7E + 2 * 42
+        // Enable C, D, F, G, A for a pentatonic-style custom scale.
+        ByteBuffer.wrap(bytes, scale, 2).order(ByteOrder.LITTLE_ENDIAN).putShort(0x02A5.toShort())
+        // Offsets are two bytes per note in the upstream layout. The current
+        // emulator scale model only carries enabled semitones, so these bytes
+        // are skipped while preserving the block stride.
+        bytes[scale + 2 + 4 * 2] = 1
+        bytes[scale + 2 + 4 * 2 + 1] = 25
+        "PHONEPENTA".toByteArray(Charsets.US_ASCII).copyInto(bytes, scale + 26)
+
+        val parsed = M8sParser.parse(bytes)
+        val parsedScale = parsed.scales[2]
+
+        assertEquals("PHONEPENTA", parsedScale.name)
+        assertTrue(parsedScale.intervals[0])
+        assertFalse(parsedScale.intervals[1])
+        assertTrue(parsedScale.intervals[2])
+        assertFalse(parsedScale.intervals[3])
+        assertTrue(parsedScale.intervals[5])
+        assertTrue(parsedScale.intervals[7])
+        assertTrue(parsedScale.intervals[9])
+        assertFalse(parsedScale.intervals[11])
+    }
+
+    @Test
+    fun `applyTo writes parsed scales and song key into mutable song`() {
+        val bytes = v4SongWithScaleBlock()
+        bytes[187] = 9 // song key read by m8-files after MidiSettings, before mixer padding
+        val scale = 0x1AA7E + 1 * 42
+        ByteBuffer.wrap(bytes, scale, 2).order(ByteOrder.LITTLE_ENDIAN).putShort(0x02B5.toShort())
+        "LOADSCALE".toByteArray(Charsets.US_ASCII).copyInto(bytes, scale + 26)
+
+        val parsed = M8sParser.parse(bytes)
+        val song = M8Song()
+        song.scales[1].name = "OLD"
+        song.scales[1].key = 0
+
+        M8sParser.applyTo(parsed, song)
+
+        assertEquals("LOADSCALE", song.scales[1].name)
+        assertEquals(9, song.scales[1].key)
+        assertTrue(song.scales[1].intervals[0])
+        assertFalse(song.scales[1].intervals[1])
+        assertTrue(song.scales[1].intervals[2])
+        assertTrue(song.scales[1].intervals[4])
+        assertTrue(song.scales[1].intervals[5])
+        assertFalse(song.scales[1].intervals[6])
+        assertTrue(song.scales[1].intervals[7])
+        assertFalse(song.scales[1].intervals[8])
+        assertFalse(song.scales[1].intervals[11])
+    }
+
+    @Test
+    fun `instrument pool fills 128 placeholders when file truncates before pool`() {
+        val parsed = M8sParser.parse(minimalV4Song())
+        assertEquals(128, parsed.instruments.size)
+        assertTrue(
+            parsed.instruments.all { it.name == "---" },
+            "missing-pool slots should be empty placeholder instruments",
+        )
+    }
+
+    @Test
+    fun `real V4_0 fixtures preserve header mixer fx scale and instrument offsets`() {
+        val empty = parseFixture("m8songs/V4EMPTY.m8s")
+        val command = parseFixture("m8songs/CMDMAPPING_4_0.m8s")
+
+        assertEquals(4, empty.header.major)
+        assertEquals(0, empty.header.minor)
+        assertEquals(1, empty.header.patch)
+        assertEquals("V4EMPTY", empty.header.name)
+        assertEquals(120, empty.header.tempo)
+        assertEquals(0xE0, empty.mixer.masterVolume)
+        assertEquals(0xE0, empty.mixer.trackVolumes[0])
+        assertEquals(0xE0, empty.mixer.reverbVolume)
+        assertEquals(0x80, empty.mixer.djFilter)
+        assertEquals(0x40, empty.fx.chorusModDepth)
+        assertEquals(0x26, empty.fx.delayTimeL)
+        assertEquals(0xFF, empty.fx.delayFeedback)
+        assertEquals(0xE0, empty.fx.reverbWidth)
+        assertEquals("CHROMATIC", empty.scales[0].name)
+        assertTrue(empty.scales[0].intervals.all { it }, "chromatic scale should enable all semitones")
+        assertTrue(empty.songGrid.all { row -> row.all { it == 0xFF } }, "V4EMPTY song grid should be empty")
+
+        assertEquals("CMDMAPPING", command.header.name)
+        assertEquals(133, command.header.tempo)
+        assertEquals(0x00, command.songGrid[0][0])
+        assertEquals(0xA0, command.songGrid[0][2])
+        assertEquals(0x10, command.songGrid[2][0])
+        assertEquals(128, command.instruments.size)
+        assertEquals(InstrumentType.WAVSYNTH, command.instruments[0].type)
+        assertEquals("---", command.instruments[1].name, "slot 1 should be empty in this fixture")
+        assertTrue(
+            command.warnings.none { it.contains("Instrument pool", ignoreCase = true) },
+            "complete pool should not emit truncation warnings",
+        )
+    }
+
+    @Test
+    fun `real V4_1 fixture shares V4 offsets for imported song settings`() {
+        val parsed = parseFixture("m8songs/V4-1EMPTY.m8s")
+
+        assertEquals(4, parsed.header.major)
+        assertEquals(2, parsed.header.minor)
+        assertEquals(0, parsed.header.patch)
+        assertEquals("V4-1EMPTY", parsed.header.name)
+        assertEquals(120, parsed.header.tempo)
+        assertEquals(0xE0, parsed.mixer.masterVolume)
+        assertEquals(0xE0, parsed.mixer.trackVolumes[7])
+        assertEquals(0xE0, parsed.mixer.chorusVolume)
+        assertEquals(0x80, parsed.mixer.djFilter)
+        assertEquals(0x40, parsed.fx.chorusModDepth)
+        assertEquals(0x80, parsed.fx.chorusModFreq)
+        assertEquals(0x30, parsed.fx.delayWidth)
+        assertEquals(0xFF, parsed.fx.reverbSize)
+        assertEquals("CHROMATIC", parsed.scales[0].name)
+        assertTrue(parsed.scales[0].intervals.all { it }, "chromatic scale should enable all semitones")
+        assertTrue(parsed.songGrid.all { row -> row.all { it == 0xFF } }, "V4-1EMPTY song grid should be empty")
+    }
+
+    @Test
+    fun `applyInstruments copies parsed pool into destination`() {
+        val parsed = M8sParser.parse(minimalV4Song())
+        val destination = M8Instrument.createDefaults()
+        val first = parsed.instruments[0]
+
+        val copied = M8sParser.applyInstruments(parsed.instruments, destination)
+
+        assertEquals(destination.size, copied)
+        // The destination slot 0 now references the parsed slot 0 instance.
+        assertTrue(destination[0] === first, "instrument copy should share the parsed slot reference")
+    }
+
+    @Test
+    fun `M8Instrument createDefaults exposes the full 128-slot M8 pool`() {
+        val defaults = M8Instrument.createDefaults()
+        assertEquals(M8Instrument.SLOT_COUNT, defaults.size)
+        assertEquals(128, defaults.size)
+        // First 8 are the named Android demo presets.
+        assertEquals("LEAD", defaults[0].name)
+        assertEquals("FX", defaults[7].name)
+        // Remaining slots are empty placeholders so out-of-range references don't fall back.
+        assertEquals("---", defaults[8].name)
+        assertEquals("---", defaults[127].name)
+    }
+
+    @Test
+    fun `instrument pool parser reads envelope and lfo modulation blocks`() {
+        val bytes = v4SongWithFxBlock()
+        val off = 0x13A3E
+        bytes[off + 0] = 0x00 // WAVSYNTH
+        "MODDED".toByteArray(Charsets.US_ASCII).copyInto(bytes, off + 1)
+        bytes[off + 13] = 0x01
+        bytes[off + 18] = 0x04 // SAW
+        bytes[off + 23] = 0x01 // LP filter
+        bytes[off + 24] = 0x40 // cutoff
+        bytes[off + 25] = 0x20 // resonance
+        bytes[off + 26] = 0x90.toByte() // amp
+        val mod = off + 33
+        // env1: type, attack, hold, decay, sustain, release, dest, amount
+        bytes[mod + 0] = 0x00
+        bytes[mod + 1] = 0x02
+        bytes[mod + 2] = 0x03
+        bytes[mod + 3] = 0x44
+        bytes[mod + 4] = 0xC0.toByte()
+        bytes[mod + 5] = 0x55
+        bytes[mod + 6] = ModDestination.AMP.toByte()
+        bytes[mod + 7] = 0xE0.toByte()
+        // env2
+        bytes[mod + 8] = 0x01
+        bytes[mod + 9] = 0x00
+        bytes[mod + 10] = 0x00
+        bytes[mod + 11] = 0x30
+        bytes[mod + 12] = 0x00
+        bytes[mod + 13] = 0x10
+        bytes[mod + 14] = ModDestination.CUTOFF.toByte()
+        bytes[mod + 15] = 0xF0.toByte()
+        // lfo1: shape, speed, amount, dest, retrigger
+        bytes[mod + 16] = 0x01
+        bytes[mod + 17] = 0x7F
+        bytes[mod + 18] = 0xE8.toByte()
+        bytes[mod + 19] = ModDestination.PITCH.toByte()
+        bytes[mod + 20] = 0x01
+        // lfo2
+        bytes[mod + 21] = 0x04
+        bytes[mod + 22] = 0x20
+        bytes[mod + 23] = 0xA0.toByte()
+        bytes[mod + 24] = ModDestination.PAN.toByte()
+        bytes[mod + 25] = 0x00
+
+        val parsed = M8sParser.parse(bytes)
+        val inst = parsed.instruments[0]
+
+        assertEquals("MODDED", inst.name)
+        assertEquals(0x02, inst.modulation.env1.attack)
+        assertEquals(ModDestination.AMP, inst.modulation.env1.dest)
+        assertEquals(0xE0, inst.modulation.env1.amount)
+        assertEquals(ModDestination.CUTOFF, inst.modulation.env2.dest)
+        assertEquals(0xF0, inst.modulation.env2.amount)
+        assertEquals(LfoShape.SINE, inst.modulation.lfo1.shape)
+        assertEquals(0x7F, inst.modulation.lfo1.speed)
+        assertEquals(ModDestination.PITCH, inst.modulation.lfo1.dest)
+        assertEquals(LfoShape.SQUARE, inst.modulation.lfo2.shape)
+        assertEquals(ModDestination.PAN, inst.modulation.lfo2.dest)
+        assertTrue(!inst.modulation.lfo2.retrigger)
+    }
+
+    private fun parseFixture(path: String): M8sParser.ParsedSong {
+        val bytes = javaClass.classLoader!!.getResourceAsStream(path)!!
+            .use { it.readBytes() }
+        return M8sParser.parse(bytes)
+    }
+
     private fun minimalV4Song(): ByteArray {
         val bytes = ByteArray(0xBA3E + 256 * 128)
         "M8VERSION".toByteArray(Charsets.US_ASCII).copyInto(bytes, 0)
@@ -48,5 +435,24 @@ class M8sParserTest {
         bytes.fill(0xFF.toByte(), 0xAEE, 0xAEE + 255 * 144)
         bytes.fill(0xFF.toByte(), 0x9A5E, 0x9A5E + 255 * 32)
         return bytes
+    }
+
+    /**
+     * Larger fixture extending [minimalV4Song] to cover the instrument pool
+     * (so FX/scale offsets past 0x13A3E are addressable). The instrument
+     * pool itself is left zero-filled; individual tests poke specific bytes.
+     */
+    private fun v4SongWithFxBlock(): ByteArray {
+        val instrumentEnd = 0x13A3E + 128 * M8iParser.BODY_SIZE
+        val fxEnd = 0x1A5C1 + 17
+        val size = maxOf(instrumentEnd, fxEnd)
+        val base = minimalV4Song()
+        return base.copyOf(size)
+    }
+
+    private fun v4SongWithScaleBlock(): ByteArray {
+        val scaleEnd = 0x1AA7E + 16 * 42
+        val base = minimalV4Song()
+        return base.copyOf(scaleEnd)
     }
 }

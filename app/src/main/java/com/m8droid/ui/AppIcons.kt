@@ -58,33 +58,43 @@ fun AppSystemIcon(tint: Color, size: Dp = DefaultIconSize) {
     }
 }
 
-/** Down-arrow into a tray — DOWNLOAD / LOAD action. */
+/** Open folder/file — FILE hub action. */
 @Composable
 fun AppLoadIcon(tint: Color, size: Dp = DefaultIconSize) {
     Canvas(modifier = Modifier.size(size)) {
         val w = this.size.width
         val h = this.size.height
-        val sw = h * 0.1f
-        drawLine(
-            color = tint,
-            start = androidx.compose.ui.geometry.Offset(w * 0.18f, h * 0.85f),
-            end = androidx.compose.ui.geometry.Offset(w * 0.82f, h * 0.85f),
-            strokeWidth = sw,
-            cap = StrokeCap.Round,
-        )
-        drawLine(
-            color = tint,
-            start = androidx.compose.ui.geometry.Offset(w * 0.5f, h * 0.12f),
-            end = androidx.compose.ui.geometry.Offset(w * 0.5f, h * 0.60f),
-            strokeWidth = sw,
-            cap = StrokeCap.Round,
-        )
-        val arrow = Path().apply {
-            moveTo(w * 0.25f, h * 0.50f)
-            lineTo(w * 0.5f, h * 0.75f)
-            lineTo(w * 0.75f, h * 0.50f)
+        val sw = h * 0.08f
+
+        // Back folder body with tab.
+        val folder = Path().apply {
+            moveTo(w * 0.12f, h * 0.32f)
+            lineTo(w * 0.36f, h * 0.32f)
+            lineTo(w * 0.46f, h * 0.42f)
+            lineTo(w * 0.88f, h * 0.42f)
+            lineTo(w * 0.88f, h * 0.78f)
+            lineTo(w * 0.12f, h * 0.78f)
+            close()
         }
-        drawPath(arrow, color = tint, style = Stroke(width = sw, cap = StrokeCap.Round, join = StrokeJoin.Round))
+        drawPath(
+            folder,
+            color = tint,
+            style = Stroke(width = sw, cap = StrokeCap.Round, join = StrokeJoin.Round),
+        )
+
+        // Front open lip, angled upward like an opened file folder.
+        val lip = Path().apply {
+            moveTo(w * 0.16f, h * 0.78f)
+            lineTo(w * 0.30f, h * 0.52f)
+            lineTo(w * 0.92f, h * 0.52f)
+            lineTo(w * 0.78f, h * 0.78f)
+            close()
+        }
+        drawPath(
+            lip,
+            color = tint,
+            style = Stroke(width = sw, cap = StrokeCap.Round, join = StrokeJoin.Round),
+        )
     }
 }
 

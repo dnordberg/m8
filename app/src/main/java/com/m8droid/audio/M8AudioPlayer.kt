@@ -91,10 +91,21 @@ class M8AudioPlayer {
     fun write(pcmData: ByteArray, offset: Int = 0, size: Int = pcmData.size) {
         if (!isPlaying) return
         val track = audioTrack ?: return
-        val written = track.write(pcmData, offset, size)
-        if (written < 0) {
-            Log.e(TAG, "write error: $written")
+        try {
+            val written = track.write(pcmData, offset, size)
+            if (written < 0) {
+                Log.e(TAG, "write error: $written; recreating AudioTrack")
+                recoverFromOutputFailure()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "write failed; recreating AudioTrack: ${e.message}", e)
+            recoverFromOutputFailure()
         }
+    }
+
+    private fun recoverFromOutputFailure() {
+        release()
+        start()
     }
 
     fun stop() {

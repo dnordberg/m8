@@ -29,6 +29,10 @@ import com.m8droid.protocol.M8Commands
 /**
  * "Best" layout: screen fills available space, M8Controls sits below.
  */
+object M8MainLayout {
+    const val centersDisplayAndControls: Boolean = true
+}
+
 @Composable
 fun M8BestLayout(
     onKeyStateChanged: (Int) -> Unit,
@@ -36,7 +40,10 @@ fun M8BestLayout(
     modifier: Modifier = Modifier,
     externalKeyMask: Int = 0,
 ) {
-    Column(modifier = modifier.fillMaxSize()) {
+    Column(
+        modifier = modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
         Box(
             modifier = Modifier
                 .weight(1.2f)

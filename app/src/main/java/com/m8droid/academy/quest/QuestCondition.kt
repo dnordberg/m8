@@ -28,6 +28,26 @@ sealed interface QuestCondition {
         override fun describe() = "Phrase row is at step $row"
     }
 
+    data class CursorYAtLeast(val row: Int) : QuestCondition {
+        override fun evaluate(snapshot: EmulatorSnapshot) = snapshot.cursorY >= row
+        override fun describe() = "Move cursor to row $row or below"
+    }
+
+    data object SongCellFilled : QuestCondition {
+        override fun evaluate(snapshot: EmulatorSnapshot) = snapshot.selectedSongChain == 0
+        override fun describe() = "Place chain 00 in the selected song cell"
+    }
+
+    data object ChainRowHasPhrase : QuestCondition {
+        override fun evaluate(snapshot: EmulatorSnapshot) = snapshot.selectedChainRowPhrase == 0
+        override fun describe() = "Place phrase 00 in the selected chain row"
+    }
+
+    data object PhraseStepHasNote : QuestCondition {
+        override fun evaluate(snapshot: EmulatorSnapshot) = snapshot.selectedPhraseStepNote != 0xFF && snapshot.selectedPhraseStepNote != 0
+        override fun describe() = "Enter a note in the selected phrase step"
+    }
+
     data class EditModeActive(val expected: Boolean = true) : QuestCondition {
         override fun evaluate(snapshot: EmulatorSnapshot) = snapshot.editMode == expected
         override fun describe() = if (expected) "Enter edit mode" else "Exit edit mode"

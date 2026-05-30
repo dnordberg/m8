@@ -3,22 +3,29 @@ package com.m8droid
 
 import android.app.Application
 import android.graphics.BitmapFactory
+import android.net.Uri
+import android.provider.OpenableColumns
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.m8droid.audio.M8AudioPlayer
 import com.m8droid.audio.NativeSynth
+import com.m8droid.audio.SampleCache
 import com.m8droid.data.ServerConfig
 import com.m8droid.data.ServerSettings
 import com.m8droid.emulator.*
+import com.m8droid.academy.AcademyTutorialProject
 import com.m8droid.academy.data.EmulatorEventRepository
 import com.m8droid.academy.data.EmulatorSnapshot
 import com.m8droid.midi.MidiEngine
+import com.m8droid.input.RowPreviewShortcut
+import com.m8droid.input.StickyKeyLatch
 import com.m8droid.network.ConnectionManager
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.io.File
 
 /**
  * Local-only M8 emulator ViewModel.
@@ -33,6 +40,14 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
 
     companion object {
         private const val TAG = "M8ViewModel"
+
+        /**
+         * BrowseDialog renders one button per slot. The emulator now holds the
+         * full 128-slot M8 instrument pool, but the on-screen picker is a phone
+         * affordance — 128 buttons would be unusable. Songs loaded from .m8s
+         * still populate all 128 slots internally; this only caps the picker UI.
+         */
+        const val INSTRUMENT_PICKER_SLOT_COUNT = 8
     }
 
     private val fontBitmap = try {
@@ -53,6 +68,10 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
 
     private val emulator = M8Emulator()
     private val synth = M8Synth() // kept for visualization API compat
+    private val sdRoot = File(application.filesDir, "m8sd").apply { mkdirs() }
+    private val projectDir = File(sdRoot, "Projects").apply { mkdirs() }
+    private val recentSongStore = RecentSongStore(File(application.filesDir, "m8sd/recent_songs.tsv"))
+    private val sampleCache = SampleCache(sdRoot)
     private val localAudioPlayer = M8AudioPlayer()
     private val fxEngine = M8FxEngine()
     private var nativeSynthReady = false
@@ -67,12 +86,40 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
 
     // Expose emulator screen for tutorial context
     val currentScreen: Int get() = emulator.screen
+    val isEditMode: Boolean get() = emulator.editMode
+    val canEnterHexDigit: Boolean get() = emulator.canEnterHexDigit()
+    val canEditSongName: Boolean get() = emulator.canEditSongNameFromScreen()
+    val currentSongName: String get() = song.name
+    val canEnterNoteFromPicker: Boolean get() = emulator.canEnterNoteFromPicker()
+    val canUseTrackerQuickActions: Boolean get() = emulator.screen in setOf(M8Emulator.SCREEN_SONG, M8Emulator.SCREEN_CHAIN, M8Emulator.SCREEN_PHRASE)
+    val trackerEditStatus: String get() = emulator.trackerEditStatus()
     private var emulatorRenderJob: Job? = null
     private var audioThread: Thread? = null
+    private var samplesUntilNextFxTick = 0
+    private var fxTickInRow = 0
+    private var lastTriggeredRowData = Array(8) { track -> intArrayOf(0, track, 0, 0, 0) }
+    private var pendingPhraseHop = -1
+    private var pendingSongHop = -1
 
     // Use the emulator's song data model (shared state for display + audio)
     private val song get() = emulator.song
     private val instruments get() = emulator.instruments
+    private val dirtyGuard = SongDirtyGuard(M8ProjectSnapshot.signature(song, instruments))
+    private val autosaveDebouncer = ProjectAutosaveDebouncer()
+    private var autosaveJob: Job? = null
+    private val _isSongDirty = MutableStateFlow(false)
+    val isSongDirty: StateFlow<Boolean> = _isSongDirty
+    private val _projectSaveStatus = MutableStateFlow<String?>(null)
+    val projectSaveStatus: StateFlow<String?> = _projectSaveStatus
+    private val _startupRecovery = MutableStateFlow<StartupRecovery.Failure?>(null)
+    val startupRecovery: StateFlow<StartupRecovery.Failure?> = _startupRecovery
+    private val _projectWarnings = MutableStateFlow<ProjectHealth.Warnings?>(null)
+    val projectWarnings: StateFlow<ProjectHealth.Warnings?> = _projectWarnings
+    private val _savedProjects = MutableStateFlow<List<M8ProjectLibrary.SavedProject>>(emptyList())
+    val savedProjects: StateFlow<List<M8ProjectLibrary.SavedProject>> = _savedProjects
+    private val _recentSongs = MutableStateFlow<List<RecentSongStore.Entry>>(emptyList())
+    val recentSongs: StateFlow<List<RecentSongStore.Entry>> = _recentSongs
+    private var triedStartupRecentRestore = false
 
     // ======================= MIDI =======================
     private val midiEngine = MidiEngine(application.applicationContext).also { engine ->
@@ -188,19 +235,31 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setTempo(bpm: Int) {
+        val beforeSignature = currentProjectSignature()
         emulator.song.tempo = bpm.coerceIn(30, 300)
+        noteMeaningfulProjectEdit(beforeSignature)
     }
 
     fun setTrackVolume(track: Int, vol: Int) {
-        if (track in 0..7) emulator.song.mixer.trackVolumes[track] = vol.coerceIn(0, 255)
+        if (track in 0..7) {
+            val beforeSignature = currentProjectSignature()
+            emulator.song.mixer.trackVolumes[track] = vol.coerceIn(0, 255)
+            noteMeaningfulProjectEdit(beforeSignature)
+        }
     }
 
     fun setTrackPan(track: Int, pan: Int) {
-        if (track in 0..7) emulator.song.mixer.trackPans[track] = pan.coerceIn(0, 255)
+        if (track in 0..7) {
+            val beforeSignature = currentProjectSignature()
+            emulator.song.mixer.trackPans[track] = pan.coerceIn(0, 255)
+            noteMeaningfulProjectEdit(beforeSignature)
+        }
     }
 
     fun setMasterVolume(vol: Int) {
+        val beforeSignature = currentProjectSignature()
         emulator.song.mixer.masterVolume = vol.coerceIn(0, 255)
+        noteMeaningfulProjectEdit(beforeSignature)
     }
 
     // Sequencer position
@@ -215,17 +274,23 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     // Previous songRow value for detecting song-loop wraparound
     @Volatile private var previousSongRow = 0
 
-    fun startLocalEmulator() {
-        // Clean stop any existing audio before restarting
+    fun startLocalEmulator(restoreStartupProject: Boolean = true) {
+        // Clean stop any existing audio before restarting.
+        // Manual restarts must preserve the live project; only app startup should
+        // restore the last-loaded file from disk.
         stopEmulator()
 
-        // Sync sequencer state
+        // Sync sequencer state without mutating song/instrument data.
         songRow = 0
         chainRow = 0
         phraseRow = 0
         samplesUntilNextRow = 0
         wasPlaying = false
         previousSongRow = 0
+        BuiltInDemoProjects.ensureSeeded(projectDir)
+        refreshSavedProjects()
+        refreshRecentSongs()
+        if (restoreStartupProject) restoreLastLoadedOnStartup()
 
         // Display render loop — runs on default dispatcher for UI updates
         emulatorRenderJob?.cancel()
@@ -256,6 +321,18 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
                 val frameData = emulator.renderFrame()
                 connectionManager.protocol.processBytes(frameData)
 
+                val selectedSongChain = song.songGrid[emulator.cursorY.coerceIn(0, 255)][emulator.cursorX.coerceIn(0, 7)]
+                val selectedChainRowPhrase = song.chains[emulator.selectedChain.coerceIn(0, 254)]
+                    .rows[emulator.cursorY.coerceIn(0, 15)]
+                    .phrase
+                val phraseIdx = emulator.currentPhrasePerTrack
+                    .getOrElse(emulator.cursorX.coerceIn(0, 7)) { emulator.selectedPhrase }
+                    .let { if (it == M8Song.EMPTY) emulator.selectedPhrase else it }
+                    .coerceIn(0, 254)
+                val selectedPhraseStepNote = song.phrases[phraseIdx]
+                    .steps[emulator.cursorY.coerceIn(0, 15)]
+                    .note
+
                 emulatorEvents.emit(EmulatorSnapshot(
                     playing = emulator.playing,
                     screen = emulator.screen,
@@ -267,6 +344,9 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
                     cursorY = emulator.cursorY,
                     editMode = emulator.editMode,
                     midiActive = emulator.midiActive,
+                    selectedSongChain = selectedSongChain,
+                    selectedChainRowPhrase = selectedChainRowPhrase,
+                    selectedPhraseStepNote = selectedPhraseStepNote,
                 ))
 
                 _displayTick.value++
@@ -319,6 +399,8 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
                         if (!wasPlaying) {
                             wasPlaying = true
                             samplesUntilNextRow = 0
+                            samplesUntilNextFxTick = 0
+                            fxTickInRow = 0
                             songRow = 0
                             chainRow = 0
                             phraseRow = 0
@@ -337,6 +419,8 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
                             val swingDelay =
                                 synth.getSwingDelaySamples(nextPhraseRow, bpm)
                             samplesUntilNextRow = rowDurationSamples + swingDelay
+                            fxTickInRow = 0
+                            samplesUntilNextFxTick = fxTickDurationSamples(samplesUntilNextRow)
 
                             advanceSequencer()
                         }
@@ -345,6 +429,11 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
                                   else synth.generateChunk()
                         localAudioPlayer.write(pcm)
                         samplesUntilNextRow -= M8Synth.CHUNK_SAMPLES
+                        samplesUntilNextFxTick -= M8Synth.CHUNK_SAMPLES
+                        while (samplesUntilNextFxTick <= 0 && samplesUntilNextRow > 0) {
+                            processRuntimeFxTick()
+                            samplesUntilNextFxTick += fxTickDurationSamples(rowDurationSamples)
+                        }
                     } else {
                         if (wasPlaying) {
                             wasPlaying = false
@@ -352,6 +441,8 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
                             else synth.allNotesOff()
                             fxEngine.reset()
                             samplesUntilNextRow = 0
+                            samplesUntilNextFxTick = 0
+                            fxTickInRow = 0
                         }
                         // Write silence — just zeros
                         localAudioPlayer.write(ByteArray(M8Synth.CHUNK_SAMPLES * 2 * 2))
@@ -377,6 +468,85 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private fun fxTickDurationSamples(rowDurationSamples: Int): Int = (rowDurationSamples / 6).coerceAtLeast(M8Synth.CHUNK_SAMPLES)
+
+    private fun processRuntimeFxTick() {
+        fxTickInRow++
+        if (fxTickInRow <= 0) return
+        for (track in 0 until 8) {
+            val tickResult = fxEngine.processTick(track, fxTickInRow)
+            if (tickResult.releaseNote) {
+                releaseRuntimeTrack(track)
+            }
+            if (tickResult.delayedNote >= 0) {
+                triggerRuntimeTrack(
+                    track = track,
+                    note = tickResult.delayedNote,
+                    instrument = tickResult.delayedInstrument,
+                    volume = tickResult.delayedVolume,
+                )
+            } else if (tickResult.retrigger) {
+                val row = lastTriggeredRowData[track]
+                if (row[0] > 0 && row[0] != M8Synth.NOTE_OFF) {
+                    triggerRuntimeTrack(
+                        track = track,
+                        note = row[0],
+                        instrument = row[1],
+                        volume = if (tickResult.retriggerVolumeOverride >= 0) tickResult.retriggerVolumeOverride else row[2],
+                    )
+                }
+            }
+            val tableResult = fxEngine.processTableTick(track, song.tables)
+            if (tableResult.volumeOverride >= 0 || tableResult.ampOverride >= 0) {
+                synth.setRuntimeTrackAmp(
+                    track,
+                    if (tableResult.ampOverride >= 0) tableResult.ampOverride else tableResult.volumeOverride,
+                )
+            }
+            if (tableResult.panOverride >= 0) {
+                synth.setRuntimeTrackPan(track, tableResult.panOverride)
+            }
+            if (tableResult.delaySendOverride >= 0) {
+                synth.setRuntimeTrackDelaySend(track, tableResult.delaySendOverride)
+            }
+        }
+    }
+
+    private fun releaseRuntimeTrack(track: Int) {
+        if (nativeSynthReady) {
+            val notes = ByteArray(8) { if (it == track) M8Synth.NOTE_OFF.toByte() else 0 }
+            val vols = ByteArray(8)
+            NativeSynth.triggerRow(notes, vols)
+        } else {
+            synth.releaseTrack(track)
+        }
+        if (midiOutHeld[track] >= 0) {
+            midiEngine.sendNoteOff(track, midiOutHeld[track])
+            midiOutHeld[track] = -1
+            markMidiActivity()
+        }
+    }
+
+    private fun triggerRuntimeTrack(track: Int, note: Int, instrument: Int, volume: Int) {
+        val inst = instruments.getOrNull(instrument)
+        if (inst != null) configureTrackInstrument(track, inst)
+        val safeVolume = volume.coerceIn(0, 0xFF)
+        if (nativeSynthReady) {
+            val notes = ByteArray(8) { if (it == track) note.toByte() else 0 }
+            val vols = ByteArray(8) { if (it == track) safeVolume.toByte() else 0 }
+            NativeSynth.triggerRow(notes, vols)
+        } else {
+            synth.triggerRow(Array(8) { t ->
+                if (t == track) intArrayOf(note, instrument, safeVolume, 0, 0)
+                else intArrayOf(0, t, 0, 0, 0)
+            })
+        }
+        if (midiOutHeld[track] >= 0) midiEngine.sendNoteOff(track, midiOutHeld[track])
+        midiEngine.sendNoteOn(track, note, safeVolume)
+        midiOutHeld[track] = note
+        markMidiActivity()
+    }
+
     /**
      * Trigger the current phrase row across all 8 tracks.
      * Resolves: songGrid[songRow][track] -> chain -> phrase -> PhraseStep
@@ -388,25 +558,9 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
             Log.d(TAG, "triggerCurrentRow: songRow=$songRow chainRow=$chainRow phraseRow=$phraseRow tempo=${song.tempo}")
         }
 
-        val rowData = Array(8) { track ->
-            val chainIdx = song.songGrid[songRow][track]
-            if (chainIdx == M8Song.EMPTY || chainIdx > 254) {
-                // No chain on this track — send empty (note=0 means "continue")
-                intArrayOf(0, track, 0, 0, 0)
-            } else {
-                val chain = song.chains[chainIdx]
-                val chainEntry = chain.rows[chainRow.coerceIn(0, 15)]
-                val phraseIdx = chainEntry.phrase
-                val transpose = chainEntry.transpose
-
-                if (phraseIdx == M8Song.EMPTY || phraseIdx > 254) {
-                    intArrayOf(0, track, 0, 0, 0)
-                } else {
-                    val step = song.phrases[phraseIdx].steps[phraseRow.coerceIn(0, 15)]
-                    stepToIntArray(step, track, transpose)
-                }
-            }
-        }
+        // Pure resolution lives on the emulator so touch edits, scheduler triggers,
+        // and previews all share one path. FX side effects below still belong here.
+        val rowData = emulator.resolveRowDataAt(songRow, chainRow, phraseRow)
 
         // Process FX commands before triggering
         for (track in 0 until 8) {
@@ -429,6 +583,12 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
                         // Replace with empty (continue) row data for this track
                         rowData[track] = intArrayOf(0, track, 0, 0, 0)
                     }
+                    if (fxResult.hopToRow >= 0 && pendingPhraseHop < 0) {
+                        pendingPhraseHop = fxResult.hopToRow.coerceIn(0, 15)
+                    }
+                    if (fxResult.songHopToRow >= 0 && pendingSongHop < 0) {
+                        pendingSongHop = fxResult.songHopToRow.coerceIn(0, 255)
+                    }
                     if (fxResult.tempoChange > 0) {
                         song.tempo = fxResult.tempoChange
                         emulator.bpm = song.tempo
@@ -436,9 +596,32 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
                     if (fxResult.noteOffset != 0 && rowData[track][0] > 0) {
                         rowData[track][0] = (rowData[track][0] + fxResult.noteOffset).coerceIn(1, 127)
                     }
+                    if (fxResult.volumeOverride >= 0) {
+                        rowData[track][2] = fxResult.volumeOverride
+                    }
+                    if (fxResult.ampOverride >= 0) {
+                        synth.setRuntimeTrackAmp(track, fxResult.ampOverride)
+                    }
+                    if (fxResult.panOverride >= 0) {
+                        synth.setRuntimeTrackPan(track, fxResult.panOverride)
+                    }
+                    if (fxResult.delaySendOverride >= 0) {
+                        synth.setRuntimeTrackDelaySend(track, fxResult.delaySendOverride)
+                    }
                 }
             }
         }
+
+        // Apply instrument presets before triggering notes so sampler params,
+        // envelopes, and sample assignments affect the current row immediately.
+        for (track in 0 until 8) {
+            val data = rowData[track]
+            val instIdx = data[1]
+            if (instIdx in instruments.indices) {
+                configureTrackInstrument(track, instruments[instIdx])
+            }
+        }
+        lastTriggeredRowData = Array(8) { track -> rowData[track].copyOf() }
 
         if (nativeSynthReady) {
             // Pack notes and volumes into byte arrays for JNI
@@ -457,32 +640,6 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
             val notes = rowData.map { it[0] }.joinToString(",")
             Log.d(TAG, "Notes triggered: [$notes]")
         }
-
-        // Apply instrument presets to synth voices for correct sound
-        for (track in 0 until 8) {
-            val data = rowData[track]
-            val instIdx = data[1]
-            if (instIdx in instruments.indices) {
-                synth.applyInstrument(track, instruments[instIdx])
-            }
-        }
-    }
-
-    /**
-     * Convert a PhraseStep to the IntArray format the synth expects:
-     * intArrayOf(note, instrument, volume, fx1Cmd, fx2Cmd)
-     */
-    private fun stepToIntArray(step: PhraseStep, track: Int, transpose: Int): IntArray {
-        val note = when (step.note) {
-            M8Song.EMPTY -> 0   // Empty = continue (synth interprets 0 as "keep playing")
-            M8Song.NOTE_OFF -> M8Synth.NOTE_OFF  // Note off -> synth's NOTE_OFF (0xFF)
-            else -> (step.note + transpose).coerceIn(1, 127)  // Apply chain transpose
-        }
-        val instrument = if (step.instrument == M8Song.EMPTY) track else step.instrument
-        val volume = if (step.volume == M8Song.EMPTY) 0xCC else step.volume
-        val fx1 = step.fx1Cmd
-        val fx2 = step.fx2Cmd
-        return intArrayOf(note, instrument, volume, fx1, fx2)
     }
 
     /**
@@ -493,7 +650,16 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     private fun configureVoicesFromInstruments() {
         for (i in 0 until 8) {
             val inst = instruments.getOrNull(i) ?: continue
-            synth.configureVoice(i, inst)
+            configureTrackInstrument(i, inst)
+        }
+    }
+
+    private fun configureTrackInstrument(track: Int, inst: M8Instrument) {
+        synth.configureVoice(track, inst)
+        if (inst.type == InstrumentType.SAMPLER && inst.sampler.samplePath.isNotBlank()) {
+            synth.loadSample(track, sampleCache.load(inst.sampler.samplePath))
+        } else {
+            synth.loadSample(track, null)
         }
     }
 
@@ -503,6 +669,23 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
      * chainRow overflows (all chains exhausted) -> advance songRow.
      */
     private fun advanceSequencer() {
+        if (pendingSongHop >= 0) {
+            previousSongRow = songRow
+            songRow = pendingSongHop.coerceIn(0, 255)
+            chainRow = 0
+            phraseRow = 0
+            pendingSongHop = -1
+            pendingPhraseHop = -1
+            syncEmulatorPosition()
+            return
+        }
+        if (pendingPhraseHop >= 0) {
+            phraseRow = pendingPhraseHop.coerceIn(0, 15)
+            pendingPhraseHop = -1
+            syncEmulatorPosition()
+            return
+        }
+
         phraseRow++
 
         if (phraseRow >= 16) {
@@ -594,6 +777,10 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     // so the on-screen controls can light up in response to keyboard input.
     private var touchKeys = 0
     private var keyboardKeys = 0
+    private val stickyTouchKeys = StickyKeyLatch()
+    private val rowPreviewShortcut = RowPreviewShortcut()
+    private val _stickyKeyState = MutableStateFlow(0)
+    val stickyKeyState: StateFlow<Int> = _stickyKeyState
     private val _keyState = MutableStateFlow(0)
     val keyState: StateFlow<Int> = _keyState
 
@@ -607,8 +794,282 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         dispatchKeys()
     }
 
+    fun toggleStickyTouchKey(key: Int) {
+        stickyTouchKeys.toggle(key)
+        _stickyKeyState.value = stickyTouchKeys.mask
+        dispatchKeys()
+    }
+
+    fun clearStickyTouchKeys() {
+        stickyTouchKeys.clear()
+        _stickyKeyState.value = 0
+        dispatchKeys()
+    }
+
+    private fun currentProjectSignature(): String = M8ProjectSnapshot.signature(song, instruments)
+
+    private fun refreshDirtyState() {
+        _isSongDirty.value = dirtyGuard.isDirty(currentProjectSignature())
+    }
+
+    private fun noteMeaningfulProjectEdit(beforeSignature: String? = null) {
+        val currentSignature = currentProjectSignature()
+        _isSongDirty.value = dirtyGuard.isDirty(currentSignature)
+        if (beforeSignature != null && beforeSignature == currentSignature) return
+        if (!_isSongDirty.value) {
+            cancelPendingAutosave()
+            return
+        }
+        autosaveDebouncer.markMeaningfulEdit(System.currentTimeMillis())
+        autosaveJob?.cancel()
+        autosaveJob = viewModelScope.launch {
+            val waitMs = autosaveDebouncer.remainingDelay(System.currentTimeMillis())
+            if (waitMs != Long.MAX_VALUE) delay(waitMs)
+            if (autosaveDebouncer.shouldAutosave(System.currentTimeMillis()) && dirtyGuard.isDirty(currentProjectSignature())) {
+                saveCurrentSong(statusPrefix = "AUTOSAVED")
+            }
+        }
+    }
+
+    private fun cancelPendingAutosave() {
+        autosaveDebouncer.cancelPending()
+        autosaveJob?.cancel()
+        autosaveJob = null
+    }
+
+    fun shouldConfirmBeforeReplacingSong(): Boolean = dirtyGuard.shouldConfirmBeforeReplace(currentProjectSignature())
+
+    fun saveCurrentSong(): String = saveCurrentSong(statusPrefix = "SAVED")
+
+    private fun saveCurrentSong(statusPrefix: String): String {
+        val target = M8ProjectLibrary.saveProject(projectDir, song, instruments)
+        dirtyGuard.markClean(currentProjectSignature())
+        _isSongDirty.value = false
+        cancelPendingAutosave()
+        val status = "$statusPrefix ${target.name}"
+        _projectSaveStatus.value = status
+        refreshSavedProjects()
+        return status
+    }
+
+    fun refreshSavedProjects() {
+        _savedProjects.value = M8ProjectLibrary.list(projectDir)
+    }
+
+    fun loadSavedProject(path: String): String {
+        val file = File(path)
+        val restored = M8ProjectLibrary.load(file)
+        applyRestoredProject(restored)
+        recordRecent(file.absolutePath, song.name.ifBlank { file.nameWithoutExtension }, RecentSongStore.Kind.PROJECT)
+        refreshSavedProjects()
+        val status = "LOADED ${file.name}"
+        _projectSaveStatus.value = status
+        Log.i(TAG, "Restored project '${song.name}' from ${file.name}")
+        return status
+    }
+
+    fun renameSavedProject(path: String, newName: String): String {
+        val renamed = M8ProjectLibrary.rename(projectDir, File(path), newName)
+        refreshSavedProjects()
+        val status = "RENAMED ${renamed.name}"
+        _projectSaveStatus.value = status
+        return status
+    }
+
+    fun duplicateSavedProject(path: String, newName: String): String {
+        val duplicate = M8ProjectLibrary.duplicate(projectDir, File(path), newName)
+        refreshSavedProjects()
+        val status = "DUPLICATED ${duplicate.name}"
+        _projectSaveStatus.value = status
+        return status
+    }
+
+    fun deleteSavedProject(path: String): String {
+        val file = File(path)
+        val deleted = M8ProjectLibrary.delete(projectDir, file)
+        refreshSavedProjects()
+        val status = if (deleted) "DELETED ${file.name}" else "ERROR: delete failed"
+        _projectSaveStatus.value = status
+        return status
+    }
+
+    fun exportableSavedProjectFile(path: String): File {
+        return M8ProjectLibrary.exportableProjectFile(projectDir, path)
+    }
+
+    fun markProjectExported(path: String): String {
+        val file = M8ProjectLibrary.exportableProjectFile(projectDir, path)
+        val status = "SHARING ${file.name}"
+        _projectSaveStatus.value = status
+        return status
+    }
+
+    fun refreshRecentSongs() {
+        _recentSongs.value = recentSongStore.list()
+    }
+
+    fun newSong(): String {
+        applyRestoredProject(M8ProjectSnapshot.Restored(M8Song().apply { name = "NEW SONG" }, M8Instrument.createDefaults()))
+        val status = "NEW SONG"
+        _projectSaveStatus.value = status
+        return status
+    }
+
+    fun startFreshAcademyTutorialSong(): String {
+        applyRestoredProject(AcademyTutorialProject.freshSession())
+        emulator.screen = M8Emulator.SCREEN_SONG
+        emulator.selectedChain = 0
+        emulator.selectedPhrase = 0
+        val status = "ACADEMY FRESH SONG"
+        _projectSaveStatus.value = status
+        return status
+    }
+
+    fun loadRecentSong(entry: RecentSongStore.Entry): String = when (entry.kind) {
+        RecentSongStore.Kind.PROJECT -> loadSavedProject(entry.location)
+        RecentSongStore.Kind.SONG -> {
+            val parsed = M8sParser.parse(readRecentSongBytes(entry.location))
+            replaceSong(parsed, recentLocation = entry.location, recentTitle = entry.title)
+            "LOADED '${entry.title}'"
+        }
+    }
+
+    fun loadSongFile(file: File): String {
+        val parsed = M8sParser.parse(file.readBytes())
+        replaceSong(parsed, recentLocation = file.absolutePath, recentTitle = parsed.header.name.ifBlank { file.nameWithoutExtension })
+        return "LOADED '${parsed.header.name}'"
+    }
+
+    fun loadSongFromUri(uri: Uri): String {
+        val resolver = getApplication<Application>().contentResolver
+        val bytes = resolver.openInputStream(uri)?.use { it.readBytes() }
+            ?: error("Could not open selected song")
+        val title = displayNameFor(uri) ?: uri.lastPathSegment ?: "selected.m8s"
+        if (title.endsWith(".m8droid", ignoreCase = true) || looksLikeM8DroidProject(bytes)) {
+            val imported = importProjectBytes(bytes, title)
+            loadSavedProject(imported.absolutePath)
+            val status = "IMPORTED ${imported.name}"
+            _projectSaveStatus.value = status
+            return status
+        }
+        val parsed = M8sParser.parse(bytes)
+        replaceSong(parsed, recentLocation = uri.toString(), recentTitle = parsed.header.name.ifBlank { title })
+        return "LOADED '${parsed.header.name.ifBlank { title }}'"
+    }
+
+    fun importProjectFromUri(uri: Uri, loadAfterImport: Boolean = true): String {
+        val resolver = getApplication<Application>().contentResolver
+        val bytes = resolver.openInputStream(uri)?.use { it.readBytes() }
+            ?: error("Could not open selected project")
+        val title = displayNameFor(uri) ?: uri.lastPathSegment ?: "shared_project.m8droid"
+        val imported = importProjectBytes(bytes, title)
+        return if (loadAfterImport) {
+            loadSavedProject(imported.absolutePath)
+            val status = "IMPORTED ${imported.name}"
+            _projectSaveStatus.value = status
+            status
+        } else {
+            val status = "IMPORTED ${imported.name} — OPEN FROM PROJECTS"
+            _projectSaveStatus.value = status
+            status
+        }
+    }
+
+    private fun importProjectBytes(bytes: ByteArray, title: String): File {
+        val imported = M8ProjectLibrary.importProject(projectDir, bytes, title)
+        refreshSavedProjects()
+        return imported
+    }
+
+    private fun looksLikeM8DroidProject(bytes: ByteArray): Boolean {
+        return runCatching { M8ProjectSnapshot.decode(bytes) }.isSuccess
+    }
+
+    private fun restoreLastLoadedOnStartup() {
+        if (triedStartupRecentRestore) return
+        triedStartupRecentRestore = true
+        val last = recentSongStore.lastLoaded() ?: return
+        runCatching {
+            when (last.kind) {
+                RecentSongStore.Kind.PROJECT -> M8ProjectSnapshot.restoreInto(M8ProjectLibrary.load(File(last.location)), song, instruments)
+                RecentSongStore.Kind.SONG -> emulator.loadParsedSong(M8sParser.parse(readRecentSongBytes(last.location)))
+            }
+            resetLoadedSongState(wasPlaying = false)
+            markProjectClean()
+            _projectSaveStatus.value = "RESTORED ${last.title}"
+            Log.i(TAG, "Restored last loaded '${last.title}'")
+        }.onFailure {
+            _startupRecovery.value = StartupRecovery.fromFailure(last, it)
+            _projectSaveStatus.value = "RESTORE FAILED: ${last.title}"
+            Log.w(TAG, "Could not restore last loaded song '${last.location}'", it)
+        }
+    }
+
+    fun dismissStartupRecovery() {
+        _startupRecovery.value = null
+    }
+
+    fun dismissProjectWarnings() {
+        _projectWarnings.value = null
+    }
+
+    private fun applyRestoredProject(restored: M8ProjectSnapshot.Restored) {
+        val wasPlaying = emulator.playing
+        emulator.playing = false
+        M8ProjectSnapshot.restoreInto(restored, song, instruments)
+        resetLoadedSongState(wasPlaying)
+        markProjectClean()
+        refreshProjectWarnings()
+    }
+
+    private fun resetLoadedSongState(wasPlaying: Boolean) {
+        emulator.resetPlayheadAndResolve()
+        songRow = 0
+        chainRow = 0
+        phraseRow = 0
+        samplesUntilNextRow = 0
+        previousSongRow = 0
+        emulator.cursorX = 0
+        emulator.cursorY = 0
+        emulator.editMode = false
+        configureVoicesFromInstruments()
+        if (wasPlaying) {
+            emulator.playing = true
+            emulator.playRow = 0
+        }
+    }
+
+    private fun recordRecent(location: String, title: String, kind: RecentSongStore.Kind) {
+        recentSongStore.record(RecentSongStore.Entry(location = location, title = title.ifBlank { "Untitled" }, kind = kind))
+        refreshRecentSongs()
+    }
+
+    private fun readRecentSongBytes(location: String): ByteArray {
+        return if (location.startsWith("content://")) {
+            val uri = Uri.parse(location)
+            getApplication<Application>().contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                ?: error("Could not reopen recent song")
+        } else {
+            File(location).readBytes()
+        }
+    }
+
+    private fun displayNameFor(uri: Uri): String? {
+        return runCatching {
+            getApplication<Application>().contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) else null
+            }
+        }.getOrNull()
+    }
+
+    private fun markProjectClean() {
+        dirtyGuard.markClean(currentProjectSignature())
+        _isSongDirty.value = false
+        cancelPendingAutosave()
+    }
+
     private fun dispatchKeys() {
-        val keys = touchKeys or keyboardKeys
+        val keys = stickyTouchKeys.applyTo(touchKeys) or keyboardKeys
         _keyState.value = keys
         // Detect OPT+EDIT+SHIFT held simultaneously (like on real hardware)
         if (keys and COMBO_MASK == COMBO_MASK) {
@@ -621,7 +1082,15 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             comboHeldFrames = 0
         }
-        if (!keyInputPaused) emulator.handleKeyState(keys)
+        if (rowPreviewShortcut.consume(keys, emulator.screen)) {
+            previewRowAtCursor()
+            return
+        }
+        if (!keyInputPaused) {
+            val beforeSignature = currentProjectSignature()
+            emulator.handleKeyState(keys)
+            noteMeaningfulProjectEdit(beforeSignature)
+        }
     }
 
     @Deprecated("Use setTouchKeys/setKeyboardKeys", ReplaceWith("setTouchKeys(keys)"))
@@ -634,9 +1103,9 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Restart local emulator — useful when user wants a clean-slate server state. */
+    /** Restart local audio/display runtime without reloading or clearing the current project. */
     fun restartServer() {
-        startLocalEmulator()
+        startLocalEmulator(restoreStartupProject = RuntimeRestartPolicy.restoresStartupProjectOnManualRestart)
     }
 
     fun toggleTutorial() {
@@ -652,6 +1121,62 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         emulator.editMode = false
     }
 
+    fun handleDisplayTap(m8X: Int, m8Y: Int) {
+        emulator.handleDisplayTap(m8X, m8Y)
+    }
+
+    fun handleDisplayLongPress(m8X: Int, m8Y: Int): Boolean {
+        val beforeSignature = currentProjectSignature()
+        val changed = emulator.handleDisplayLongPress(m8X, m8Y)
+        if (changed) noteMeaningfulProjectEdit(beforeSignature)
+        return changed
+    }
+
+    fun enterHexDigit(digit: Int): Boolean {
+        val beforeSignature = currentProjectSignature()
+        val changed = emulator.enterHexDigit(digit)
+        if (changed) noteMeaningfulProjectEdit(beforeSignature)
+        return changed
+    }
+
+    fun setSongNameFromEditor(name: String): Boolean {
+        val beforeSignature = currentProjectSignature()
+        val changed = emulator.setSongNameFromEditor(name)
+        if (changed) {
+            noteMeaningfulProjectEdit(beforeSignature)
+            _displayTick.value++
+        }
+        return changed
+    }
+
+    fun enterNoteFromPicker(semitone: Int): Boolean {
+        val beforeSignature = currentProjectSignature()
+        val midi = emulator.enterNoteFromPickerWithResult(semitone)
+        if (midi < 0) return false
+        // Audition the written note immediately so the picker behaves like pressing a
+        // key in EDIT mode on real M8 — note entry and audible feedback in one tap.
+        previewNote(emulator.cursorX.coerceIn(0, 7), midi)
+        noteMeaningfulProjectEdit(beforeSignature)
+        return true
+    }
+
+    fun quickInsertAtSelection(): Boolean = applyTrackerQuickEdit { emulator.quickInsertAtSelection() }
+
+    fun clearSelection(): Boolean = applyTrackerQuickEdit { emulator.clearSelection() }
+
+    fun duplicateSelection(): Boolean = applyTrackerQuickEdit { emulator.duplicateSelection() }
+
+    fun transposeSelection(delta: Int): Boolean = applyTrackerQuickEdit { emulator.transposeSelection(delta) }
+
+    private fun applyTrackerQuickEdit(action: () -> String): Boolean {
+        val beforeSignature = currentProjectSignature()
+        val status = action()
+        _projectSaveStatus.value = status
+        val changed = currentProjectSignature() != beforeSignature
+        if (changed) noteMeaningfulProjectEdit(beforeSignature)
+        return changed
+    }
+
     fun nextScreen() {
         emulator.screen = (emulator.screen + 1) % 8
         emulator.editMode = false
@@ -663,12 +1188,14 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun adjustTempo(delta: Int) {
+        val beforeSignature = currentProjectSignature()
         song.tempo = (song.tempo + delta).coerceIn(40, 300)
         emulator.bpm = song.tempo
+        noteMeaningfulProjectEdit(beforeSignature)
     }
 
-    /** Number of instrument slots the emulator exposes. */
-    val instrumentSlotCount: Int get() = instruments.size
+    /** Number of instrument slots the BrowseDialog's "load .m8i into slot" picker renders. */
+    val instrumentSlotCount: Int get() = INSTRUMENT_PICKER_SLOT_COUNT
 
     /**
      * Replace the instrument at [slot] with a newly-parsed M8Instrument
@@ -677,38 +1204,68 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
      */
     fun replaceInstrument(slot: Int, newInst: M8Instrument) {
         if (slot !in instruments.indices) return
+        val beforeSignature = currentProjectSignature()
         instruments[slot] = newInst
-        runCatching { synth.configureVoice(slot, newInst) }
+        runCatching { configureTrackInstrument(slot, newInst) }
+        noteMeaningfulProjectEdit(beforeSignature)
     }
 
     /**
      * Replace the playing song with the data in [parsed]. Mutates the
-     * emulator's live M8Song (since it's held as a val) and rewinds the
-     * sequencer to row 0 so the new song starts from the top.
-     *
-     * Intentionally does NOT touch instruments — the .m8s parser is
-     * playback-core only (grid/phrases/chains/tables/tempo). Existing
-     * instrument slots stay live so steps with instrument references
-     * still produce sound. See DECISIONS.md.
+     * emulator's live M8Song (since it's held as a val), rewinds the
+     * sequencer to row 0, and installs the song's instrument pool into
+     * the 128 emulator slots so phrase steps that reference instruments
+     * > 7 use the timbres the song author intended rather than whatever
+     * was last live on each track.
      */
-    fun replaceSong(parsed: M8sParser.ParsedSong) {
+    fun replaceSong(parsed: M8sParser.ParsedSong, recentLocation: String? = null, recentTitle: String = parsed.header.name) {
         val wasPlaying = emulator.playing
-        emulator.playing = false
-        M8sParser.applyTo(parsed, song)
-        emulator.bpm = song.tempo
+        val installed = emulator.loadParsedSong(parsed)
         songRow = 0
         chainRow = 0
         phraseRow = 0
+        // Reapply the first 8 voices so the synth picks up new samplers/envelopes
+        // immediately; per-row instrument resolution handles the rest on the fly.
+        configureVoicesFromInstruments()
         samplesUntilNextRow = 0
         previousSongRow = 0
         emulator.cursorX = 0
         emulator.cursorY = 0
-        emulator.resetPlayheadAndResolve()
         if (wasPlaying) {
             emulator.playing = true
             emulator.playRow = 0
         }
-        Log.i(TAG, "Loaded song '${song.name}' @ ${song.tempo} BPM")
+        markProjectClean()
+        refreshProjectWarnings()
+        if (!recentLocation.isNullOrBlank()) recordRecent(recentLocation, recentTitle, RecentSongStore.Kind.SONG)
+        Log.i(TAG, "Loaded song '${song.name}' @ ${song.tempo} BPM with $installed instrument slots")
+    }
+
+    private fun refreshProjectWarnings() {
+        val warnings = ProjectHealth.checkSamples(instruments, sdRoot)
+        _projectWarnings.value = warnings.takeIf { it.hasWarnings }
+        if (warnings.hasWarnings) Log.w(TAG, warnings.userMessage())
+    }
+
+    fun exportDiagnosticsFile(): File {
+        val report = DiagnosticReport.render(
+            song = song,
+            instruments = instruments,
+            isDirty = _isSongDirty.value,
+            status = _projectSaveStatus.value,
+            warnings = _projectWarnings.value ?: ProjectHealth.checkSamples(instruments, sdRoot),
+            recent = recentSongStore.list().map { "${it.kind}: ${it.title}" },
+        )
+        val dir = File(getApplication<Application>().cacheDir, "diagnostics").apply { mkdirs() }
+        val safeName = song.name.ifBlank { "m8droid" }
+            .replace(Regex("[^A-Za-z0-9._-]+"), "_")
+            .trim('_')
+            .take(48)
+            .ifBlank { "m8droid" }
+        val file = File(dir, "$safeName-diagnostics.txt")
+        file.writeText(report)
+        _projectSaveStatus.value = "DIAGNOSTICS READY ${file.name}"
+        return file
     }
 
     fun playFromCursor() {
@@ -716,6 +1273,45 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         emulator.playRow = emulator.cursorY
         phraseRow = emulator.cursorY
         samplesUntilNextRow = 0
+    }
+
+    /**
+     * Audition a single note on [track] through the currently configured instrument,
+     * without engaging the sequencer. Used by the mini-piano picker so phrase note
+     * entry produces immediate sound — the same intent as pressing a key in EDIT
+     * mode on real M8 hardware. [instrument] defaults to the track's own slot.
+     */
+    fun previewNote(track: Int, note: Int, velocity: Int = 0xCC, instrument: Int = track) {
+        if (track !in 0..7) return
+        val safeNote = note.coerceIn(1, 127)
+        val safeInst = if (instrument in instruments.indices) instrument else track
+        triggerRuntimeTrack(track, safeNote, safeInst, velocity)
+    }
+
+    /**
+     * One-shot preview of the row under the user's cursor in PHRASE/CHAIN/SONG
+     * screens, resolved against the current scheduler position for song/chain
+     * context. Mirrors `triggerCurrentRow` minus FX side effects so editing flows
+     * can "play this row" without committing to ongoing playback.
+     *
+     * Returns the resolved row data so tests can verify what was about to sound.
+     */
+    fun previewRowAtCursor(): Array<IntArray> {
+        val cursorPhraseRow = emulator.cursorY.coerceIn(0, 15)
+        val rowData = emulator.resolveRowDataAt(songRow, chainRow, cursorPhraseRow)
+        for (t in 0 until 8) {
+            val instIdx = rowData[t][1]
+            if (instIdx in instruments.indices) configureTrackInstrument(t, instruments[instIdx])
+        }
+        if (nativeSynthReady) {
+            val notes = ByteArray(8) { rowData[it][0].toByte() }
+            val vols = ByteArray(8) { rowData[it][2].toByte() }
+            NativeSynth.triggerRow(notes, vols)
+        } else {
+            synth.triggerRow(rowData)
+        }
+        broadcastMidiRow(rowData)
+        return rowData
     }
 
     override fun onCleared() {

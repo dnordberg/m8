@@ -11,4 +11,7 @@ data class EmulatorSnapshot(
     val cursorY: Int = 0,
     val editMode: Boolean = false,
     val midiActive: Boolean = false,
+    val selectedSongChain: Int = 0xFF,
+    val selectedChainRowPhrase: Int = 0xFF,
+    val selectedPhraseStepNote: Int = 0xFF,
 )

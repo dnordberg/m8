@@ -4,6 +4,7 @@ import android.view.HapticFeedbackConstants
 import android.view.View
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
@@ -183,5 +184,61 @@ private fun M8Button(
             button()
             text()
         }
+    }
+}
+
+@Composable
+fun TrackerQuickActionBar(
+    status: String,
+    onInsert: () -> Unit,
+    onClear: () -> Unit,
+    onDuplicate: () -> Unit,
+    onTransposeDown: () -> Unit,
+    onTransposeUp: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .border(1.dp, NEON, RoundedCornerShape(8.dp))
+            .background(Color(0xDD020812), RoundedCornerShape(8.dp))
+            .padding(6.dp),
+        horizontalAlignment = Alignment.End,
+        verticalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        Text(
+            text = status,
+            color = NEON,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.End,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            TrackerQuickButton("INS", onInsert)
+            TrackerQuickButton("CLR", onClear)
+            TrackerQuickButton("DUP", onDuplicate)
+            TrackerQuickButton("-", onTransposeDown)
+            TrackerQuickButton("+", onTransposeUp)
+        }
+    }
+}
+
+@Composable
+private fun TrackerQuickButton(label: String, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .height(30.dp)
+            .widthIn(min = 38.dp)
+            .border(1.dp, NEON, RoundedCornerShape(5.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            color = NEON,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Black,
+            textAlign = TextAlign.Center,
+        )
     }
 }

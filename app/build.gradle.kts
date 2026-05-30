@@ -58,6 +58,7 @@ dependencies {
 
     // Activity + Lifecycle
     implementation("androidx.activity:activity-compose:1.9.3")
+    implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
 
@@ -78,6 +79,7 @@ dependencies {
 
     // Test
     testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
+    testImplementation("org.json:json:20240303")
     testImplementation("app.cash.turbine:turbine:1.2.0")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
 }

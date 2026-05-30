@@ -24,7 +24,7 @@ object M8iParser {
     class ParseException(message: String) : Exception(message)
 
     private const val HEADER_SIZE = 14
-    private const val BODY_SIZE = 215
+    const val BODY_SIZE = 215
     private const val MIN_SIZE = HEADER_SIZE + BODY_SIZE
 
     // Kind enum values on byte 0 of the instrument body.
@@ -50,6 +50,21 @@ object M8iParser {
             // Be lenient — still try to parse, just warn via exception on failure.
         }
         val body = bytes.copyOfRange(HEADER_SIZE, HEADER_SIZE + BODY_SIZE)
+        return parseBody(body, header)
+    }
+
+    /**
+     * Parse a bare 215-byte instrument body (no .m8i file header) using the
+     * supplied version. Used by M8sParser when reading the instrument pool out
+     * of a .m8s song file — the song header carries the version, individual
+     * instrument bodies do not. [offset] is the start of the body within
+     * [bytes]; the slice is read in place so we don't allocate per slot.
+     */
+    fun parseBodyAt(bytes: ByteArray, offset: Int, header: Header): M8Instrument {
+        if (offset < 0 || offset + BODY_SIZE > bytes.size) {
+            throw ParseException("Body slice out of range: $offset..${offset + BODY_SIZE} of ${bytes.size}")
+        }
+        val body = bytes.copyOfRange(offset, offset + BODY_SIZE)
         return parseBody(body, header)
     }
 
@@ -103,6 +118,7 @@ object M8iParser {
 
         if (kind != KIND_MIDI_OUT && filterOffset > 0 && filterOffset + 10 <= body.size) {
             parseFilterAmpMixer(body, filterOffset, inst)
+            parseModulation(body, filterOffset + 10, inst)
         }
 
         return inst
@@ -246,6 +262,36 @@ object M8iParser {
             reverbSend = body.u8(off + 9),
         )
     }
+
+    /** 26 bytes: env1/env2 as 8-byte blocks, then lfo1/lfo2 as 5-byte blocks. */
+    private fun parseModulation(body: ByteArray, off: Int, inst: M8Instrument) {
+        if (off + 26 > body.size) return
+        inst.modulation = ModulationParams(
+            env1 = parseEnvelope(body, off),
+            env2 = parseEnvelope(body, off + 8),
+            lfo1 = parseLfo(body, off + 16),
+            lfo2 = parseLfo(body, off + 21),
+        )
+    }
+
+    private fun parseEnvelope(body: ByteArray, off: Int): Envelope = Envelope(
+        type = EnvelopeType.entries.getOrElse(body.u8(off)) { EnvelopeType.ADSR },
+        attack = body.u8(off + 1),
+        hold = body.u8(off + 2),
+        decay = body.u8(off + 3),
+        sustain = body.u8(off + 4),
+        release = body.u8(off + 5),
+        dest = body.u8(off + 6),
+        amount = body.u8(off + 7),
+    )
+
+    private fun parseLfo(body: ByteArray, off: Int): Lfo = Lfo(
+        shape = LfoShape.fromIndex(body.u8(off)),
+        speed = body.u8(off + 1),
+        amount = body.u8(off + 2),
+        dest = body.u8(off + 3),
+        retrigger = body.u8(off + 4) != 0,
+    )
 
     private fun kindToType(kind: Int): InstrumentType = when (kind) {
         KIND_WAVSYNTH -> InstrumentType.WAVSYNTH

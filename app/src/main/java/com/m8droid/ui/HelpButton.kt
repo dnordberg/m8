@@ -16,6 +16,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.m8droid.ui.academy.AcademyTheme
 
 @Composable
 fun HelpButton(
@@ -45,23 +46,25 @@ fun HelpMenu(
     onDismiss: () -> Unit,
     onStartTutorial: () -> Unit,
     onShowHotkeys: () -> Unit,
+    onExportDiagnostics: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(Color(0xCC000000))
-            .clickable { onDismiss() },
+            .clickable { onDismiss() }
+            .windowInsetsPadding(WindowInsets.safeDrawing),
         contentAlignment = Alignment.Center,
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth(0.88f)
-                .background(Color(0xFF0A0A1A), RoundedCornerShape(8.dp))
-                .border(1.dp, Color(0xFF00FF00), RoundedCornerShape(8.dp))
-                .padding(20.dp)
+                .background(AcademyTheme.BgRoot, RoundedCornerShape(8.dp))
+                .border(1.dp, AcademyTheme.BorderDim, RoundedCornerShape(8.dp))
+                .padding(12.dp)
                 .clickable(enabled = false) {},
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -69,24 +72,27 @@ fun HelpMenu(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "HELP",
-                    color = Color(0xFF00FF00),
+                    text = "? M8 HELP",
+                    color = AcademyTheme.AccentMagenta,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace,
                 )
-                CloseButton(onClick = onDismiss)
+                CloseButton(onClick = onDismiss, tint = AcademyTheme.TextNormal)
             }
             Text(
-                text = "M8 is a tracker-style music sequencer. Use the touch buttons to navigate. SHIFT + LEFT/RIGHT switches screens. EDIT enters/exits edit mode. OPT is a context modifier.",
-                color = Color(0xFFAABBCC),
+                text = "Tracker basics, guided lessons, and shortcuts.",
+                color = AcademyTheme.TextNormal,
                 fontSize = 12.sp,
                 fontFamily = FontFamily.Monospace,
             )
 
             HelpMenuItem(
-                title = "Start Tutorial",
-                subtitle = "Interactive walkthrough (also: hold OPT+EDIT+SHIFT)",
+                icon = "♟",
+                title = "ACADEMY",
+                subtitle = "Interactive quests and guided walkthrough",
+                badge = "START",
+                accent = AcademyTheme.AccentCyan,
                 onClick = {
                     onDismiss()
                     onStartTutorial()
@@ -94,45 +100,88 @@ fun HelpMenu(
             )
 
             HelpMenuItem(
-                title = "Show Hotkeys",
-                subtitle = "Keyboard shortcuts reference (also: press H)",
+                icon = "⌘",
+                title = "HOTKEYS",
+                subtitle = "Keyboard shortcuts and tracker controls",
+                badge = "H",
+                accent = AcademyTheme.BorderDim,
                 onClick = {
                     onDismiss()
                     onShowHotkeys()
                 },
             )
 
+            HelpMenuItem(
+                icon = "⇪",
+                title = "EXPORT DIAGNOSTICS",
+                subtitle = "Share a compact bug report with project state and warnings",
+                badge = "TXT",
+                accent = AcademyTheme.AccentMagenta,
+                onClick = {
+                    onDismiss()
+                    onExportDiagnostics()
+                },
+            )
 
+            Text(
+                text = "SHIFT + LEFT/RIGHT switches screens · EDIT toggles edit mode · OPT is a context modifier",
+                color = AcademyTheme.TextDim,
+                fontSize = 10.sp,
+                fontFamily = FontFamily.Monospace,
+                lineHeight = 14.sp,
+            )
         }
     }
 }
 
 @Composable
 private fun HelpMenuItem(
+    icon: String,
     title: String,
     subtitle: String,
+    badge: String,
+    accent: Color,
     onClick: () -> Unit,
 ) {
-    Column(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFF111127), RoundedCornerShape(6.dp))
-            .border(1.dp, Color(0xFF224466), RoundedCornerShape(6.dp))
+            .background(AcademyTheme.BgCard, RoundedCornerShape(8.dp))
+            .border(1.dp, accent, RoundedCornerShape(8.dp))
             .clickable { onClick() }
-            .padding(horizontal = 14.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = title,
-            color = Color(0xFF00CC66),
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Bold,
+            text = icon,
+            color = AcademyTheme.TextBright,
+            fontSize = 24.sp,
             fontFamily = FontFamily.Monospace,
+            modifier = Modifier.width(36.dp),
         )
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(
+                text = title,
+                color = AcademyTheme.TextBright,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace,
+            )
+            Text(
+                text = subtitle,
+                color = AcademyTheme.TextDim,
+                fontSize = 11.sp,
+                fontFamily = FontFamily.Monospace,
+            )
+        }
         Text(
-            text = subtitle,
-            color = Color(0xFF8899AA),
-            fontSize = 10.sp,
+            text = badge,
+            color = if (accent == AcademyTheme.BorderDim) AcademyTheme.TextNormal else accent,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
             fontFamily = FontFamily.Monospace,
         )
     }

@@ -166,19 +166,6 @@ server/
 - Android 8.0+ (API 26)
 - That's it. No hardware, no server, no network.
 
-## iOS Port
-
-An initial native iOS SwiftUI scaffold lives in `ios/`. It is generated with XcodeGen and is intended as the first buildable step toward the port described in `.planning/IOS_PORT_PLAN.md`.
-
-```bash
-cd ios
-brew install xcodegen
-xcodegen generate
-open M8Tracker.xcodeproj
-```
-
-The current iOS target is a build skeleton only: SwiftUI shell, M8-style display placeholder, and touch controls. The Android app remains native Kotlin + Jetpack Compose; this project does not use Flutter.
-
 ## Tags
 
 - `working-april-8-2026` — first working build
