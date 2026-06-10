@@ -1,5 +1,7 @@
 package com.m8droid.browse
 
+import com.m8droid.ui.ModalStyle
+
 object FileHubTabs {
     const val defaultLabel: String = "RECENT"
     const val newSongBannerLabel: String = "+ NEW SONG · clears current"
@@ -22,10 +24,10 @@ object FileHubTabs {
 }
 
 object FileHubLayout {
-    const val dialogWidthFraction: Float = 0.92f
+    const val dialogWidthFraction: Float = ModalStyle.panelWidthFraction
     const val dialogHeightFraction: Float = 0.88f
-    const val edgePaddingDp: Int = 22
-    const val panelAlignment: String = "Center"
+    const val edgePaddingDp: Int = 0
+    const val panelAlignment: String = ModalStyle.panelAlignment
     const val downloadSourcesFillRow: Boolean = true
     const val detailScrollIndicatorWidthDp: Int = 3
 }

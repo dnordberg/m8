@@ -8,6 +8,8 @@ Working branch: `feat/note-phrase-m8s-sampler-synth`
 
 Make M8droid feel like a real Android-native M8-style instrument: direct note input and phrase editing first, then real song loading, sample playback, stronger synth modes, saving, and MIDI. Keep this Android-first. No iOS port work.
 
+For the current release-positioning and compatibility caveats, keep [M8_DIFFERENCES.md](M8_DIFFERENCES.md) in sync with this TODO. That document is the user/tester-facing source of truth for `.m8s` loading limits, `.m8droid` saving, sound differences, hardware/Teensy constraints, and community-feedback messaging.
+
 ## Stable Release Focus — next milestone
 
 Freeze new feature expansion. The next goal is a stable, testable Android build that Daniel can use seriously without losing work.
@@ -16,6 +18,7 @@ Release candidate criteria:
 
 - [x] Build and unit tests pass: `./gradlew testDebugUnitTest assembleDebug`.
 - [x] Project save/load/export/share path exists for `.m8droid` files.
+- [x] Add and link the honest compatibility note: [M8_DIFFERENCES.md](M8_DIFFERENCES.md).
 - [ ] Install latest APK on a real Android device and run a smoke session.
 - [ ] Verify Academy fresh-song flow end-to-end on device: start Academy, complete Basics → Synths → Sampling quests, no blank chapter/fallthrough.
 - [ ] Verify core tracker workflow on device: SONG → CHAIN → PHRASE → TABLE editing, preview row, playback, runtime FX audibly affect output.
@@ -155,24 +158,47 @@ Make the synth sound more like M8, not just a generic synth. The current Kotlin 
 - [x] Add golden-ish synth tests for oscillator mode changes, envelope changes, filter changes, and stereo pan.
 - [ ] Add comparison fixtures or documented expected behavior against real M8 where available.
 
-## Priority 4B — M8 parity gaps to track explicitly
+## Priority 4B — Optimal M8 differences roadmap
 
-These are the “sounds/behaves like a real M8” gaps. Do not chase hardware-only items unless they map cleanly to Android.
+These are the realistic “sounds/behaves closer to a real M8” gaps from [M8_DIFFERENCES.md](M8_DIFFERENCES.md). The goal is not to clone hardware traits or overpromise Dirtywave firmware parity. The goal is to close the differences that users will actually hear, feel, or hit while loading songs on Android.
+
+### Realistic parity work we should do
 
 - [x] MACROSYNTH / Mutable Instruments-style models: first-pass CSAW, morph/saw-square/sine-triangle, square/saw sub, triple saw/square, and noise/drum-like mappings are present. Remaining: deeper Braids parity/formant/chord engines.
 - [x] HYPERSYNTH: first-pass 8-detuned-oscillator supersaw behavior with chord intervals, swarm/detune, shift, and sub-osc controls.
 - [ ] Runtime per-step FX command engine: first playback slice wires `VOL`, `AMP`, `PAN`, `SDL`, and `KIL` into row/synth runtime behavior; `KIL`, `RET`, `DEL`, `HOP`, and `SNG` now run from the playback flow. `TBL`/`TIC` table automation now affects runtime transpose/volume/pan/delay send and the startup demo exposes it audibly. `PSL` slides now progress toward targets, `PBN` bend accumulation resets on new notes, and `RET` applies timing plus volume-ramp retriggers with a demo flourish. Remaining: fuller arp/table/parameter-lock command parity for `O`, `X`, `Y`, etc.
-- [ ] Modulation block: parse and apply 2 envelopes + 2 LFOs with assignable destinations. `DECISIONS.md` says this was explicitly skipped in both `.m8i` and `.m8s`; without it, downloaded instruments are static snapshots.
-- [ ] MIDI OUT: support each track driving external synths on its own channel + CCs. This is a bigger M8 hardware-user use case than MIDI input.
-- [ ] Per-instrument mixer chain: add 3-band EQ, limiter, drive, sample-rate reduction, and FX sends. Current implementation mostly has master delay/chorus/reverb, not real per-voice processing.
-- [ ] Groove timing at scheduler: groove pool is parsed, but playback clock still uses a flat grid. Apply per-track groove/swing patterns to actual note timing.
+- [ ] Instrument-to-synth configuration path: make the active synth path consume full `M8Instrument` configuration, sample assignments, mixer sends, FX params, and modulation data instead of only row note/volume events. This is the highest-value sound-parity item if native synth remains active.
+- [ ] Native synth parity decision: either wire native synth to the same rich instrument model as the Kotlin synth, or disable/demote native mode until it can preserve instrument/sample/FX behavior. A fast native path that ignores M8 parameters is worse than a slower honest path.
+- [ ] Modulation block: parse and apply 2 envelopes + 2 LFOs with assignable destinations. `DECISIONS.md` says this was explicitly skipped in both `.m8i` and `.m8s`; without it, downloaded/imported instruments are static snapshots.
+- [ ] Per-instrument mixer chain: add the audible essentials first — volume, pan, drive, filter/EQ-ish shaping, sample-rate reduction, limiter-ish control, and FX sends. Current implementation mostly has master delay/chorus/reverb, not real per-voice processing.
+- [ ] Groove timing at scheduler: groove pool is parsed, but playback clock still uses a flat grid. Apply per-track groove/swing patterns to actual note timing so imported songs feel less stiff.
 - [ ] Custom scales / microtuning: parse user scales with per-note cent offsets and enforce them at note-on.
+- [ ] Parser gap closure for imported songs: finish known `.m8s` v4 delay/reverb HP/LP cutoff fields, chorus width if applicable, and any high-impact mixer/global-FX fields that currently fall back to defaults.
 - [x] Sampler fidelity: pitched playback, loop points, one-shot vs loop behavior, and interpolation now exist. Remaining: slice mode and loop crossfade.
-- [ ] Sampling in: evaluate Android recording path for creating new samples from mic/USB/line-style sources where possible. This is a hardware feature on M8; on phone it should be treated as an Android-native equivalent, not a perfect hardware clone.
+- [ ] Sampler missing-file resolver: when imported songs reference missing samples, provide a phone-friendly “locate sample / map folder / keep muted” flow and include the missing path list in diagnostics.
+- [ ] Sampler slice and loop polish: implement slice mode, cleaner loop crossfades, and path matching against virtual SD/sample cache so imported drum/sample songs degrade less dramatically.
+- [ ] Compatibility report after `.m8s` import: show supported sections, missing samples, unsupported settings, parser warnings, and “will sound approximate” caveat before users assume the app failed.
+- [ ] Audio fixture tests: add stable generated/imported song fixtures for basic oscillator phrase, sampler one-shot, table automation, retrigger/slide, mixer pan/send, and groove timing. Tests should catch regressions in what users can actually hear.
+- [ ] Reference comparison notes: where real M8/headless-firmware renders are available, document expected audible behavior or attach reference fixtures instead of guessing from parameter names.
+- [ ] MIDI OUT: support each track driving external synths on its own channel + notes, velocity, CCs, program changes, and clock. This is a bigger real-M8-user use case than MIDI input and is realistic on Android.
+- [ ] Sampling in: evaluate Android recording path for creating new samples from mic/USB/line-style sources where possible. Treat this as an Android-native equivalent, not a perfect hardware clone.
 
-## Hardware-specific items not worth chasing
+### Format compatibility work we can realistically do
 
-- [ ] Do not chase volume knob, touch wheel, 5-pin DIN, true USB host MIDI hardware behavior, line-in hardware recording, or SGTL5000 analog character. These are physical-device traits, not app roadmap items.
+- [ ] Official `.m8s` export, limited scope first: write only the subset M8droid fully represents, keep `.m8droid` as the richer/project-safe internal format, and clearly label export limitations.
+- [ ] `.m8s` round-trip tests: verify `.m8s -> M8droid -> .m8s -> parser` for supported fields before attempting real-hardware compatibility claims.
+- [ ] Real-M8 verification path: when hardware is available, test exported `.m8s` files on real M8 or a trusted reference parser and record the result in `M8_DIFFERENCES.md`.
+
+### Hardware bridge work, only if we choose that product mode
+
+- [ ] Keep Local Emulator and Hardware Bridge as separate runtime modes. Local Emulator owns Android-native song state/audio/project files; Hardware Bridge treats real M8/Teensy hardware as source of truth.
+- [ ] Wire `M8WebSocketClient` into a real selectable Hardware Bridge runtime with display frames from hardware and key state sent back to hardware.
+- [ ] Add clear connection/fallback UI for hardware bridge mode so users do not confuse local emulator state with hardware state.
+- [ ] Test hardware bridge mode with actual M8/Teensy hardware before claiming support publicly.
+
+### Hardware-specific differences not worth chasing
+
+- [ ] Do not chase the physical volume knob, touch wheel feel, 5-pin DIN hardware behavior, exact USB host stack behavior, line-in circuitry, SGTL5000 analog character, battery/charger behavior, enclosure ergonomics, or other physical-device traits. These are not good Android roadmap items.
 
 ## Priority 5 — Save songs
 

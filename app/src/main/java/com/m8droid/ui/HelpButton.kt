@@ -52,17 +52,17 @@ fun HelpMenu(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xCC000000))
+            .background(Color.Black.copy(alpha = ModalStyle.scrimAlpha))
             .clickable { onDismiss() }
             .windowInsetsPadding(WindowInsets.safeDrawing),
         contentAlignment = Alignment.Center,
     ) {
         Column(
             modifier = Modifier
-                .fillMaxWidth(0.88f)
-                .background(AcademyTheme.BgRoot, RoundedCornerShape(8.dp))
-                .border(1.dp, AcademyTheme.BorderDim, RoundedCornerShape(8.dp))
-                .padding(12.dp)
+                .fillMaxWidth(ModalStyle.panelWidthFraction)
+                .background(AcademyTheme.BgRoot, RoundedCornerShape(ModalStyle.cardCornerDp.dp))
+                .border(1.dp, AcademyTheme.BorderDim, RoundedCornerShape(ModalStyle.cardCornerDp.dp))
+                .padding(ModalStyle.panelPaddingDp.dp)
                 .clickable(enabled = false) {},
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {

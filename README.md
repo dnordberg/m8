@@ -3,6 +3,8 @@
 A standalone M8-style tracker for Android — no hardware required.
 
 > **Disclaimer:** M8droid is an unofficial, community-built Android client inspired by the [Dirtywave M8](https://dirtywave.com/) headless firmware. It is **not affiliated with, authorized, or endorsed by Dirtywave**. "M8" is a trademark of Dirtywave; "M8droid" is used only to describe compatibility. All original hardware, firmware, and design credit belongs to Dirtywave / Trash80.
+>
+> For the current honest compatibility/release note, read [M8_DIFFERENCES.md](M8_DIFFERENCES.md). It covers `.m8s` loading, `.m8droid` saving, sound differences, hardware/Teensy limits, and community-feedback positioning.
 
 ## What Makes This Different
 
@@ -46,15 +48,19 @@ Every other M8 client requires a physical Teensy 4.1 with M8 Headless firmware c
   - Per-track level metering and master stereo VU
   - Live waveform visualization from actual audio output
 
-- **Remote mode** — can also connect to a real M8 Headless over WebSocket if you do have the hardware
+- **Hardware bridge scaffolding** — WebSocket/client code exists for future real-M8/Teensy bridge work, but local emulator mode is the current release focus.
 
-### What it doesn't do (yet)
+## What it doesn't do yet
 
-- Note input from the UI (you can watch the demo song, not compose yet)
-- Sample playback / wavetable import
-- Save/load songs
-- MIDI input
-- Load .m8s files
+For the detailed compatibility and community-feedback note, see [M8_DIFFERENCES.md](M8_DIFFERENCES.md).
+
+Current important limits:
+
+- It does not run Dirtywave's official firmware or exact synth/DSP engine.
+- Imported `.m8s` songs play through an Android-native approximation, so they should not be expected to sound identical to real M8 hardware.
+- It saves app-native `.m8droid` projects, not official Dirtywave `.m8s` files.
+- `.m8s` export/round-trip back to real M8 hardware is not implemented yet.
+- Real M8/Teensy hardware bridge mode is not a proven public release feature yet.
 
 ## Quick Start
 
@@ -86,18 +92,9 @@ adb -s emulator-5554 emu kill
 4. Press PLAY to hear the demo song
 5. Use the d-pad and buttons to navigate screens
 
-### Remote mode (with M8 hardware)
+### Hardware bridge status
 
-If you have a Teensy 4.1 running M8 Headless connected to a Linux server:
-
-```bash
-# Install and start the server
-cd server
-pip install websockets pyserial pyserial-asyncio
-python3 m8_emulator.py --host 0.0.0.0
-```
-
-In the app, go to Settings and enter your server's IP. The app switches to remote mode and connects over WebSocket.
+Local emulator mode is the current release focus. WebSocket/client scaffolding exists for future real-M8/Teensy bridge work, but real hardware bridge mode should not be claimed as release-ready until it is wired as a selectable runtime mode and tested with actual hardware. See [M8_DIFFERENCES.md](M8_DIFFERENCES.md) for the detailed distinction between local emulator, external MIDI, and real-M8/Teensy bridge behavior.
 
 ## Architecture
 
@@ -118,15 +115,14 @@ LOCAL MODE (default):
 │        └──→ Live VU meters  │
 └─────────────────────────────┘
 
-REMOTE MODE:
-[Teensy 4.1 + M8 Headless]
-        | USB
-[Linux Server]
-  └── m8_emulator.py (WebSocket)
-        | network
+FUTURE HARDWARE BRIDGE MODE (not release-ready yet):
+[Real M8 / Teensy bridge]
+        | USB/serial
+[Bridge host]
+        | WebSocket/network
 [Android App]
-  ├── Display + Audio via WebSocket
-  └── Touch input sent back
+  ├── Display frames from hardware
+  └── Touch/key input sent back to hardware
 ```
 
 ## Project Structure
@@ -140,8 +136,8 @@ app/src/main/java/com/m8droid/
 │   └── M8Synth.kt           DSP engine (oscillators, filters, effects)
 ├── audio/
 │   ├── M8AudioPlayer.kt     AudioTrack output (44.1kHz stereo)
-│   ├── M8AudioClient.kt     WebSocket audio client (remote mode)
-│   └── OpusDecoder.kt       MediaCodec Opus decoder (remote mode)
+│   ├── M8AudioClient.kt     WebSocket audio client scaffolding
+│   └── OpusDecoder.kt       MediaCodec Opus decoder scaffolding
 ├── protocol/
 │   ├── M8Protocol.kt        SLIP frame decoder
 │   ├── M8Commands.kt        Key constants and command IDs

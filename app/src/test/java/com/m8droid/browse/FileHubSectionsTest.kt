@@ -41,7 +41,7 @@ class FileHubSectionsTest {
     fun `file dialog keeps border inside phone screen`() {
         assertTrue(FileHubLayout.dialogWidthFraction <= 0.94f)
         assertTrue(FileHubLayout.dialogHeightFraction <= 0.90f)
-        assertTrue(FileHubLayout.edgePaddingDp >= 20)
+        assertEquals(0, FileHubLayout.edgePaddingDp)
     }
 
     @Test

@@ -22,6 +22,11 @@ class ModalOverlayLayoutTest {
     @Test
     fun `file hub uses the same centered modal position as help and settings`() {
         assertEquals("Center", FileHubLayout.panelAlignment)
+        assertEquals(ModalStyle.panelWidthFraction, FileHubLayout.dialogWidthFraction)
         assertEquals(0.88f, SettingsDialogLayout.panelWidthFraction)
+        assertEquals(ModalStyle.panelWidthFraction, SettingsDialogLayout.panelWidthFraction)
+        assertEquals(12, ModalStyle.panelPaddingDp)
+        assertEquals(8, ModalStyle.cardCornerDp)
+        assertEquals(0.80f, ModalStyle.scrimAlpha)
     }
 }

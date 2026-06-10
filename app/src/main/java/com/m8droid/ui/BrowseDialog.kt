@@ -111,14 +111,14 @@ fun BrowseDialog(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.55f))
+            .background(Color.Black.copy(alpha = ModalStyle.scrimAlpha))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = onDismiss,
             )
             .windowInsetsPadding(WindowInsets.safeDrawing)
-            .padding(FileHubLayout.edgePaddingDp.dp),
+            .then(if (FileHubLayout.edgePaddingDp > 0) Modifier.padding(FileHubLayout.edgePaddingDp.dp) else Modifier),
         contentAlignment = if (FileHubLayout.panelAlignment == "Center") Alignment.Center else Alignment.TopCenter,
     ) {
         Box(

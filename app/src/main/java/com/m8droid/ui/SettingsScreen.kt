@@ -24,9 +24,9 @@ import com.m8droid.data.ServerSettings
 import com.m8droid.ui.academy.AcademyTheme
 
 object SettingsDialogLayout {
-    const val panelWidthFraction = 0.88f
-    const val panelPaddingDp = 12
-    const val cardCornerDp = 8
+    const val panelWidthFraction = ModalStyle.panelWidthFraction
+    const val panelPaddingDp = ModalStyle.panelPaddingDp
+    const val cardCornerDp = ModalStyle.cardCornerDp
 }
 
 /**
@@ -64,7 +64,7 @@ fun SettingsDialog(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xCC000000))
+            .background(Color.Black.copy(alpha = ModalStyle.scrimAlpha))
             .clickable { onDismiss() }
             .windowInsetsPadding(WindowInsets.safeDrawing),
         contentAlignment = Alignment.Center,
