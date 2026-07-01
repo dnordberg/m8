@@ -415,12 +415,32 @@ object M8ProjectLibrary {
     fun importProject(projectDir: File, bytes: ByteArray, requestedName: String): File {
         // Validate before writing so bogus shared files are rejected clearly and
         // never appear in the managed Projects list.
-        runCatching { M8ProjectSnapshot.decode(bytes) }
+        val restored = runCatching { M8ProjectSnapshot.decode(bytes) }
             .getOrElse { throw IllegalArgumentException("Not an m8droid project", it) }
         projectDir.mkdirs()
-        val target = uniqueProjectFile(projectDir.canonicalFile, requestedName.removeSuffix(".m8droid"))
-        target.writeBytes(bytes)
-        return target
+        val root = projectDir.canonicalFile
+        val target = uniqueProjectFile(root, requestedName.removeSuffix(".m8droid"))
+        val temp = File(root, ".${target.nameWithoutExtension}.${System.nanoTime()}.import.tmp")
+        try {
+            temp.writeBytes(bytes)
+            val verified = load(temp)
+            require(M8ProjectSnapshot.signature(restored.song, restored.instruments) == M8ProjectSnapshot.signature(verified.song, verified.instruments)) {
+                "Imported project verification failed"
+            }
+            try {
+                Files.move(
+                    temp.toPath(),
+                    target.toPath(),
+                    StandardCopyOption.REPLACE_EXISTING,
+                    StandardCopyOption.ATOMIC_MOVE,
+                )
+            } catch (_: AtomicMoveNotSupportedException) {
+                Files.move(temp.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            }
+            return target
+        } finally {
+            if (temp.exists()) temp.delete()
+        }
     }
 
     private fun requireManagedProjectFile(projectDir: File, file: File): File {

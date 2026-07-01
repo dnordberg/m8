@@ -63,8 +63,8 @@ fun M8Controls(
     BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
-            .padding(horizontal = SIDE_MARGIN, vertical = 8.dp),
-        contentAlignment = Alignment.Center,
+            .padding(start = SIDE_MARGIN, end = SIDE_MARGIN, top = 0.dp, bottom = 8.dp),
+        contentAlignment = Alignment.TopCenter,
     ) {
         val byWidth: Dp = (maxWidth - BUTTON_GAP * 3) / 4
         val rowH: Dp = (maxHeight - BUTTON_GAP * 2) / 3

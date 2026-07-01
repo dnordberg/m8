@@ -30,7 +30,9 @@ import com.m8droid.protocol.M8Commands
  * "Best" layout: screen fills available space, M8Controls sits below.
  */
 object M8MainLayout {
-    const val centersDisplayAndControls: Boolean = true
+    const val centersDisplayAndControls: Boolean = false
+    const val controlsAnchor: String = "Top"
+    const val quickActionTopFraction: Float = 0.42f
 }
 
 @Composable

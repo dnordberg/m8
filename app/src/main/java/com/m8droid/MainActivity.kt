@@ -268,6 +268,10 @@ private fun M8App(
         uri ?: return@rememberLauncherForActivityResult
         runCatching { viewModel.getApplication<android.app.Application>().contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }
         runCatching { viewModel.loadSongFromUri(uri) }
+            .onSuccess { Toast.makeText(viewModel.getApplication(), it, Toast.LENGTH_SHORT).show() }
+            .onFailure { error ->
+                Toast.makeText(viewModel.getApplication(), "ERROR: ${error.message ?: "file load failed"}", Toast.LENGTH_SHORT).show()
+            }
     }
 
     fun performNavigationHaptic() {
@@ -402,7 +406,7 @@ private fun M8App(
                                 },
                             )
                         }
-                        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                        BoxWithConstraints(modifier = Modifier.weight(1f).fillMaxWidth()) {
                             when (serverSettings.buttonLayout) {
                                 ButtonLayout.BEST -> M8BestLayout(onKeyStateChanged = onKeys, screenContent = screen, externalKeyMask = keyState)
                                 ButtonLayout.FULL_DEVICE -> M8FullDeviceLayout(onKeyStateChanged = onKeys, screenContent = screen, externalKeyMask = keyState)
@@ -416,6 +420,7 @@ private fun M8App(
                                     .padding(8.dp),
                             )
                             if (showTrackerQuickActions) {
+                                val quickActionTop = maxHeight * M8MainLayout.quickActionTopFraction
                                 TrackerQuickActionBar(
                                     status = trackerQuickStatus,
                                     onInsert = {
@@ -434,11 +439,9 @@ private fun M8App(
                                         if (viewModel.transposeSelection(1)) performEditHaptic()
                                     },
                                     modifier = Modifier
-                                        .align(Alignment.BottomEnd)
-                                        .padding(
-                                            end = 8.dp,
-                                            bottom = if (showHexEntry || showNotePicker) 104.dp else 8.dp,
-                                        ),
+                                        .align(Alignment.TopEnd)
+                                        .offset(y = quickActionTop)
+                                        .padding(end = 8.dp),
                                 )
                             }
                             if (showHexEntry) {
@@ -542,7 +545,7 @@ private fun M8App(
                 recentSongs = recentSongs,
                 onRefreshRecentSongs = { viewModel.refreshRecentSongs() },
                 onNewSong = { viewModel.newSong() },
-                onOpenDeviceSong = { openSongLauncher.launch(arrayOf("audio/*", "application/octet-stream", "*/*")) },
+                onOpenDeviceSong = { openSongLauncher.launch(arrayOf("application/octet-stream", "audio/*", "*/*")) },
                 onLoadRecentSong = { entry -> viewModel.loadRecentSong(entry) },
                 savedProjects = savedProjects,
                 onRefreshProjects = { viewModel.refreshSavedProjects() },

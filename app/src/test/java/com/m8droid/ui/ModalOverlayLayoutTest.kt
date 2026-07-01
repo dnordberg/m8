@@ -15,8 +15,10 @@ class ModalOverlayLayoutTest {
     }
 
     @Test
-    fun `main m8 layout keeps display and controls centered`() {
-        assertTrue(M8MainLayout.centersDisplayAndControls)
+    fun `main m8 layout pulls controls into the available gap under the display`() {
+        assertTrue(M8MainLayout.centersDisplayAndControls.not())
+        assertEquals("Top", M8MainLayout.controlsAnchor)
+        assertTrue(M8MainLayout.quickActionTopFraction in 0.35f..0.50f)
     }
 
     @Test

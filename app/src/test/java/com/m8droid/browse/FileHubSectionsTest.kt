@@ -7,8 +7,8 @@ import org.junit.jupiter.api.Test
 
 class FileHubSectionsTest {
     @Test
-    fun `file hub uses exactly three top tabs`() {
-        assertEquals(listOf("RECENT", "OPEN DEVICE", "DOWNLOAD"), FileHubTabs.topTabLabels)
+    fun `file hub exposes recents projects device and downloads`() {
+        assertEquals(listOf("RECENT", "PROJECTS", "OPEN DEVICE", "DOWNLOAD"), FileHubTabs.topTabLabels)
         assertEquals("RECENT", FileHubTabs.defaultLabel)
     }
 
@@ -19,7 +19,7 @@ class FileHubSectionsTest {
         assertEquals(listOf("Songs", "GitHub", "Archive.org"), sources)
         assertFalse(FileHubTabs.topTabLabels.contains("Songs"))
         assertFalse(FileHubTabs.topTabLabels.contains("SD"))
-        assertFalse(FileHubTabs.topTabLabels.contains("PROJECTS"))
+        assertTrue(FileHubTabs.topTabLabels.contains("PROJECTS"))
     }
 
     @Test

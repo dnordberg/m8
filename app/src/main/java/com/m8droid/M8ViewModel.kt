@@ -747,17 +747,24 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun stopEmulator() {
-        // Stop the audio thread first — interrupt and wait for clean exit
+        // Make restarts deterministic: stop playback and release AudioTrack first
+        // so a synth thread blocked in AudioTrack.write() is unblocked before join.
+        emulator.playing = false
+        releaseAllMidiOut()
+        localAudioPlayer.stop()
+
         audioThread?.interrupt()
-        try { audioThread?.join(1000) } catch (_: InterruptedException) { }
+        try { audioThread?.join(1500) } catch (_: InterruptedException) { }
+        if (audioThread?.isAlive == true) {
+            Log.w(TAG, "Audio render thread did not exit cleanly during restart")
+        }
         audioThread = null
 
         // Cancel the display render coroutine
         emulatorRenderJob?.cancel()
         emulatorRenderJob = null
 
-        // Stop audio playback and silence all voices
-        localAudioPlayer.stop()
+        // Silence all voices after the render loop has stopped using them.
         if (nativeSynthReady) {
             NativeSynth.allNotesOff()
             NativeSynth.destroy()
@@ -846,6 +853,7 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         dirtyGuard.markClean(currentProjectSignature())
         _isSongDirty.value = false
         cancelPendingAutosave()
+        recordRecent(target.absolutePath, song.name.ifBlank { target.nameWithoutExtension }, RecentSongStore.Kind.PROJECT)
         val status = "$statusPrefix ${target.name}"
         _projectSaveStatus.value = status
         refreshSavedProjects()
@@ -937,7 +945,9 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     fun loadSongFile(file: File): String {
         val parsed = M8sParser.parse(file.readBytes())
         replaceSong(parsed, recentLocation = file.absolutePath, recentTitle = parsed.header.name.ifBlank { file.nameWithoutExtension })
-        return "LOADED '${parsed.header.name}'"
+        val status = songLoadedStatus(parsed, parsed.header.name.ifBlank { file.nameWithoutExtension })
+        _projectSaveStatus.value = status
+        return status
     }
 
     fun loadSongFromUri(uri: Uri): String {
@@ -954,7 +964,9 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         }
         val parsed = M8sParser.parse(bytes)
         replaceSong(parsed, recentLocation = uri.toString(), recentTitle = parsed.header.name.ifBlank { title })
-        return "LOADED '${parsed.header.name.ifBlank { title }}'"
+        val status = songLoadedStatus(parsed, parsed.header.name.ifBlank { title })
+        _projectSaveStatus.value = status
+        return status
     }
 
     fun importProjectFromUri(uri: Uri, loadAfterImport: Boolean = true): String {
@@ -983,6 +995,12 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun looksLikeM8DroidProject(bytes: ByteArray): Boolean {
         return runCatching { M8ProjectSnapshot.decode(bytes) }.isSuccess
+    }
+
+    private fun songLoadedStatus(parsed: M8sParser.ParsedSong, fallbackTitle: String): String {
+        val title = parsed.header.name.ifBlank { fallbackTitle }
+        val base = "LOADED '$title' @ ${parsed.header.tempo} BPM"
+        return if (parsed.warnings.isEmpty()) base else base + "\nWARN: " + parsed.warnings.joinToString(" | ")
     }
 
     private fun restoreLastLoadedOnStartup() {

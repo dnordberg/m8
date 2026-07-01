@@ -8,6 +8,7 @@ object FileHubTabs {
 
     val topTabLabels: List<String> = listOf(
         "RECENT",
+        "PROJECTS",
         "OPEN DEVICE",
         "DOWNLOAD",
     )

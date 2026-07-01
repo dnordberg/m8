@@ -82,9 +82,9 @@ fun BrowseDialog(
     var fileTab by remember { mutableStateOf(FileHubTabs.defaultLabel) }
     val viewingRecent = fileTab == "RECENT"
     val viewingOpenDevice = fileTab == "OPEN DEVICE"
+    val viewingProjects = fileTab == "PROJECTS"
     val viewingDownload = fileTab == "DOWNLOAD"
     val viewingSd = viewingOpenDevice
-    val viewingProjects = false
     val downloadedStates = remember(items, sdEntries) { DownloadStore.markDownloaded(items, sdEntries) }
     val downloadedByKey = remember(downloadedStates) { downloadedStates.associateBy { remoteKey(it.item) } }
     val selectedDownloaded = selected?.let { downloadedByKey[remoteKey(it)]?.entry }
@@ -181,6 +181,7 @@ fun BrowseDialog(
                                     fileTab = label
                                     when (label) {
                                         "OPEN DEVICE" -> requestSongLoad { onOpenDeviceSong() }
+                                        "PROJECTS" -> onRefreshProjects()
                                         "DOWNLOAD" -> if (items.isEmpty() && !loading) viewModel.refresh()
                                     }
                                 }
@@ -257,7 +258,7 @@ fun BrowseDialog(
                         val desc = when {
                             viewingRecent -> "Songs and projects opened recently"
                             viewingProjects -> "Saved app-native projects in m8sd/Projects"
-                            viewingSd -> "Virtual M8 SD card at ${viewModel.sdRootPath}"
+                            viewingSd -> "Pick a device file, or load a downloaded file from virtual SD at ${viewModel.sdRootPath}"
                             else -> sources.getOrNull(sourceIndex)?.description.orEmpty()
                         }
                         if (desc.isNotEmpty()) {
