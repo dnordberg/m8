@@ -257,20 +257,7 @@ jobs:
             exit "$release_status"
           fi
 
-          set +e
-          ref_response="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/beta" 2>&1)"
-          ref_status=$?
-          set -e
-          if (( ref_status == 0 )); then
-            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/git/refs/tags/beta" -f sha="$RELEASE_SHA" -F force=true >/dev/null
-          elif grep -q 'HTTP 404' <<< "$ref_response"; then
-            gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" -f ref='refs/tags/beta' -f sha="$RELEASE_SHA" >/dev/null
-          else
-            printf '%s\n' "$ref_response" >&2
-            exit "$ref_status"
-          fi
-
-          printf -v beta_notes 'Rolling beta channel.\n\nCurrent build: `%s`. See the versioned release for full notes.' "$RELEASE_TAG"
+          printf -v beta_notes 'Rolling beta channel.\n\nCurrent build: `%s`. See the versioned release for source provenance and full notes.' "$RELEASE_TAG"
           if [[ "$release_exists" == true ]]; then
             gh release upload beta \
               "dist/M8droid-beta.apk" \
@@ -278,17 +265,28 @@ jobs:
               --clobber \
               --repo "$GITHUB_REPOSITORY"
             gh release edit beta \
-              --target "$RELEASE_SHA" \
               --title "M8droid Beta" \
               --notes "$beta_notes" \
               --draft=false \
               --prerelease \
               --repo "$GITHUB_REPOSITORY"
           else
+            set +e
+            ref_response="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/beta" 2>&1)"
+            ref_status=$?
+            set -e
+            if (( ref_status == 0 )); then
+              target_args=(--verify-tag)
+            elif grep -q 'HTTP 404' <<< "$ref_response"; then
+              target_args=(--target "$RELEASE_SHA")
+            else
+              printf '%s\n' "$ref_response" >&2
+              exit "$ref_status"
+            fi
             gh release create beta \
               "dist/M8droid-beta.apk" \
               "dist/M8droid-beta.apk.sha256" \
-              --verify-tag \
+              "${target_args[@]}" \
               --title "M8droid Beta" \
               --notes "$beta_notes" \
               --prerelease \

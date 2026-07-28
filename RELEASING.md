@@ -15,7 +15,7 @@ Every versioned release includes:
 - `M8droid-<tag>.apk.sha256`
 - the channel alias APK and checksum
 
-The rolling `beta` release is replaced by each newer beta. Versioned beta releases remain available for provenance and rollback.
+The rolling `beta` release keeps a stable channel tag while its APK, checksum, and current-build metadata are updated in place. Its tag is a download-channel locator, not source provenance; use the immutable versioned beta release for the exact source tag and rollback.
 
 ## Android version mapping
 
