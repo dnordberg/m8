@@ -62,6 +62,16 @@ Current important limits:
 - `.m8s` export/round-trip back to real M8 hardware is not implemented yet.
 - Real M8/Teensy hardware bridge mode is not a proven public release feature yet.
 
+## Download
+
+M8droid has separate signed Android release channels:
+
+- **Beta:** [Download `M8droid-beta.apk`](https://github.com/dnordberg/m8/releases/download/beta/M8droid-beta.apk) — the rolling community-test build.
+- **Stable/latest:** [Download `M8droid-latest.apk`](https://github.com/dnordberg/m8/releases/latest/download/M8droid-latest.apk) — available after the first device-smoked stable release.
+- **All versioned releases and checksums:** [GitHub Releases](https://github.com/dnordberg/m8/releases)
+
+Beta and stable use the same package (`com.m8droid`) and production signing identity, so a stable build can upgrade a beta from the same version line. Every release also includes a versioned APK and SHA-256 checksum. See [RELEASING.md](RELEASING.md) for the automated tag contract.
+
 ## Quick Start
 
 ### Development (emulator)

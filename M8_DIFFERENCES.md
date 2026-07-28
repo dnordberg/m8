@@ -6,7 +6,7 @@ M8droid is an unofficial Android-native M8-style tracker/emulator. It is useful 
 
 ## Release-readiness verdict
 
-M8droid is suitable for a small controlled community feedback beta after a clean APK build and real-device smoke test.
+M8droid is suitable for a small controlled community feedback beta after a clean APK build and real-device smoke test. Signed GitHub beta artifacts now provide a repeatable tester distribution path, but the remaining real-device smoke gate still applies; the stable/latest channel must remain unpublished until it passes.
 
 It is not yet ready for a broad claim like “M8 on Android” without heavy qualifiers.
 

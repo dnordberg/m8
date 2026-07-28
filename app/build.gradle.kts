@@ -4,6 +4,19 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val releaseVersionCode = providers.gradleProperty("M8_VERSION_CODE").orElse("1")
+val releaseVersionName = providers.gradleProperty("M8_VERSION_NAME").orElse("0.1.0")
+val releaseKeystorePath = providers.environmentVariable("M8_RELEASE_KEYSTORE_PATH")
+val releaseKeystorePassword = providers.environmentVariable("M8_RELEASE_KEYSTORE_PASSWORD")
+val releaseKeyAlias = providers.environmentVariable("M8_RELEASE_KEY_ALIAS")
+val releaseKeyPassword = providers.environmentVariable("M8_RELEASE_KEY_PASSWORD")
+val releaseSigningConfigured = listOf(
+    releaseKeystorePath,
+    releaseKeystorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword,
+).all { it.isPresent }
+
 android {
     namespace = "com.m8droid"
     compileSdk = 36
@@ -12,12 +25,26 @@ android {
         applicationId = "com.m8droid"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = releaseVersionCode.get().toInt()
+        versionName = releaseVersionName.get()
+    }
+
+    signingConfigs {
+        if (releaseSigningConfigured) {
+            create("release") {
+                storeFile = file(releaseKeystorePath.get())
+                storePassword = releaseKeystorePassword.get()
+                keyAlias = releaseKeyAlias.get()
+                keyPassword = releaseKeyPassword.get()
+            }
+        }
     }
 
     buildTypes {
         release {
+            if (releaseSigningConfigured) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
