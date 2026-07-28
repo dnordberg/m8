@@ -15,48 +15,47 @@ permissions:
   contents: write
 
 concurrency:
-  group: android-release-${{ github.event.inputs.release_tag || github.ref_name }}
+  group: android-release-publication
   cancel-in-progress: false
 
 jobs:
   release-android:
     name: Build and publish signed APK
     runs-on: ubuntu-latest
-    env:
-      GH_TOKEN: ${{ github.token }}
-      M8_KEYSTORE_BASE64: ${{ secrets.M8_ANDROID_KEYSTORE_BASE64 }}
-      M8_RELEASE_KEYSTORE_PASSWORD: ${{ secrets.M8_ANDROID_KEYSTORE_PASSWORD }}
-      M8_RELEASE_KEY_ALIAS: ${{ secrets.M8_ANDROID_KEY_ALIAS }}
-      M8_RELEASE_KEY_PASSWORD: ${{ secrets.M8_ANDROID_KEY_PASSWORD }}
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Resolve release metadata
         id: metadata
         shell: bash
+        env:
+          REQUESTED_TAG: ${{ github.event.inputs.release_tag || github.ref_name }}
+          TRIGGER_EVENT: ${{ github.event_name }}
         run: |
           set -euo pipefail
-          tag="${{ github.event.inputs.release_tag || github.ref_name }}"
+          tag="$REQUESTED_TAG"
 
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            git fetch origin "refs/tags/${tag}:refs/tags/${tag}"
-            git checkout --detach "${tag}"
-          fi
-
-          if [[ "${tag}" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+          if [[ "$tag" =~ ^v(0|[1-9][0-9]{0,3})\.(0|[1-9][0-9]?)\.(0|[1-9][0-9]?)$ ]]; then
             channel=stable
+            major_text="${BASH_REMATCH[1]}"
+            minor_text="${BASH_REMATCH[2]}"
+            patch_text="${BASH_REMATCH[3]}"
             prerelease_number=99
             version_name="${tag#v}"
             alias_name=M8droid-latest.apk
             title="M8droid ${tag#v}"
-          elif [[ "${tag}" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)-beta\.([0-9]+)$ ]]; then
+          elif [[ "$tag" =~ ^v(0|[1-9][0-9]{0,3})\.(0|[1-9][0-9]?)\.(0|[1-9][0-9]?)-beta\.(0|[1-9][0-9]?)$ ]]; then
             channel=beta
+            major_text="${BASH_REMATCH[1]}"
+            minor_text="${BASH_REMATCH[2]}"
+            patch_text="${BASH_REMATCH[3]}"
             prerelease_number="${BASH_REMATCH[4]}"
-            if (( prerelease_number < 1 || prerelease_number > 98 )); then
+            if (( 10#$prerelease_number < 1 || 10#$prerelease_number > 98 )); then
               echo "Beta number must be between 1 and 98" >&2
               exit 1
             fi
@@ -65,20 +64,40 @@ jobs:
             title="M8droid ${tag#v}"
           else
             echo "Unsupported release tag: ${tag}" >&2
-            echo "Use vX.Y.Z for stable or vX.Y.Z-beta.N for beta." >&2
+            echo "Use canonical vX.Y.Z or vX.Y.Z-beta.N values without leading zeroes." >&2
             exit 1
           fi
 
-          major=$((10#${BASH_REMATCH[1]}))
-          minor=$((10#${BASH_REMATCH[2]}))
-          patch=$((10#${BASH_REMATCH[3]}))
+          major=$((10#$major_text))
+          minor=$((10#$minor_text))
+          patch=$((10#$patch_text))
+          prerelease_number=$((10#$prerelease_number))
+          if (( major > 2099 || minor > 99 || patch > 99 )); then
+            echo "Version components exceed the supported mapping limits." >&2
+            exit 1
+          fi
+
+          if [[ "$TRIGGER_EVENT" == workflow_dispatch ]]; then
+            git show-ref --verify --quiet "refs/tags/${tag}" || {
+              echo "Requested tag is not present in the checked-out repository: ${tag}" >&2
+              exit 1
+            }
+            git checkout --detach "$tag"
+          fi
+
+          release_sha="$(git rev-parse "${tag}^{commit}")"
+          checkout_sha="$(git rev-parse HEAD)"
+          if [[ "$release_sha" != "$checkout_sha" ]]; then
+            echo "Checked-out commit ${checkout_sha} does not match tag ${tag} at ${release_sha}." >&2
+            exit 1
+          fi
+
           version_code=$((major * 1000000 + minor * 10000 + patch * 100 + prerelease_number))
           if (( version_code < 1 || version_code > 2100000000 )); then
             echo "Computed Android versionCode is outside the supported range: ${version_code}" >&2
             exit 1
           fi
 
-          release_sha="$(git rev-parse HEAD)"
           echo "RELEASE_TAG=${tag}" >> "$GITHUB_ENV"
           echo "RELEASE_SHA=${release_sha}" >> "$GITHUB_ENV"
           echo "RELEASE_CHANNEL=${channel}" >> "$GITHUB_ENV"
@@ -92,56 +111,67 @@ jobs:
           echo "version_code=${version_code}" >> "$GITHUB_OUTPUT"
 
       - name: Set up JDK
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
 
       - name: Use runner JDK
         run: sed -i '/^org.gradle.java.home=/d' gradle.properties
 
-      - name: Restore release keystore
+      - name: Test, lint, and build unsigned release APK
+        run: |
+          set -euo pipefail
+          ./gradlew \
+            testDebugUnitTest \
+            lintRelease \
+            assembleRelease \
+            -PM8_VERSION_NAME="$M8_VERSION_NAME" \
+            -PM8_VERSION_CODE="$M8_VERSION_CODE" \
+            --no-daemon
+
+      - name: Sign, verify, and stage release artifacts
         shell: bash
+        env:
+          M8_KEYSTORE_BASE64: ${{ secrets.M8_ANDROID_KEYSTORE_BASE64 }}
+          M8_RELEASE_KEYSTORE_PASSWORD: ${{ secrets.M8_ANDROID_KEYSTORE_PASSWORD }}
+          M8_RELEASE_KEY_ALIAS: ${{ secrets.M8_ANDROID_KEY_ALIAS }}
+          M8_RELEASE_KEY_PASSWORD: ${{ secrets.M8_ANDROID_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           for value in M8_KEYSTORE_BASE64 M8_RELEASE_KEYSTORE_PASSWORD M8_RELEASE_KEY_ALIAS M8_RELEASE_KEY_PASSWORD; do
             if [[ -z "${!value:-}" ]]; then
-              echo "Required GitHub Actions secret is missing: ${value}" >&2
+              echo "Required GitHub Actions signing secret is missing: ${value}" >&2
               exit 1
             fi
           done
+
+          unsigned_apk=app/build/outputs/apk/release/app-release-unsigned.apk
+          signed_apk="$RUNNER_TEMP/app-release.apk"
           keystore="$RUNNER_TEMP/m8droid-release.jks"
+          trap 'rm -f "$keystore" "$signed_apk"' EXIT
+          test -s "$unsigned_apk"
           printf '%s' "$M8_KEYSTORE_BASE64" | base64 --decode > "$keystore"
           chmod 600 "$keystore"
-          echo "M8_RELEASE_KEYSTORE_PATH=${keystore}" >> "$GITHUB_ENV"
 
-      - name: Test, lint, and build signed release APK
-        run: >-
-          ./gradlew
-          testDebugUnitTest
-          lintRelease
-          assembleRelease
-          -PM8_VERSION_NAME="$M8_VERSION_NAME"
-          -PM8_VERSION_CODE="$M8_VERSION_CODE"
-          --no-daemon
-
-      - name: Verify and stage release artifacts
-        shell: bash
-        run: |
-          set -euo pipefail
-          apk=app/build/outputs/apk/release/app-release.apk
-          test -s "$apk"
           apksigner="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner -print | sort -V | tail -n 1)"
           test -x "$apksigner"
-          "$apksigner" verify --verbose --print-certs "$apk"
+          "$apksigner" sign \
+            --ks "$keystore" \
+            --ks-key-alias "$M8_RELEASE_KEY_ALIAS" \
+            --ks-pass env:M8_RELEASE_KEYSTORE_PASSWORD \
+            --key-pass env:M8_RELEASE_KEY_PASSWORD \
+            --out "$signed_apk" \
+            "$unsigned_apk"
+          "$apksigner" verify --verbose --print-certs "$signed_apk"
 
           mkdir -p dist
           versioned="M8droid-${RELEASE_TAG}.apk"
-          install -m 0644 "$apk" "dist/${versioned}"
-          install -m 0644 "$apk" "dist/${APK_ALIAS}"
+          install -m 0644 "$signed_apk" "dist/${versioned}"
+          install -m 0644 "$signed_apk" "dist/${APK_ALIAS}"
           (
             cd dist
             sha256sum "$versioned" > "${versioned}.sha256"
@@ -163,6 +193,8 @@ jobs:
 
       - name: Publish versioned GitHub Release
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           assets=(
@@ -175,9 +207,9 @@ jobs:
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber --repo "$GITHUB_REPOSITORY"
             if [[ "$RELEASE_CHANNEL" == stable ]]; then
-              gh release edit "$RELEASE_TAG" --title "$RELEASE_TITLE" --notes-file dist/release-notes.md --latest --repo "$GITHUB_REPOSITORY"
+              gh release edit "$RELEASE_TAG" --title "$RELEASE_TITLE" --notes-file dist/release-notes.md --draft=false --prerelease=false --latest --repo "$GITHUB_REPOSITORY"
             else
-              gh release edit "$RELEASE_TAG" --title "$RELEASE_TITLE" --notes-file dist/release-notes.md --prerelease --repo "$GITHUB_REPOSITORY"
+              gh release edit "$RELEASE_TAG" --title "$RELEASE_TITLE" --notes-file dist/release-notes.md --draft=false --prerelease --repo "$GITHUB_REPOSITORY"
             fi
           elif [[ "$RELEASE_CHANNEL" == stable ]]; then
             gh release create "$RELEASE_TAG" "${assets[@]}" --verify-tag --title "$RELEASE_TITLE" --notes-file dist/release-notes.md --latest --repo "$GITHUB_REPOSITORY"
@@ -185,24 +217,86 @@ jobs:
             gh release create "$RELEASE_TAG" "${assets[@]}" --verify-tag --title "$RELEASE_TITLE" --notes-file dist/release-notes.md --prerelease --repo "$GITHUB_REPOSITORY"
           fi
 
-      - name: Update rolling beta release
+      - name: Update rolling beta release in place
         if: env.RELEASE_CHANNEL == 'beta'
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh release delete beta --yes --cleanup-tag --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || true
-          gh api -X DELETE "repos/${GITHUB_REPOSITORY}/git/refs/tags/beta" >/dev/null 2>&1 || true
-          gh release create beta \
-            "dist/M8droid-beta.apk" \
-            "dist/M8droid-beta.apk.sha256" \
-            --target "$RELEASE_SHA" \
-            --title "M8droid Beta" \
-            --notes "Rolling beta channel. Current build: ${RELEASE_TAG}. See the versioned release for full notes." \
-            --prerelease \
-            --repo "$GITHUB_REPOSITORY"
+
+          release_exists=false
+          set +e
+          release_response="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/beta" 2>&1)"
+          release_status=$?
+          set -e
+          if (( release_status == 0 )); then
+            release_exists=true
+            current_body="$(printf '%s' "$release_response" | jq -r '.body // ""')"
+            current_tag="$(printf '%s' "$current_body" | grep -oE 'v(0|[1-9][0-9]{0,3})\.(0|[1-9][0-9]?)\.(0|[1-9][0-9]?)-beta\.(0|[1-9][0-9]?)' | head -n 1 || true)"
+            if [[ -z "$current_tag" ]]; then
+              echo "Existing rolling beta release does not identify its current version; refusing to overwrite it." >&2
+              exit 1
+            fi
+            relation="$(CURRENT_TAG="$current_tag" CANDIDATE_TAG="$RELEASE_TAG" python3 - <<'PY'
+          import os, re
+          pattern = re.compile(r'^v(\d+)\.(\d+)\.(\d+)-beta\.(\d+)$')
+          current = tuple(map(int, pattern.fullmatch(os.environ['CURRENT_TAG']).groups()))
+          candidate = tuple(map(int, pattern.fullmatch(os.environ['CANDIDATE_TAG']).groups()))
+          print('older' if candidate < current else 'same' if candidate == current else 'newer')
+          PY
+            )"
+            if [[ "$relation" == older ]]; then
+              echo "Rolling beta is ${current_tag}; refusing downgrade to ${RELEASE_TAG}."
+              exit 0
+            fi
+          elif grep -q 'HTTP 404' <<< "$release_response"; then
+            current_tag=""
+          else
+            printf '%s\n' "$release_response" >&2
+            exit "$release_status"
+          fi
+
+          set +e
+          ref_response="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/beta" 2>&1)"
+          ref_status=$?
+          set -e
+          if (( ref_status == 0 )); then
+            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/git/refs/tags/beta" -f sha="$RELEASE_SHA" -F force=true >/dev/null
+          elif grep -q 'HTTP 404' <<< "$ref_response"; then
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" -f ref='refs/tags/beta' -f sha="$RELEASE_SHA" >/dev/null
+          else
+            printf '%s\n' "$ref_response" >&2
+            exit "$ref_status"
+          fi
+
+          printf -v beta_notes 'Rolling beta channel.\n\nCurrent build: `%s`. See the versioned release for full notes.' "$RELEASE_TAG"
+          if [[ "$release_exists" == true ]]; then
+            gh release upload beta \
+              "dist/M8droid-beta.apk" \
+              "dist/M8droid-beta.apk.sha256" \
+              --clobber \
+              --repo "$GITHUB_REPOSITORY"
+            gh release edit beta \
+              --target "$RELEASE_SHA" \
+              --title "M8droid Beta" \
+              --notes "$beta_notes" \
+              --draft=false \
+              --prerelease \
+              --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create beta \
+              "dist/M8droid-beta.apk" \
+              "dist/M8droid-beta.apk.sha256" \
+              --verify-tag \
+              --title "M8droid Beta" \
+              --notes "$beta_notes" \
+              --prerelease \
+              --repo "$GITHUB_REPOSITORY"
+          fi
 
       - name: Upload workflow artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: M8droid-${{ steps.metadata.outputs.channel }}-${{ steps.metadata.outputs.version_name }}
           path: |

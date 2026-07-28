@@ -28,6 +28,10 @@ versionCode = major*1,000,000 + minor*10,000 + patch*100 + channel
 
 - Beta `N` uses channel value `N` (`1`–`98`).
 - Stable uses channel value `99`.
+- `major` must be `0`–`2099`; `minor` and `patch` must be `0`–`99`.
+- Numeric components must use canonical decimal form: `0` or a non-zero-leading integer.
+
+These bounds keep the mapping collision-free and below Android's maximum version code.
 
 Example:
 
@@ -48,6 +52,8 @@ The repository must define:
 The keystore and passwords must remain outside Git. The workflow restores the keystore only inside the ephemeral GitHub runner, signs the release build, verifies it with `apksigner`, and then publishes the APK.
 
 ## Publishing a beta
+
+A beta artifact may be published to verify release automation before device smoke testing. Do not announce or distribute it to community testers until the real-device smoke checklist in `TODO.md` and `M8_DIFFERENCES.md` passes.
 
 1. Confirm `main` contains the intended code and CI is green.
 2. Choose the next beta tag, for example `v0.2.0-beta.1`.
