@@ -33,6 +33,9 @@ object M8MainLayout {
     const val centersDisplayAndControls: Boolean = false
     const val controlsAnchor: String = "Top"
     const val quickActionTopFraction: Float = 0.42f
+    const val showsStickyModifierBar: Boolean = false
+    const val maxControlButtonDp: Int = 52
+    const val maxControlPanelHeightDp: Int = 216
 }
 
 @Composable
@@ -57,7 +60,8 @@ fun M8BestLayout(
         M8Controls(
             onKeyStateChanged = onKeyStateChanged,
             modifier = Modifier
-                .weight(1f)
+                .fillMaxWidth()
+                .heightIn(max = M8MainLayout.maxControlPanelHeightDp.dp)
                 .padding(bottom = 8.dp),
             externalKeyMask = externalKeyMask,
         )
@@ -147,8 +151,8 @@ fun M8FullDeviceLayout(
     }
 }
 
-private val DEVICE_BUTTON_SIZE: Dp = 60.dp
-private val DEVICE_BUTTON_GAP: Dp = 10.dp
+private val DEVICE_BUTTON_SIZE: Dp = M8MainLayout.maxControlButtonDp.dp
+private val DEVICE_BUTTON_GAP: Dp = 6.dp
 
 @Composable
 private fun DeviceButton(

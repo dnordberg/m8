@@ -315,6 +315,7 @@ class M8EmulatorEditTest {
         emulator.handleDisplayTap(28 + 2 * 26 + 4, 60 + 5 * 10 + 1)
         assertEquals(2, emulator.cursorX)
         assertEquals(5, emulator.cursorY)
+        assertEquals(true, emulator.editMode, "a phone field tap should open editing directly")
 
         emulator.screen = M8Emulator.SCREEN_CHAIN
         emulator.handleDisplayTap(70, 43 + 4 * 13)
@@ -700,5 +701,104 @@ class M8EmulatorEditTest {
         assertEquals(true, emulator.canEnterNoteFromPicker())
         assertEquals(60, emulator.enterNoteFromPickerWithResult(0))
         assertEquals(60, emulator.song.phrases[0].steps[0].note)
+    }
+
+    @Test
+    fun `direct touch selects and edits config values`() {
+        val emulator = M8Emulator().apply {
+            screen = M8Emulator.SCREEN_CONFIG
+            editMode = false
+        }
+        val originalQuantize = emulator.song.quantize
+
+        // CONFIG rows begin at y=36 and are 14px high. Row 4 is QUANTIZE.
+        assertEquals(true, emulator.handleDisplayLongPress(115, 36 + 4 * 14 + 2))
+        assertEquals(4, emulator.cursorY)
+        assertEquals(true, emulator.editMode)
+        assertEquals(true, emulator.adjustSelectedValue(1))
+        assertEquals(originalQuantize + 1, emulator.song.quantize)
+    }
+
+    @Test
+    fun `direct touch selects exact instrument parameter row`() {
+        val emulator = M8Emulator().apply {
+            screen = M8Emulator.SCREEN_INSTRUMENT
+            selectedInstrument = 12
+            editMode = false
+        }
+        val originalShape = emulator.instruments[12].wavSynth.shape
+        val originalWarp = emulator.instruments[12].wavSynth.warp
+        val slotZeroShape = emulator.instruments[0].wavSynth.shape
+
+        // Instrument rows begin at y=30 and are 12px high. Row 3 is SHAPE.
+        assertEquals(true, emulator.handleDisplayLongPress(105, 30 + 3 * 12 + 2))
+        assertEquals(3, emulator.cursorY)
+        assertEquals(true, emulator.adjustSelectedValue(1))
+        assertNotEquals(originalShape, emulator.instruments[12].wavSynth.shape)
+        assertEquals(originalWarp, emulator.instruments[12].wavSynth.warp)
+        assertEquals(slotZeroShape, emulator.instruments[0].wavSynth.shape, "editing slot 12 must not mutate slot 0")
+
+        // NAME (row 1) is a text seam, not an arrow-adjustable numeric field.
+        emulator.handleDisplayTap(105, 30 + 1 * 12 + 2)
+        assertEquals(false, emulator.canAdjustSelectedValue())
+    }
+
+    @Test
+    fun `direct touch maps table fx command and value halves separately`() {
+        val emulator = M8Emulator().apply {
+            screen = M8Emulator.SCREEN_TABLE
+            selectedTable = 0
+        }
+        val rowY = 30 + (2 + 1) * 13 + 2
+
+        emulator.handleDisplayTap(88, rowY)
+        assertEquals(2, emulator.cursorY)
+        assertEquals(2, emulator.cursorX, "left half of FX1 selects command")
+
+        emulator.handleDisplayTap(108, rowY)
+        assertEquals(3, emulator.cursorX, "right half of FX1 selects value")
+    }
+
+    @Test
+    fun `direct touch maps mixer track and fx parameters`() {
+        val emulator = M8Emulator()
+
+        emulator.screen = M8Emulator.SCREEN_MIXER
+        emulator.handleDisplayTap(6 + 5 * 29 + 10, 70)
+        assertEquals(5, emulator.cursorY, "mixer track is represented by cursor row")
+        assertEquals(0, emulator.cursorX, "visible meter value selects track volume")
+        val mixer = emulator.song.mixer
+        val originalPan = mixer.trackPans[5]
+        assertEquals(true, emulator.selectMixerEditParameter(1))
+        assertEquals(true, emulator.adjustSelectedValue(1))
+        assertEquals(originalPan + 1, mixer.trackPans[5])
+
+        emulator.handleDisplayTap(100, 190)
+        assertEquals(8, emulator.cursorY, "visible MASTER area selects master volume")
+
+        emulator.screen = M8Emulator.SCREEN_FX
+        emulator.handleDisplayTap(110, 126)
+        assertEquals(6, emulator.cursorY, "first DELAY value maps to rendered FX row 6")
+        assertEquals(true, emulator.canAdjustSelectedValue())
+    }
+
+    @Test
+    fun `phone can switch phrase field directly before adjusting it`() {
+        val emulator = M8Emulator().apply {
+            screen = M8Emulator.SCREEN_PHRASE
+            song.songGrid[0][0] = 0
+            song.chains[0].rows[0].phrase = 0
+            resetPlayheadAndResolve()
+            cursorX = 0
+            cursorY = 0
+        }
+        val step = emulator.song.phrases[0].steps[0]
+        step.volume = 0x40
+
+        assertEquals(true, emulator.selectPhraseEditColumn(2))
+        assertEquals(2, emulator.phraseEditColumn)
+        assertEquals(true, emulator.adjustSelectedValue(1))
+        assertEquals(0x41, step.volume)
+        assertEquals(false, emulator.selectPhraseEditColumn(99))
     }
 }

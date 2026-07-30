@@ -136,69 +136,159 @@ class M8Emulator {
     }
 
     /**
-     * Map taps on the 320×240 rendered M8 display to tracker cells. This keeps
-     * phone touch selection in the emulator model instead of inventing a separate
-     * Android-only edit grid.
+     * Map taps on the 320×240 rendered M8 display to the exact rendered field.
+     * Every editable screen owns its coordinate mapping here so Compose never
+     * has to guess which emulator value a phone touch represents.
+     *
+     * @return true when the tap selected an editable field.
      */
-    fun handleDisplayTap(m8X: Int, m8Y: Int) {
-        when (screen) {
-            SCREEN_SONG -> {
-                val trackStartX = 28
-                val trackSpacing = 26
-                val rowStartY = 60
-                val viewOffset = max(0, cursorY - 8)
-                val track = ((m8X - trackStartX) / trackSpacing).coerceIn(0, 7)
-                val row = (viewOffset + ((m8Y - rowStartY) / FONT_H)).coerceIn(0, 255)
-                if (m8X >= trackStartX && m8Y >= rowStartY) {
-                    cursorX = track
-                    cursorY = row
-                    pendingHexEntryTarget = null
-                    pendingHexHighNibble = null
-                    val chainIdx = song.songGrid[cursorY][cursorX]
-                    if (chainIdx != M8Song.EMPTY) selectedChain = chainIdx
-                }
-            }
-            SCREEN_CHAIN -> {
-                val yStart = 16
-                val rowH = FONT_H + 3
-                val row = ((m8Y - (yStart + 14 + rowH)) / rowH).coerceIn(0, 15)
-                if (m8Y >= yStart + 14 + rowH) {
-                    cursorY = row
-                    cursorX = if (m8X >= 58) 1 else 0
-                    pendingHexEntryTarget = null
-                    pendingHexHighNibble = null
-                    val chainRow = song.chains[selectedChain.coerceIn(0, 254)].rows[cursorY]
-                    if (chainRow.phrase != M8Song.EMPTY) selectedPhrase = chainRow.phrase
-                }
-            }
-            SCREEN_PHRASE -> {
-                val trackStartX = 20
-                val trackW = 28
-                val dataStartY = 38
-                if (m8X >= trackStartX && m8Y >= dataStartY) {
-                    val relX = m8X - trackStartX
-                    cursorX = (relX / trackW).coerceIn(0, 7)
-                    cursorY = ((m8Y - dataStartY) / (FONT_H + 2)).coerceIn(0, 15)
-                    phraseEditColumn = if (relX % trackW >= 24) 1 else 0
-                    pendingHexEntryTarget = null
-                    pendingHexHighNibble = null
-                }
-            }
+    fun handleDisplayTap(m8X: Int, m8Y: Int): Boolean {
+        val selected = when (screen) {
+            SCREEN_SONG -> selectSongCell(m8X, m8Y)
+            SCREEN_CHAIN -> selectChainCell(m8X, m8Y)
+            SCREEN_PHRASE -> selectPhraseCell(m8X, m8Y)
+            SCREEN_INSTRUMENT -> selectInstrumentField(m8Y)
+            SCREEN_TABLE -> selectTableCell(m8X, m8Y)
+            SCREEN_MIXER -> selectMixerField(m8X, m8Y)
+            SCREEN_FX -> selectFxField(m8Y)
+            SCREEN_CONFIG -> selectConfigField(m8Y)
+            else -> false
         }
+        if (selected) {
+            resetPendingDirectEntry()
+            // Phone editing is direct: tapping a field selects it and opens the
+            // contextual editor. Hardware/gamepad users retain EDIT-key semantics.
+            editMode = true
+        }
+        return selected
     }
 
     fun handleDisplayLongPress(m8X: Int, m8Y: Int): Boolean {
-        if (!isEditableDisplayCell(m8X, m8Y)) return false
-        handleDisplayTap(m8X, m8Y)
+        if (!handleDisplayTap(m8X, m8Y)) return false
         editMode = true
         return true
     }
 
-    private fun isEditableDisplayCell(m8X: Int, m8Y: Int): Boolean = when (screen) {
-        SCREEN_SONG -> m8X >= 28 && m8Y >= 60
-        SCREEN_CHAIN -> m8Y >= 43
-        SCREEN_PHRASE -> m8X >= 20 && m8Y >= 38
-        else -> false
+    private fun selectSongCell(m8X: Int, m8Y: Int): Boolean {
+        val trackStartX = 28
+        val trackSpacing = 26
+        val rowStartY = 60
+        if (m8X !in trackStartX until (trackStartX + trackSpacing * 8) || m8Y < rowStartY) return false
+        val viewOffset = max(0, cursorY - 8)
+        cursorX = ((m8X - trackStartX) / trackSpacing).coerceIn(0, 7)
+        cursorY = (viewOffset + ((m8Y - rowStartY) / FONT_H)).coerceIn(0, 255)
+        val chainIdx = song.songGrid[cursorY][cursorX]
+        if (chainIdx != M8Song.EMPTY) selectedChain = chainIdx
+        return true
+    }
+
+    private fun selectChainCell(m8X: Int, m8Y: Int): Boolean {
+        val rowStartY = 16 + 14 + (FONT_H + 3)
+        val rowH = FONT_H + 3
+        if (m8X !in 20..95 || m8Y !in rowStartY until (rowStartY + rowH * 16)) return false
+        cursorY = ((m8Y - rowStartY) / rowH).coerceIn(0, 15)
+        cursorX = if (m8X >= 58) 1 else 0
+        val chainRow = song.chains[selectedChain.coerceIn(0, 254)].rows[cursorY]
+        if (chainRow.phrase != M8Song.EMPTY) selectedPhrase = chainRow.phrase
+        return true
+    }
+
+    private fun selectPhraseCell(m8X: Int, m8Y: Int): Boolean {
+        val trackStartX = 20
+        val trackW = 28
+        val dataStartY = 38
+        val rowH = FONT_H + 2
+        if (m8X !in trackStartX until (trackStartX + trackW * 8) ||
+            m8Y !in dataStartY until (dataStartY + rowH * 16)
+        ) return false
+        val relX = m8X - trackStartX
+        cursorX = (relX / trackW).coerceIn(0, 7)
+        cursorY = ((m8Y - dataStartY) / rowH).coerceIn(0, 15)
+        // The compact 8-track renderer exposes NOTE plus the final instrument
+        // character. VOL/FX fields remain directly selectable from the phone
+        // field strip while edit mode is active.
+        phraseEditColumn = if (relX % trackW >= 24) 1 else 0
+        return true
+    }
+
+    private fun selectInstrumentField(m8Y: Int): Boolean {
+        val rowStartY = 16 + 14
+        val rowH = FONT_H + 2
+        if (m8Y !in rowStartY until HEIGHT) return false
+        val row = (m8Y - rowStartY) / rowH
+        val inst = instruments[selectedInstrument.coerceIn(0, instruments.lastIndex)]
+        val typeStart = 3
+        val sharedStart = typeStart + inst.getTypeParams().size + 1
+        val isRendered = row == 0 || row == 1 ||
+            row in typeStart until (typeStart + inst.getTypeParams().size) ||
+            row in sharedStart until (sharedStart + inst.getSharedParams().size)
+        if (!isRendered) return false
+        cursorY = row
+        cursorX = 0
+        return true
+    }
+
+    private fun selectTableCell(m8X: Int, m8Y: Int): Boolean {
+        val rowH = FONT_H + 3
+        val rowStartY = 16 + 14 + rowH
+        if (m8Y !in rowStartY until (rowStartY + rowH * 16)) return false
+        cursorY = ((m8Y - rowStartY) / rowH).coerceIn(0, 15)
+        cursorX = when (m8X) {
+            in 24..55 -> 0
+            in 56..83 -> 1
+            in 84..107 -> 2
+            in 108..127 -> 3
+            in 128..151 -> 4
+            in 152..171 -> 5
+            in 172..195 -> 6
+            in 196..223 -> 7
+            else -> return false
+        }
+        return true
+    }
+
+    private fun selectMixerField(m8X: Int, m8Y: Int): Boolean {
+        val firstTrackX = 6
+        val trackW = 29
+        val meterTop = 20 + 16
+        val meterBottom = meterTop + 14 + 80 + 14
+        val masterY = 20 + 160
+        if (m8X in 4..200 && m8Y in masterY until (masterY + 36)) {
+            cursorY = 8
+            cursorX = 0
+            return true
+        }
+        if (m8X !in firstTrackX until (firstTrackX + trackW * 8) || m8Y !in meterTop..meterBottom) return false
+        cursorY = ((m8X - firstTrackX) / trackW).coerceIn(0, 7)
+        cursorX = 0 // the visible value under each meter is track volume
+        return true
+    }
+
+    private fun selectFxField(m8Y: Int): Boolean {
+        val renderedRows = linkedMapOf(
+            54 to 0, 66 to 1, 78 to 2, 90 to 3,
+            126 to 6, 138 to 7, 150 to 8, 162 to 9,
+            174 to 10, 186 to 11, 198 to 12,
+        )
+        val row = renderedRows.entries.firstOrNull { (y, _) -> m8Y in y until (y + FONT_H + 2) }?.value
+            ?: return false
+        cursorY = row
+        cursorX = 0
+        return true
+    }
+
+    private fun selectConfigField(m8Y: Int): Boolean {
+        val rowStartY = 16 + 20
+        val rowH = FONT_H + 4
+        if (m8Y !in rowStartY until (rowStartY + rowH * 7)) return false
+        cursorY = ((m8Y - rowStartY) / rowH).coerceIn(0, 6)
+        cursorX = 0
+        return true
+    }
+
+    private fun resetPendingDirectEntry() {
+        pendingHexEntryTarget = null
+        pendingHexHighNibble = null
     }
 
     /**
@@ -210,11 +300,96 @@ class M8Emulator {
 
     fun canEditSongNameFromScreen(): Boolean = screen == SCREEN_CONFIG && cursorY == 0
 
+    fun canEditTextFieldFromScreen(): Boolean =
+        canEditSongNameFromScreen() || (screen == SCREEN_INSTRUMENT && cursorY == 1)
+
+    fun editableTextFieldLabel(): String = when {
+        canEditSongNameFromScreen() -> "SONG NAME"
+        screen == SCREEN_INSTRUMENT && cursorY == 1 -> "INSTRUMENT NAME"
+        else -> "TEXT"
+    }
+
+    fun currentEditableText(): String = when {
+        canEditSongNameFromScreen() -> song.name
+        screen == SCREEN_INSTRUMENT && cursorY == 1 ->
+            instruments[selectedInstrument.coerceIn(0, instruments.lastIndex)].name
+        else -> ""
+    }
+
     fun setSongNameFromEditor(name: String): Boolean {
         if (!canEditSongNameFromScreen()) return false
-        val cleaned = name.trim().ifBlank { "NEW SONG" }.take(64)
-        if (song.name == cleaned) return false
-        song.name = cleaned
+        return setEditableTextFromEditor(name)
+    }
+
+    fun setEditableTextFromEditor(value: String): Boolean {
+        if (!canEditTextFieldFromScreen()) return false
+        val cleaned = value.trim().ifBlank {
+            if (canEditSongNameFromScreen()) "NEW SONG" else "INSTRUMENT"
+        }.take(64)
+        return when {
+            canEditSongNameFromScreen() -> {
+                if (song.name == cleaned) false else {
+                    song.name = cleaned
+                    true
+                }
+            }
+            screen == SCREEN_INSTRUMENT && cursorY == 1 -> {
+                val instrument = instruments[selectedInstrument.coerceIn(0, instruments.lastIndex)]
+                if (instrument.name == cleaned) false else {
+                    instrument.name = cleaned
+                    true
+                }
+            }
+            else -> false
+        }
+    }
+
+    fun selectPhraseEditColumn(column: Int): Boolean {
+        if (screen != SCREEN_PHRASE || column !in 0..8) return false
+        phraseEditColumn = column
+        resetPendingDirectEntry()
+        return true
+    }
+
+    fun selectMixerEditParameter(parameter: Int): Boolean {
+        if (screen != SCREEN_MIXER || cursorY !in 0..7 || parameter !in 0..4) return false
+        cursorX = parameter
+        resetPendingDirectEntry()
+        return true
+    }
+
+    fun canAdjustSelectedValue(): Boolean = when (screen) {
+        SCREEN_SONG -> cursorX in 0..7 && cursorY in 0..255
+        SCREEN_CHAIN -> cursorX in 0..1 && cursorY in 0..15
+        SCREEN_PHRASE -> currentPhraseStep() != null && phraseEditColumn in 0..8
+        SCREEN_TABLE -> cursorX in 0..7 && cursorY in 0..15
+        SCREEN_MIXER -> (cursorY in 0..7 && cursorX in 0..4) || cursorY in 8..9
+        SCREEN_INSTRUMENT -> {
+            val inst = instruments[selectedInstrument.coerceIn(0, instruments.lastIndex)]
+            val typeStart = 3
+            val sharedStart = typeStart + inst.getTypeParams().size + 1
+            cursorY == 0 ||
+                cursorY in typeStart until (typeStart + inst.getTypeParams().size) ||
+                cursorY in sharedStart until (sharedStart + inst.getSharedParams().size)
+        }
+        SCREEN_FX -> cursorY in setOf(0, 1, 2, 3, 6, 7, 8, 9, 10, 11, 12, 15, 16, 17, 18, 19, 20, 21)
+        SCREEN_CONFIG -> cursorY in 1..6
+        else -> false
+    }
+
+    /**
+     * Adjust the selected field without forcing phone users to synthesize an
+     * EDIT+arrow chord. [direction] is -1 or +1; [coarse] uses SHIFT semantics.
+     * Edit mode remains active so repeated taps continue editing the same field.
+     */
+    fun adjustSelectedValue(direction: Int, coarse: Boolean = false): Boolean {
+        if (direction !in setOf(-1, 1) || !canAdjustSelectedValue()) return false
+        editMode = true
+        val arrow = if (direction > 0) M8Commands.KEY_UP else M8Commands.KEY_DOWN
+        val keys = arrow or if (coarse) M8Commands.KEY_SHIFT else 0
+        handleKeyState(keys)
+        handleKeyState(0)
+        editMode = true
         return true
     }
 
@@ -804,6 +979,7 @@ class M8Emulator {
             val maxY = when (screen) {
                 SCREEN_FX -> 21
                 SCREEN_CONFIG -> 6
+                SCREEN_MIXER -> 9
                 else -> 15
             }
             cursorY = min(maxY, cursorY + 1)
@@ -833,7 +1009,7 @@ class M8Emulator {
                     SCREEN_SONG -> 7
                     SCREEN_CHAIN -> 1
                     SCREEN_TABLE -> 7
-                    SCREEN_MIXER -> 7
+                    SCREEN_MIXER -> 4
                     SCREEN_INSTRUMENT -> 1
                     SCREEN_FX -> 1
                     SCREEN_CONFIG -> 1
@@ -965,7 +1141,7 @@ class M8Emulator {
                 }
             }
             SCREEN_INSTRUMENT -> {
-                val inst = instruments[selectedInstrument.coerceIn(0, 7)]
+                val inst = instruments[selectedInstrument.coerceIn(0, instruments.lastIndex)]
                 editInstrumentRow(pressed, shiftHeld, inst, cursorY)
             }
             SCREEN_FX -> editFxRow(pressed, shiftHeld, cursorY)
@@ -1724,19 +1900,19 @@ class M8Emulator {
             // FX1
             val fx1Name = M8FxEngine.fxName(tr.fx1Cmd)
             val fx1Val = M8Song.hex2(tr.fx1Val)
-            val fx1Cur = isCursorRow && cursorX == 2
+            val fx1Cur = isCursorRow && cursorX in 2..3
             cmds.addAll(drawText("$fx1Name$fx1Val", colFx1, y, if (fx1Cur) cCursor else cText, if (fx1Cur) cCursorBg else cBg))
 
             // FX2
             val fx2Name = M8FxEngine.fxName(tr.fx2Cmd)
             val fx2Val = M8Song.hex2(tr.fx2Val)
-            val fx2Cur = isCursorRow && cursorX == 3
+            val fx2Cur = isCursorRow && cursorX in 4..5
             cmds.addAll(drawText("$fx2Name$fx2Val", colFx2, y, if (fx2Cur) cCursor else cText, if (fx2Cur) cCursorBg else cBg))
 
             // FX3
             val fx3Name = M8FxEngine.fxName(tr.fx3Cmd)
             val fx3Val = M8Song.hex2(tr.fx3Val)
-            val fx3Cur = isCursorRow && cursorX == 4
+            val fx3Cur = isCursorRow && cursorX in 6..7
             cmds.addAll(drawText("$fx3Name$fx3Val", colFx3, y, if (fx3Cur) cCursor else cText, if (fx3Cur) cCursorBg else cBg))
         }
 
@@ -1781,7 +1957,9 @@ class M8Emulator {
                 cmds.add(drawRect(x, barY + barH - barFill, 28, barFill, color))
             }
 
-            val isCursor = cursorX == ch
+            // Mixer editing uses cursorY for the selected track and cursorX for
+            // that track's parameter (volume/pan/sends), matching handleEditModeArrows.
+            val isCursor = cursorY == ch && cursorX == 0
             val bg = if (isCursor) cCursorBg else cBg
             cmds.addAll(drawText(volHex, x + 4, barY + barH + 4, cText, bg))
 

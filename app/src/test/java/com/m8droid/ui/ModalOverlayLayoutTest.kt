@@ -19,6 +19,9 @@ class ModalOverlayLayoutTest {
         assertTrue(M8MainLayout.centersDisplayAndControls.not())
         assertEquals("Top", M8MainLayout.controlsAnchor)
         assertTrue(M8MainLayout.quickActionTopFraction in 0.35f..0.50f)
+        assertTrue(M8MainLayout.showsStickyModifierBar.not())
+        assertTrue(M8MainLayout.maxControlButtonDp <= 56)
+        assertTrue(M8MainLayout.maxControlPanelHeightDp <= 220)
     }
 
     @Test

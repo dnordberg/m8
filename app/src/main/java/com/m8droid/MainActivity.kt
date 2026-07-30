@@ -19,6 +19,8 @@ import androidx.core.view.WindowCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.ui.draw.clip
@@ -33,8 +35,6 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import com.m8droid.data.ButtonLayout
 import com.m8droid.input.KeyMapper
-import com.m8droid.input.StickyKeyLatch
-import com.m8droid.protocol.M8Commands
 import com.m8droid.academy.AcademyState
 import com.m8droid.academy.AcademyViewModel
 import com.m8droid.academy.AppMode
@@ -347,10 +347,6 @@ private fun M8App(
                         M8Screen(
                             bitmap = viewModel.connectionManager.display.snapshot(),
                             invalidationTick = displayTick,
-                            onScreenTap = {
-                                viewModel.setScreen(it)
-                                performNavigationHaptic()
-                            },
                             onDisplayTap = { x, y -> viewModel.handleDisplayTap(x, y) },
                             onDisplayLongPress = { x, y ->
                                 if (viewModel.handleDisplayLongPress(x, y)) performEditHaptic()
@@ -367,15 +363,25 @@ private fun M8App(
                     }
                     val onKeys: (Int) -> Unit = { keys -> viewModel.setTouchKeys(keys) }
                     val keyState by viewModel.keyState.collectAsState()
-                    val stickyKeyState by viewModel.stickyKeyState.collectAsState()
+
                     val showHexEntry = remember(displayTick, serverSettings.hexEditorEnabled) {
                         serverSettings.hexEditorEnabled && viewModel.isEditMode && viewModel.canEnterHexDigit
                     }
                     val showNotePicker = remember(displayTick) {
                         viewModel.isEditMode && viewModel.canEnterNoteFromPicker
                     }
-                    val showSongNameEditor = remember(displayTick) {
-                        viewModel.isEditMode && viewModel.canEditSongName
+                    val showTextEditor = remember(displayTick) {
+                        viewModel.isEditMode && viewModel.canEditTextField
+                    }
+                    val showValueNudge = remember(displayTick, showHexEntry, showNotePicker, showTextEditor) {
+                        viewModel.isEditMode && viewModel.canAdjustSelectedValue &&
+                            !showHexEntry && !showNotePicker && !showTextEditor
+                    }
+                    val showPhraseFields = remember(displayTick) {
+                        viewModel.isEditMode && viewModel.isPhraseScreen
+                    }
+                    val showMixerFields = remember(displayTick) {
+                        viewModel.isEditMode && viewModel.isMixerTrackSelection
                     }
                     val showTrackerQuickActions = remember(displayTick) {
                         viewModel.isEditMode && viewModel.canUseTrackerQuickActions
@@ -411,14 +417,7 @@ private fun M8App(
                                 ButtonLayout.BEST -> M8BestLayout(onKeyStateChanged = onKeys, screenContent = screen, externalKeyMask = keyState)
                                 ButtonLayout.FULL_DEVICE -> M8FullDeviceLayout(onKeyStateChanged = onKeys, screenContent = screen, externalKeyMask = keyState)
                             }
-                            StickyModifierBar(
-                                stickyMask = stickyKeyState,
-                                onToggle = { viewModel.toggleStickyTouchKey(it) },
-                                onClear = { viewModel.clearStickyTouchKeys() },
-                                modifier = Modifier
-                                    .align(Alignment.TopStart)
-                                    .padding(8.dp),
-                            )
+
                             if (showTrackerQuickActions) {
                                 val quickActionTop = maxHeight * M8MainLayout.quickActionTopFraction
                                 TrackerQuickActionBar(
@@ -464,15 +463,67 @@ private fun M8App(
                                     },
                                 )
                             }
-                            if (showSongNameEditor) {
+                            if (showTextEditor) {
                                 SongNameEditorPad(
-                                    name = viewModel.currentSongName,
+                                    label = viewModel.editableTextFieldLabel,
+                                    name = viewModel.currentEditableText,
                                     modifier = Modifier
                                         .align(Alignment.BottomCenter)
                                         .padding(horizontal = 10.dp, vertical = 8.dp),
                                     onApply = {
-                                        if (viewModel.setSongNameFromEditor(it)) performEditHaptic()
+                                        if (viewModel.setEditableTextFromEditor(it)) performEditHaptic()
                                     },
+                                )
+                            }
+                            if (showValueNudge) {
+                                ValueNudgePad(
+                                    modifier = Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .padding(bottom = 8.dp),
+                                    onDecreaseCoarse = {
+                                        if (viewModel.adjustSelectedValue(-1, coarse = true)) performEditHaptic()
+                                    },
+                                    onDecrease = {
+                                        if (viewModel.adjustSelectedValue(-1)) performEditHaptic()
+                                    },
+                                    onIncrease = {
+                                        if (viewModel.adjustSelectedValue(1)) performEditHaptic()
+                                    },
+                                    onIncreaseCoarse = {
+                                        if (viewModel.adjustSelectedValue(1, coarse = true)) performEditHaptic()
+                                    },
+                                )
+                            }
+                            if (showPhraseFields) {
+                                EditFieldStrip(
+                                    labels = listOf("NOTE", "INST", "VOL", "FX1", "F1V", "FX2", "F2V", "FX3", "F3V"),
+                                    selectedColumn = viewModel.currentPhraseEditColumn,
+                                    onSelect = {
+                                        if (viewModel.selectPhraseEditColumn(it)) performNavigationHaptic()
+                                    },
+                                    modifier = Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .padding(horizontal = 8.dp)
+                                        .padding(
+                                            bottom = when {
+                                                showHexEntry -> 194.dp
+                                                showNotePicker -> 112.dp
+                                                else -> 70.dp
+                                            },
+                                        ),
+                                )
+                            }
+                            if (showMixerFields) {
+                                EditFieldStrip(
+                                    labels = listOf("VOL", "PAN", "CHO", "DEL", "REV"),
+                                    selectedColumn = viewModel.currentMixerEditParameter,
+                                    onSelect = {
+                                        if (viewModel.selectMixerEditParameter(it)) performNavigationHaptic()
+                                    },
+                                    modifier = Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .padding(horizontal = 8.dp)
+                                        .padding(bottom = 70.dp),
                                 )
                             }
                         }
@@ -619,6 +670,7 @@ private fun M8App(
 
 @Composable
 private fun SongNameEditorPad(
+    label: String,
     name: String,
     modifier: Modifier = Modifier,
     onApply: (String) -> Unit,
@@ -638,7 +690,7 @@ private fun SongNameEditorPad(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(
-                "SONG NAME",
+                label,
                 color = Color(0xFFFF4FD8),
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
@@ -778,63 +830,85 @@ private fun MiniPianoPad(
 }
 
 @Composable
-private fun StickyModifierBar(
-    stickyMask: Int,
-    onToggle: (Int) -> Unit,
-    onClear: () -> Unit,
+private fun ValueNudgePad(
     modifier: Modifier = Modifier,
+    onDecreaseCoarse: () -> Unit,
+    onDecrease: () -> Unit,
+    onIncrease: () -> Unit,
+    onIncreaseCoarse: () -> Unit,
 ) {
     Surface(
         modifier = modifier,
-        color = Color(0xCC05080C),
-        shape = MaterialTheme.shapes.small,
-        tonalElevation = 4.dp,
-        shadowElevation = 4.dp,
+        color = Color(0xEE05080C),
+        shape = MaterialTheme.shapes.medium,
+        tonalElevation = 6.dp,
+        shadowElevation = 6.dp,
     ) {
         Row(
             modifier = Modifier
-                .border(1.dp, Color(0xFF304458), MaterialTheme.shapes.small)
+                .border(1.dp, Color(0xFF3B5268), MaterialTheme.shapes.medium)
                 .padding(6.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            StickyModifierButton("OPT", M8Commands.KEY_OPTION, stickyMask, onToggle)
-            StickyModifierButton("EDIT", M8Commands.KEY_EDIT, stickyMask, onToggle)
-            StickyModifierButton("SHIFT", M8Commands.KEY_SHIFT, stickyMask, onToggle)
-            if (stickyMask and StickyKeyLatch.MODIFIER_MASK != 0) {
-                Button(
-                    onClick = onClear,
-                    modifier = Modifier.height(30.dp),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF2A1A1A),
-                        contentColor = Color(0xFFFFB0B0),
-                    ),
-                ) {
-                    Text("CLR", fontSize = 11.sp)
-                }
-            }
+            NudgeButton("−−", onDecreaseCoarse)
+            NudgeButton("−", onDecrease)
+            Text("EDIT", color = Color(0xFF9BB7D0), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            NudgeButton("+", onIncrease)
+            NudgeButton("++", onIncreaseCoarse)
         }
     }
 }
 
 @Composable
-private fun StickyModifierButton(
-    label: String,
-    key: Int,
-    stickyMask: Int,
-    onToggle: (Int) -> Unit,
-) {
-    val active = stickyMask and key != 0
+private fun NudgeButton(label: String, onClick: () -> Unit) {
     Button(
-        onClick = { onToggle(key) },
-        modifier = Modifier.height(30.dp),
-        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+        onClick = onClick,
+        modifier = Modifier.size(width = 48.dp, height = 38.dp),
+        contentPadding = PaddingValues(0.dp),
         colors = ButtonDefaults.buttonColors(
-            containerColor = if (active) Color(0xFF2E5F9A) else Color(0xFF172332),
-            contentColor = if (active) Color.White else Color(0xFFB8CDE0),
+            containerColor = Color(0xFF172332),
+            contentColor = Color(0xFFE9F5FF),
         ),
     ) {
-        Text(label, fontSize = 11.sp)
+        Text(label, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun EditFieldStrip(
+    labels: List<String>,
+    selectedColumn: Int,
+    onSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        color = Color(0xEE05080C),
+        shape = MaterialTheme.shapes.small,
+        tonalElevation = 5.dp,
+        shadowElevation = 5.dp,
+    ) {
+        Row(
+            modifier = Modifier
+                .horizontalScroll(rememberScrollState())
+                .border(1.dp, Color(0xFF3B5268), MaterialTheme.shapes.small)
+                .padding(5.dp),
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            labels.forEachIndexed { index, label ->
+                Button(
+                    onClick = { onSelect(index) },
+                    modifier = Modifier.height(34.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (index == selectedColumn) Color(0xFF2E5F9A) else Color(0xFF172332),
+                        contentColor = Color.White,
+                    ),
+                ) {
+                    Text(label, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                }
+            }
+        }
     }
 }

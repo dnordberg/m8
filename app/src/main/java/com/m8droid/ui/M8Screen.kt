@@ -19,10 +19,8 @@ import androidx.compose.ui.unit.IntSize
  * The M8 display is 320x240 (4:3 aspect ratio).
  *
  * Touch navigation:
- * - Tap the top quarter of the display to switch screens (mapped to
- *   8 tab zones across the width).
- * - Tap the tracker area to select cells.
- * - Long-press the tracker area to select a cell and enter edit mode.
+ * - Tap a rendered field to select it and open its contextual editor.
+ * - Long-press provides the same direct-edit behavior.
  * - Swipe left/right anywhere on the display to go to next/prev screen.
  */
 @Composable
@@ -30,7 +28,6 @@ fun M8Screen(
     bitmap: Bitmap,
     modifier: Modifier = Modifier,
     invalidationTick: Int = 0,
-    onScreenTap: ((Int) -> Unit)? = null,
     onDisplayTap: ((Int, Int) -> Unit)? = null,
     onDisplayLongPress: ((Int, Int) -> Unit)? = null,
     onSwipeLeft: (() -> Unit)? = null,
@@ -47,25 +44,19 @@ fun M8Screen(
             .fillMaxWidth()
             .aspectRatio(320f / 240f)
             .then(
-                if (onScreenTap != null || onDisplayTap != null || onDisplayLongPress != null) {
-                    Modifier.pointerInput(onScreenTap, onDisplayTap, onDisplayLongPress) {
+                if (onDisplayTap != null || onDisplayLongPress != null) {
+                    Modifier.pointerInput(onDisplayTap, onDisplayLongPress) {
                         fun toM8Coordinates(offset: androidx.compose.ui.geometry.Offset): Pair<Int, Int> =
                             (offset.x / size.width * 320f).toInt() to (offset.y / size.height * 240f).toInt()
 
                         detectTapGestures(
                             onLongPress = { offset ->
                                 val (m8X, m8Y) = toM8Coordinates(offset)
-                                if (m8Y >= 60) onDisplayLongPress?.invoke(m8X, m8Y)
+                                onDisplayLongPress?.invoke(m8X, m8Y)
                             },
                             onTap = { offset ->
                                 val (m8X, m8Y) = toM8Coordinates(offset)
-                                // Top quarter of display = tap zone for tabs
-                                if (m8Y < 60 && onScreenTap != null) {
-                                    val tabIndex = (m8X / 40).coerceIn(0, 7)
-                                    onScreenTap(tabIndex)
-                                } else {
-                                    onDisplayTap?.invoke(m8X, m8Y)
-                                }
+                                onDisplayTap?.invoke(m8X, m8Y)
                             },
                         )
                     }

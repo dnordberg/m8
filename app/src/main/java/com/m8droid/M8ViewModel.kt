@@ -90,6 +90,14 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     val canEnterHexDigit: Boolean get() = emulator.canEnterHexDigit()
     val canEditSongName: Boolean get() = emulator.canEditSongNameFromScreen()
     val currentSongName: String get() = song.name
+    val canEditTextField: Boolean get() = emulator.canEditTextFieldFromScreen()
+    val editableTextFieldLabel: String get() = emulator.editableTextFieldLabel()
+    val currentEditableText: String get() = emulator.currentEditableText()
+    val canAdjustSelectedValue: Boolean get() = emulator.canAdjustSelectedValue()
+    val currentPhraseEditColumn: Int get() = emulator.phraseEditColumn
+    val isPhraseScreen: Boolean get() = emulator.screen == M8Emulator.SCREEN_PHRASE
+    val isMixerTrackSelection: Boolean get() = emulator.screen == M8Emulator.SCREEN_MIXER && emulator.cursorY in 0..7
+    val currentMixerEditParameter: Int get() = emulator.cursorX.coerceIn(0, 4)
     val canEnterNoteFromPicker: Boolean get() = emulator.canEnterNoteFromPicker()
     val canUseTrackerQuickActions: Boolean get() = emulator.screen in setOf(M8Emulator.SCREEN_SONG, M8Emulator.SCREEN_CHAIN, M8Emulator.SCREEN_PHRASE)
     val trackerEditStatus: String get() = emulator.trackerEditStatus()
@@ -1140,13 +1148,16 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun handleDisplayTap(m8X: Int, m8Y: Int) {
-        emulator.handleDisplayTap(m8X, m8Y)
+        if (emulator.handleDisplayTap(m8X, m8Y)) _displayTick.value++
     }
 
     fun handleDisplayLongPress(m8X: Int, m8Y: Int): Boolean {
         val beforeSignature = currentProjectSignature()
         val changed = emulator.handleDisplayLongPress(m8X, m8Y)
-        if (changed) noteMeaningfulProjectEdit(beforeSignature)
+        if (changed) {
+            noteMeaningfulProjectEdit(beforeSignature)
+            _displayTick.value++
+        }
         return changed
     }
 
@@ -1165,6 +1176,35 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
             _displayTick.value++
         }
         return changed
+    }
+
+    fun setEditableTextFromEditor(value: String): Boolean {
+        val beforeSignature = currentProjectSignature()
+        val changed = emulator.setEditableTextFromEditor(value)
+        if (changed) noteMeaningfulProjectEdit(beforeSignature)
+        _displayTick.value++
+        return changed
+    }
+
+    fun selectPhraseEditColumn(column: Int): Boolean {
+        val selected = emulator.selectPhraseEditColumn(column)
+        if (selected) _displayTick.value++
+        return selected
+    }
+
+    fun selectMixerEditParameter(parameter: Int): Boolean {
+        val selected = emulator.selectMixerEditParameter(parameter)
+        if (selected) _displayTick.value++
+        return selected
+    }
+
+    fun adjustSelectedValue(direction: Int, coarse: Boolean = false): Boolean {
+        val beforeSignature = currentProjectSignature()
+        val accepted = emulator.adjustSelectedValue(direction, coarse)
+        if (!accepted) return false
+        noteMeaningfulProjectEdit(beforeSignature)
+        _displayTick.value++
+        return true
     }
 
     fun enterNoteFromPicker(semitone: Int): Boolean {

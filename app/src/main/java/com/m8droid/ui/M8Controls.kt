@@ -25,10 +25,10 @@ import androidx.compose.ui.unit.min
 import androidx.compose.ui.unit.sp
 import com.m8droid.protocol.M8Commands
 
-private val BUTTON_GAP = 8.dp
+private val BUTTON_GAP = 6.dp
 private val SIDE_MARGIN = 8.dp
-private val MAX_BUTTON_SIZE = 96.dp
-private val LABEL_AREA = 20.dp
+private val MAX_BUTTON_SIZE = M8MainLayout.maxControlButtonDp.dp
+private val LABEL_AREA = 16.dp
 // Matches M8 default theme text color (cText = 100,160,220 in M8Emulator).
 private val NEON = Color(0xFF64A0DC)
 
@@ -112,13 +112,13 @@ private fun M8Logo(modifier: Modifier = Modifier) {
         Text(
             text = "◣◢",
             color = NEON,
-            fontSize = 18.sp,
+            fontSize = 12.sp,
             fontWeight = FontWeight.Bold,
         )
         Text(
             text = "M8",
             color = NEON,
-            fontSize = 28.sp,
+            fontSize = 20.sp,
             fontWeight = FontWeight.Black,
         )
     }
@@ -169,7 +169,7 @@ private fun M8Button(
             Text(
                 text = label,
                 color = NEON,
-                fontSize = 11.sp,
+                fontSize = 9.sp,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,
             )
