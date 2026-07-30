@@ -6,6 +6,21 @@ A standalone M8-style tracker for Android — no hardware required.
 >
 > For the current honest compatibility/release note, read [M8_DIFFERENCES.md](M8_DIFFERENCES.md). It covers `.m8s` loading, `.m8droid` saving, sound differences, hardware/Teensy limits, and community-feedback positioning.
 
+## Screenshots
+
+<table>
+  <tr>
+    <td align="center"><a href="docs/screenshots/phrase-editor.jpg"><img src="docs/screenshots/phrase-editor.jpg" width="220" alt="M8droid phrase editor with tracker rows and touch controls"></a><br><sub>Phrase editor</sub></td>
+    <td align="center"><a href="docs/screenshots/song-editor.jpg"><img src="docs/screenshots/song-editor.jpg" width="220" alt="M8droid song arrangement editor with tracker rows and touch controls"></a><br><sub>Song arrangement</sub></td>
+    <td align="center"><a href="docs/screenshots/academy.jpg"><img src="docs/screenshots/academy.jpg" width="220" alt="M8droid Academy showing guided lesson categories and progress"></a><br><sub>Guided Academy</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><a href="docs/screenshots/file-hub.jpg"><img src="docs/screenshots/file-hub.jpg" width="220" alt="M8droid File Hub showing recent songs and projects"></a><br><sub>File Hub</sub></td>
+    <td align="center"><a href="docs/screenshots/help.jpg"><img src="docs/screenshots/help.jpg" width="220" alt="M8droid Help dialog with Academy, hotkeys, and diagnostics options"></a><br><sub>Help and diagnostics</sub></td>
+    <td align="center"><a href="docs/screenshots/settings.jpg"><img src="docs/screenshots/settings.jpg" width="220" alt="M8droid Settings dialog with connection and input controls"></a><br><sub>Settings</sub></td>
+  </tr>
+</table>
+
 ## What Makes This Different
 
 Every other M8 client requires a physical Teensy 4.1 with M8 Headless firmware connected via USB. This doesn't.
