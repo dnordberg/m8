@@ -20,8 +20,10 @@ class ModalOverlayLayoutTest {
         assertEquals("Top", M8MainLayout.controlsAnchor)
         assertTrue(M8MainLayout.quickActionTopFraction in 0.35f..0.50f)
         assertTrue(M8MainLayout.showsStickyModifierBar.not())
-        assertTrue(M8MainLayout.maxControlButtonDp <= 56)
-        assertTrue(M8MainLayout.maxControlPanelHeightDp <= 220)
+        // The control section is no longer size-capped: it takes its share of
+        // the height and the buttons expand to fill it.
+        assertTrue(M8MainLayout.controlsWeight > 0f)
+        assertTrue(M8MainLayout.displayWeight > M8MainLayout.controlsWeight)
     }
 
     @Test

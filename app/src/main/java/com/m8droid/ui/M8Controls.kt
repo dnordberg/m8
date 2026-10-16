@@ -21,13 +21,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.min
 import androidx.compose.ui.unit.sp
 import com.m8droid.protocol.M8Commands
 
 private val BUTTON_GAP = 6.dp
 private val SIDE_MARGIN = 8.dp
-private val MAX_BUTTON_SIZE = M8MainLayout.maxControlButtonDp.dp
 private val LABEL_AREA = 16.dp
 // Matches M8 default theme text color (cText = 100,160,220 in M8Emulator).
 private val NEON = Color(0xFF64A0DC)
@@ -66,46 +64,47 @@ fun M8Controls(
             .padding(start = SIDE_MARGIN, end = SIDE_MARGIN, top = 0.dp, bottom = 8.dp),
         contentAlignment = Alignment.TopCenter,
     ) {
-        val byWidth: Dp = (maxWidth - BUTTON_GAP * 3) / 4
+        // Fill the panel: four columns across the width, three rows down the
+        // height, with no size cap so the buttons use all the space given.
+        val cellW: Dp = (maxWidth - BUTTON_GAP * 3) / 4
         val rowH: Dp = (maxHeight - BUTTON_GAP * 2) / 3
-        val byHeight: Dp = rowH - LABEL_AREA
-        val cell: Dp = min(min(byWidth, byHeight), MAX_BUTTON_SIZE)
+        val cellH: Dp = (rowH - LABEL_AREA).coerceAtLeast(28.dp)
 
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(BUTTON_GAP),
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(BUTTON_GAP)) {
-                M8Logo(Modifier.size(cell))
-                M8Button("▲", labelAbove = true, M8Commands.KEY_UP, ::pressKey, ::releaseKey, view, cell, displayMask)
-                M8Button("♪ OPTION", labelAbove = false, M8Commands.KEY_OPTION, ::pressKey, ::releaseKey, view, cell, displayMask)
-                M8Button("✱ EDIT", labelAbove = false, M8Commands.KEY_EDIT, ::pressKey, ::releaseKey, view, cell, displayMask)
+                M8Logo(Modifier.width(cellW).height(cellH))
+                M8Button("▲", labelAbove = true, M8Commands.KEY_UP, ::pressKey, ::releaseKey, view, cellW, cellH, displayMask)
+                M8Button("♪ OPTION", labelAbove = false, M8Commands.KEY_OPTION, ::pressKey, ::releaseKey, view, cellW, cellH, displayMask)
+                M8Button("✱ EDIT", labelAbove = false, M8Commands.KEY_EDIT, ::pressKey, ::releaseKey, view, cellW, cellH, displayMask)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(BUTTON_GAP)) {
-                M8Button("◀", labelAbove = false, M8Commands.KEY_LEFT, ::pressKey, ::releaseKey, view, cell, displayMask)
-                M8Button("▼", labelAbove = false, M8Commands.KEY_DOWN, ::pressKey, ::releaseKey, view, cell, displayMask)
-                M8Button("▶", labelAbove = false, M8Commands.KEY_RIGHT, ::pressKey, ::releaseKey, view, cell, displayMask)
-                EmptyCell(cell)
+                M8Button("◀", labelAbove = false, M8Commands.KEY_LEFT, ::pressKey, ::releaseKey, view, cellW, cellH, displayMask)
+                M8Button("▼", labelAbove = false, M8Commands.KEY_DOWN, ::pressKey, ::releaseKey, view, cellW, cellH, displayMask)
+                M8Button("▶", labelAbove = false, M8Commands.KEY_RIGHT, ::pressKey, ::releaseKey, view, cellW, cellH, displayMask)
+                EmptyCell(cellW, rowH)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(BUTTON_GAP)) {
-                EmptyCell(cell)
-                M8Button("⇡ SHIFT", labelAbove = false, M8Commands.KEY_SHIFT, ::pressKey, ::releaseKey, view, cell, displayMask)
-                M8Button("▶ PLAY", labelAbove = false, M8Commands.KEY_PLAY, ::pressKey, ::releaseKey, view, cell, displayMask)
-                EmptyCell(cell)
+                EmptyCell(cellW, rowH)
+                M8Button("⇡ SHIFT", labelAbove = false, M8Commands.KEY_SHIFT, ::pressKey, ::releaseKey, view, cellW, cellH, displayMask)
+                M8Button("▶ PLAY", labelAbove = false, M8Commands.KEY_PLAY, ::pressKey, ::releaseKey, view, cellW, cellH, displayMask)
+                EmptyCell(cellW, rowH)
             }
         }
     }
 }
 
 @Composable
-private fun EmptyCell(cell: Dp) {
-    Spacer(Modifier.size(width = cell, height = cell + LABEL_AREA))
+private fun EmptyCell(cellW: Dp, rowH: Dp) {
+    Spacer(Modifier.size(width = cellW, height = rowH))
 }
 
 @Composable
 private fun M8Logo(modifier: Modifier = Modifier) {
     Column(
-        modifier = modifier.height(Dp.Unspecified),
+        modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
@@ -132,7 +131,8 @@ private fun M8Button(
     onPress: (Int) -> Unit,
     onRelease: (Int) -> Unit,
     view: View,
-    cell: Dp,
+    cellW: Dp,
+    cellH: Dp,
     keyMask: Int,
 ) {
     val pressed = (keyMask and keyBit) != 0
@@ -140,7 +140,8 @@ private fun M8Button(
     val button = @Composable {
         Box(
             modifier = Modifier
-                .size(cell)
+                .width(cellW)
+                .height(cellH)
                 .border(2.dp, NEON, RoundedCornerShape(6.dp))
                 .background(
                     color = if (pressed) NEON else Color.Transparent,
@@ -162,7 +163,7 @@ private fun M8Button(
     val text = @Composable {
         Box(
             modifier = Modifier
-                .width(cell)
+                .width(cellW)
                 .height(LABEL_AREA),
             contentAlignment = Alignment.Center,
         ) {

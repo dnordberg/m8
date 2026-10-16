@@ -23,6 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.min
 import androidx.compose.ui.unit.sp
 import com.m8droid.protocol.M8Commands
 
@@ -34,8 +35,10 @@ object M8MainLayout {
     const val controlsAnchor: String = "Top"
     const val quickActionTopFraction: Float = 0.42f
     const val showsStickyModifierBar: Boolean = false
-    const val maxControlButtonDp: Int = 52
-    const val maxControlPanelHeightDp: Int = 216
+    // The control section is no longer capped: it takes its share of the height
+    // and the buttons expand to fill it, width and height.
+    const val displayWeight: Float = 1.2f
+    const val controlsWeight: Float = 1f
 }
 
 @Composable
@@ -51,7 +54,7 @@ fun M8BestLayout(
     ) {
         Box(
             modifier = Modifier
-                .weight(1.2f)
+                .weight(M8MainLayout.displayWeight)
                 .fillMaxWidth(),
             contentAlignment = Alignment.Center,
         ) {
@@ -61,7 +64,7 @@ fun M8BestLayout(
             onKeyStateChanged = onKeyStateChanged,
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(max = M8MainLayout.maxControlPanelHeightDp.dp)
+                .weight(M8MainLayout.controlsWeight)
                 .padding(bottom = 8.dp),
             externalKeyMask = externalKeyMask,
         )
@@ -107,51 +110,62 @@ fun M8FullDeviceLayout(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f),
+                .weight(M8MainLayout.displayWeight),
             contentAlignment = Alignment.Center,
         ) {
             screenContent()
         }
 
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.padding(vertical = 12.dp),
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(M8MainLayout.controlsWeight),
+            contentAlignment = Alignment.Center,
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(DEVICE_BUTTON_GAP)) {
-                Box(
-                    modifier = Modifier.size(DEVICE_BUTTON_SIZE),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = "M8",
-                        color = Color(0xFFDDDDE4),
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.Black,
-                        fontFamily = FontFamily.Monospace,
-                    )
+            // Buttons fill the whole bottom section: four across, three down.
+            val cell: Dp = min(
+                (maxWidth - DEVICE_BUTTON_GAP * 3) / 4,
+                (maxHeight - DEVICE_BUTTON_GAP * 2) / 3,
+            )
+
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(DEVICE_BUTTON_GAP),
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(DEVICE_BUTTON_GAP)) {
+                    Box(
+                        modifier = Modifier.size(cell),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = "M8",
+                            color = Color(0xFFDDDDE4),
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Black,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                    }
+                    DeviceButton(null, "\u25B2", M8Commands.KEY_UP, view, ::pressKey, ::releaseKey, displayMask, cell)
+                    DeviceButton("OPTION", "\u2315", M8Commands.KEY_OPTION, view, ::pressKey, ::releaseKey, displayMask, cell)
+                    DeviceButton("EDIT", "\u2217", M8Commands.KEY_EDIT, view, ::pressKey, ::releaseKey, displayMask, cell)
                 }
-                DeviceButton(null, "\u25B2", M8Commands.KEY_UP, view, ::pressKey, ::releaseKey, displayMask)
-                DeviceButton("OPTION", "\u2315", M8Commands.KEY_OPTION, view, ::pressKey, ::releaseKey, displayMask)
-                DeviceButton("EDIT", "\u2217", M8Commands.KEY_EDIT, view, ::pressKey, ::releaseKey, displayMask)
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(DEVICE_BUTTON_GAP)) {
-                DeviceButton(null, "\u25C0", M8Commands.KEY_LEFT, view, ::pressKey, ::releaseKey, displayMask)
-                DeviceButton(null, "\u25BC", M8Commands.KEY_DOWN, view, ::pressKey, ::releaseKey, displayMask)
-                DeviceButton(null, "\u25B6", M8Commands.KEY_RIGHT, view, ::pressKey, ::releaseKey, displayMask)
-                Spacer(Modifier.size(DEVICE_BUTTON_SIZE))
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(DEVICE_BUTTON_GAP)) {
-                Spacer(Modifier.size(DEVICE_BUTTON_SIZE))
-                DeviceButton("SHIFT", null, M8Commands.KEY_SHIFT, view, ::pressKey, ::releaseKey, displayMask)
-                DeviceButton("PLAY", "\u25B6", M8Commands.KEY_PLAY, view, ::pressKey, ::releaseKey, displayMask)
-                Spacer(Modifier.size(DEVICE_BUTTON_SIZE))
+                Row(horizontalArrangement = Arrangement.spacedBy(DEVICE_BUTTON_GAP)) {
+                    DeviceButton(null, "\u25C0", M8Commands.KEY_LEFT, view, ::pressKey, ::releaseKey, displayMask, cell)
+                    DeviceButton(null, "\u25BC", M8Commands.KEY_DOWN, view, ::pressKey, ::releaseKey, displayMask, cell)
+                    DeviceButton(null, "\u25B6", M8Commands.KEY_RIGHT, view, ::pressKey, ::releaseKey, displayMask, cell)
+                    Spacer(Modifier.size(cell))
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(DEVICE_BUTTON_GAP)) {
+                    Spacer(Modifier.size(cell))
+                    DeviceButton("SHIFT", null, M8Commands.KEY_SHIFT, view, ::pressKey, ::releaseKey, displayMask, cell)
+                    DeviceButton("PLAY", "\u25B6", M8Commands.KEY_PLAY, view, ::pressKey, ::releaseKey, displayMask, cell)
+                    Spacer(Modifier.size(cell))
+                }
             }
         }
     }
 }
 
-private val DEVICE_BUTTON_SIZE: Dp = M8MainLayout.maxControlButtonDp.dp
 private val DEVICE_BUTTON_GAP: Dp = 6.dp
 
 @Composable
@@ -163,6 +177,7 @@ private fun DeviceButton(
     onPress: (Int) -> Unit,
     onRelease: (Int) -> Unit,
     keyMask: Int,
+    size: Dp,
     modifier: Modifier = Modifier,
 ) {
     val pressed = (keyMask and keyBit) != 0
@@ -172,7 +187,7 @@ private fun DeviceButton(
 
     Box(
         modifier = modifier
-            .size(DEVICE_BUTTON_SIZE)
+            .size(size)
             .shadow(4.dp, RoundedCornerShape(12.dp))
             .background(baseColor, RoundedCornerShape(12.dp))
             .border(1.dp, borderColor, RoundedCornerShape(12.dp))
