@@ -248,6 +248,16 @@ class M8Song {
     }
 
     /**
+     * True when nothing is arranged yet: no chain placed on the song sheet, no
+     * chain rows and no phrase notes. Lets the app tell a restored project that
+     * carries music from one that would open on an empty grid.
+     */
+    fun hasNoContent(): Boolean =
+        songGrid.all { row -> row.all { it == 0xFF } } &&
+            chains.all { it.isEmpty() } &&
+            phrases.all { it.isEmpty() }
+
+    /**
      * Create a demo song: dark electronic track in C minor at 118 BPM.
      * 8-section arrangement showcasing all 8 instrument tracks with
      * dynamic builds, breakdowns, and full-energy drops.

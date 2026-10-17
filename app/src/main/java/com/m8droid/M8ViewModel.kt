@@ -995,8 +995,23 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
             }
             resetLoadedSongState(wasPlaying = false)
             markProjectClean()
-            _projectSaveStatus.value = "RESTORED ${last.title}"
-            Log.i(TAG, "Restored last loaded '${last.title}'")
+            if (song.hasNoContent()) {
+                // The restored project holds no arrangement, so the SONG screen
+                // would open on an all-dashes grid with nothing to play. Fall back
+                // to the demo (song and instruments together) instead of showing a
+                // blank sheet at startup.
+                val demo = M8ProjectSnapshot.decode(
+                    M8ProjectSnapshot.encode(M8Song().apply { loadDemoSong() }, MeridianDemo.instruments()),
+                )
+                M8ProjectSnapshot.restoreInto(demo, song, instruments)
+                resetLoadedSongState(wasPlaying = false)
+                markProjectClean()
+                _projectSaveStatus.value = "DEMO LOADED"
+                Log.i(TAG, "Restored '${last.title}' held no arrangement; loaded the demo instead")
+            } else {
+                _projectSaveStatus.value = "RESTORED ${last.title}"
+                Log.i(TAG, "Restored last loaded '${last.title}'")
+            }
         }.onFailure {
             _startupRecovery.value = StartupRecovery.fromFailure(last, it)
             _projectSaveStatus.value = "RESTORE FAILED: ${last.title}"
