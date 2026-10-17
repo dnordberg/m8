@@ -22,11 +22,15 @@ import androidx.compose.ui.unit.sp
 import com.m8droid.data.ButtonLayout
 import com.m8droid.data.ServerSettings
 import com.m8droid.ui.academy.AcademyTheme
+import kotlinx.coroutines.delay
 
 object SettingsDialogLayout {
     const val panelWidthFraction = ModalStyle.panelWidthFraction
     const val panelPaddingDp = ModalStyle.panelPaddingDp
     const val cardCornerDp = ModalStyle.cardCornerDp
+
+    /** How long a text field must sit still before its value is persisted. */
+    const val autoSaveDebounceMillis = 400L
 }
 
 /**
@@ -34,6 +38,11 @@ object SettingsDialogLayout {
  * (full-screen scrim + Academy dark cards, dim borders, magenta/cyan accents)
  * and lets the user tweak host/port, pick a button layout, and restart the
  * audio/display runtime without clearing the current project.
+ *
+ * Edits save themselves. Toggles and layout chips persist the moment they are
+ * tapped, text fields persist once typing settles ([SettingsDialogLayout.autoSaveDebounceMillis]),
+ * and closing the dialog flushes anything still pending — so there is no Save
+ * button to forget and no Cancel button that silently throws work away.
  */
 @Composable
 fun SettingsDialog(
@@ -43,13 +52,13 @@ fun SettingsDialog(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var host by remember(currentSettings) { mutableStateOf(currentSettings.host) }
-    var port by remember(currentSettings) { mutableStateOf(currentSettings.port.toString()) }
-    var autoConnect by remember(currentSettings) { mutableStateOf(currentSettings.autoConnect) }
-    var layout by remember(currentSettings) { mutableStateOf(currentSettings.buttonLayout) }
-    var gamepad by remember(currentSettings) { mutableStateOf(currentSettings.gamepadEnabled) }
-    var keyboard by remember(currentSettings) { mutableStateOf(currentSettings.keyboardEnabled) }
-    var hexEditor by remember(currentSettings) { mutableStateOf(currentSettings.hexEditorEnabled) }
+    var host by remember(currentSettings.host) { mutableStateOf(currentSettings.host) }
+    var port by remember(currentSettings.port) { mutableStateOf(currentSettings.port.toString()) }
+    var autoConnect by remember(currentSettings.autoConnect) { mutableStateOf(currentSettings.autoConnect) }
+    var layout by remember(currentSettings.buttonLayout) { mutableStateOf(currentSettings.buttonLayout) }
+    var gamepad by remember(currentSettings.gamepadEnabled) { mutableStateOf(currentSettings.gamepadEnabled) }
+    var keyboard by remember(currentSettings.keyboardEnabled) { mutableStateOf(currentSettings.keyboardEnabled) }
+    var hexEditor by remember(currentSettings.hexEditorEnabled) { mutableStateOf(currentSettings.hexEditorEnabled) }
 
     fun buildSettings(): ServerSettings = ServerSettings(
         host = host.trim(),
@@ -61,11 +70,30 @@ fun SettingsDialog(
         hexEditorEnabled = hexEditor,
     )
 
+    // Auto-save: only write when something actually changed, so the first
+    // composition (and a burst of keystrokes) never touch the config file.
+    fun persist() {
+        val draft = buildSettings()
+        if (draft != currentSettings) onSave(draft)
+    }
+
+    // Text edits are debounced; toggles and chips persist immediately below.
+    LaunchedEffect(host, port) {
+        delay(SettingsDialogLayout.autoSaveDebounceMillis)
+        persist()
+    }
+
+    /** Closing is a save point, so nothing typed just before the tap is lost. */
+    fun closeAndFlush() {
+        persist()
+        onDismiss()
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(Color.Black.copy(alpha = ModalStyle.scrimAlpha))
-            .clickable { onDismiss() }
+            .clickable { closeAndFlush() }
             .windowInsetsPadding(WindowInsets.safeDrawing),
         contentAlignment = Alignment.Center,
     ) {
@@ -90,7 +118,7 @@ fun SettingsDialog(
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace,
                 )
-                CloseButton(onClick = onDismiss, tint = AcademyTheme.TextNormal)
+                CloseButton(onClick = { closeAndFlush() }, tint = AcademyTheme.TextNormal)
             }
 
             LabeledField(label = "HOST", value = host, onValueChange = { host = it })
@@ -104,25 +132,25 @@ fun SettingsDialog(
             ToggleRow(
                 label = "AUTO-CONNECT",
                 checked = autoConnect,
-                onChange = { autoConnect = it },
+                onChange = { autoConnect = it; persist() },
             )
 
             ToggleRow(
                 label = "GAMEPAD INPUT",
                 checked = gamepad,
-                onChange = { gamepad = it },
+                onChange = { gamepad = it; persist() },
             )
 
             ToggleRow(
                 label = "KEYBOARD INPUT",
                 checked = keyboard,
-                onChange = { keyboard = it },
+                onChange = { keyboard = it; persist() },
             )
 
             ToggleRow(
                 label = "TOUCH HEX EDITOR",
                 checked = hexEditor,
-                onChange = { hexEditor = it },
+                onChange = { hexEditor = it; persist() },
             )
 
             Text(
@@ -132,8 +160,8 @@ fun SettingsDialog(
                 fontFamily = FontFamily.Monospace,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                // Tap-to-apply: picking a chip persists immediately so the user
-                // sees the new layout without having to tap Save.
+                // Tap-to-apply: picking a chip persists immediately so the new
+                // layout is live without a separate save step.
                 fun pickLayout(l: ButtonLayout) {
                     layout = l
                     onSave(buildSettings())
@@ -152,39 +180,20 @@ fun SettingsDialog(
                 )
             }
 
+            // Settings are already applied by the time this is tapped, so it
+            // only has to bounce the audio/display runtime.
             DialogButton(
                 title = "Restart Server",
-                subtitle = "Save settings and restart audio/display without clearing the song",
+                subtitle = "Restart audio/display without clearing the song",
                 onClick = {
-                    onSave(buildSettings())
+                    persist()
                     onRestartServer()
                     onDismiss()
                 },
             )
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                DialogButton(
-                    title = "Save",
-                    subtitle = null,
-                    onClick = {
-                        onSave(buildSettings())
-                        onDismiss()
-                    },
-                    modifier = Modifier.weight(1f),
-                )
-                DialogButton(
-                    title = "Cancel",
-                    subtitle = null,
-                    onClick = onDismiss,
-                    modifier = Modifier.weight(1f),
-                )
-            }
-
             Text(
-                text = "Tap anywhere outside to close",
+                text = "Changes save automatically · Tap anywhere outside to close",
                 color = AcademyTheme.TextDim,
                 fontSize = 10.sp,
                 fontFamily = FontFamily.Monospace,
