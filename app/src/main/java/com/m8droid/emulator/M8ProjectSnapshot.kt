@@ -13,7 +13,7 @@ import java.nio.file.StandardCopyOption
 /** A local Android project snapshot. V1 is app-native, not Dirtywave .m8s export. */
 object M8ProjectSnapshot {
     private const val MAGIC = "M8DROID_PROJECT"
-    private const val VERSION = 2
+    private const val VERSION = 3
 
     data class Restored(
         val song: M8Song,
@@ -45,7 +45,7 @@ object M8ProjectSnapshot {
             val song = readSong(data, version)
             val count = data.readInt().coerceIn(0, M8Instrument.SLOT_COUNT)
             val instruments = M8Instrument.createDefaults()
-            repeat(count) { i -> instruments[i] = readInstrument(data) }
+            repeat(count) { i -> instruments[i] = readInstrument(data, version) }
             return Restored(song, instruments)
         }
     }
@@ -291,9 +291,79 @@ object M8ProjectSnapshot {
         data.writeInt(inst.amp.chorusSend)
         data.writeInt(inst.amp.delaySend)
         data.writeInt(inst.amp.reverbSend)
+        data.writeInt(inst.wavSynth.shape.ordinal)
+        data.writeInt(inst.wavSynth.size)
+        data.writeInt(inst.wavSynth.mult)
+        data.writeInt(inst.wavSynth.warp)
+        data.writeInt(inst.wavSynth.mirror)
+        data.writeInt(inst.macroSynth.model)
+        data.writeInt(inst.macroSynth.timbre)
+        data.writeInt(inst.macroSynth.color)
+        data.writeInt(inst.macroSynth.degrade)
+        data.writeInt(inst.macroSynth.redux)
+        data.writeInt(inst.fmSynth.algorithm.ordinal)
+        data.writeInt(inst.fmSynth.op1Shape.ordinal)
+        data.writeInt(inst.fmSynth.op1Ratio)
+        data.writeInt(inst.fmSynth.op1Level)
+        data.writeInt(inst.fmSynth.op1Feedback)
+        data.writeInt(inst.fmSynth.op2Shape.ordinal)
+        data.writeInt(inst.fmSynth.op2Ratio)
+        data.writeInt(inst.fmSynth.op2Level)
+        data.writeInt(inst.fmSynth.op2Feedback)
+        data.writeInt(inst.fmSynth.op3Shape.ordinal)
+        data.writeInt(inst.fmSynth.op3Ratio)
+        data.writeInt(inst.fmSynth.op3Level)
+        data.writeInt(inst.fmSynth.op3Feedback)
+        data.writeInt(inst.fmSynth.op4Shape.ordinal)
+        data.writeInt(inst.fmSynth.op4Ratio)
+        data.writeInt(inst.fmSynth.op4Level)
+        data.writeInt(inst.fmSynth.op4Feedback)
+        data.writeInt(inst.fmSynth.mod1)
+        data.writeInt(inst.fmSynth.mod2)
+        data.writeInt(inst.fmSynth.mod3)
+        data.writeInt(inst.fmSynth.mod4)
+        data.writeInt(inst.hyperSynth.chordBank)
+        data.writeInt(inst.hyperSynth.chord)
+        data.writeInt(inst.hyperSynth.shift)
+        data.writeInt(inst.hyperSynth.swarm)
+        data.writeInt(inst.hyperSynth.width)
+        data.writeInt(inst.hyperSynth.subOsc)
+        data.writeInt(inst.filter.type.ordinal)
+        data.writeInt(inst.filter.cutoff)
+        data.writeInt(inst.filter.resonance)
+        data.writeInt(inst.amp.limiter.ordinal)
+        data.writeInt(inst.modulation.env1.type.ordinal)
+        data.writeInt(inst.modulation.env1.attack)
+        data.writeInt(inst.modulation.env1.hold)
+        data.writeInt(inst.modulation.env1.decay)
+        data.writeInt(inst.modulation.env1.sustain)
+        data.writeInt(inst.modulation.env1.release)
+        data.writeInt(inst.modulation.env1.dest)
+        data.writeInt(inst.modulation.env1.amount)
+        data.writeInt(inst.modulation.env2.type.ordinal)
+        data.writeInt(inst.modulation.env2.attack)
+        data.writeInt(inst.modulation.env2.hold)
+        data.writeInt(inst.modulation.env2.decay)
+        data.writeInt(inst.modulation.env2.sustain)
+        data.writeInt(inst.modulation.env2.release)
+        data.writeInt(inst.modulation.env2.dest)
+        data.writeInt(inst.modulation.env2.amount)
+        data.writeInt(inst.modulation.lfo1.shape.ordinal)
+        data.writeInt(inst.modulation.lfo1.speed)
+        data.writeInt(inst.modulation.lfo1.amount)
+        data.writeInt(inst.modulation.lfo1.dest)
+        data.writeBoolean(inst.modulation.lfo1.retrigger)
+        data.writeInt(inst.modulation.lfo2.shape.ordinal)
+        data.writeInt(inst.modulation.lfo2.speed)
+        data.writeInt(inst.modulation.lfo2.amount)
+        data.writeInt(inst.modulation.lfo2.dest)
+        data.writeBoolean(inst.modulation.lfo2.retrigger)
+        data.writeInt(inst.sampler.rootMidi)
+        data.writeInt(inst.sampler.zones.size)
+        inst.sampler.zones.forEach { data.writeUTF(it.path); data.writeInt(it.rootMidi) }
     }
 
-    private fun readInstrument(data: DataInputStream): M8Instrument {
+    private fun readInstrument(data: DataInputStream, version: Int): M8Instrument {
         val name = data.readUTF()
         val type = InstrumentType.entries.getOrElse(data.readInt()) { InstrumentType.WAVSYNTH }
         val inst = M8Instrument(name, type)
@@ -313,6 +383,78 @@ object M8ProjectSnapshot {
         inst.amp.chorusSend = data.readInt()
         inst.amp.delaySend = data.readInt()
         inst.amp.reverbSend = data.readInt()
+        if (version >= 3) {
+            inst.wavSynth.shape = WavShape.entries[data.readInt()]
+            inst.wavSynth.size = data.readInt()
+            inst.wavSynth.mult = data.readInt()
+            inst.wavSynth.warp = data.readInt()
+            inst.wavSynth.mirror = data.readInt()
+            inst.macroSynth.model = data.readInt()
+            inst.macroSynth.timbre = data.readInt()
+            inst.macroSynth.color = data.readInt()
+            inst.macroSynth.degrade = data.readInt()
+            inst.macroSynth.redux = data.readInt()
+            inst.fmSynth.algorithm = FmAlgorithm.entries[data.readInt()]
+            inst.fmSynth.op1Shape = FmOperatorShape.entries[data.readInt()]
+            inst.fmSynth.op1Ratio = data.readInt()
+            inst.fmSynth.op1Level = data.readInt()
+            inst.fmSynth.op1Feedback = data.readInt()
+            inst.fmSynth.op2Shape = FmOperatorShape.entries[data.readInt()]
+            inst.fmSynth.op2Ratio = data.readInt()
+            inst.fmSynth.op2Level = data.readInt()
+            inst.fmSynth.op2Feedback = data.readInt()
+            inst.fmSynth.op3Shape = FmOperatorShape.entries[data.readInt()]
+            inst.fmSynth.op3Ratio = data.readInt()
+            inst.fmSynth.op3Level = data.readInt()
+            inst.fmSynth.op3Feedback = data.readInt()
+            inst.fmSynth.op4Shape = FmOperatorShape.entries[data.readInt()]
+            inst.fmSynth.op4Ratio = data.readInt()
+            inst.fmSynth.op4Level = data.readInt()
+            inst.fmSynth.op4Feedback = data.readInt()
+            inst.fmSynth.mod1 = data.readInt()
+            inst.fmSynth.mod2 = data.readInt()
+            inst.fmSynth.mod3 = data.readInt()
+            inst.fmSynth.mod4 = data.readInt()
+            inst.hyperSynth.chordBank = data.readInt()
+            inst.hyperSynth.chord = data.readInt()
+            inst.hyperSynth.shift = data.readInt()
+            inst.hyperSynth.swarm = data.readInt()
+            inst.hyperSynth.width = data.readInt()
+            inst.hyperSynth.subOsc = data.readInt()
+            inst.filter.type = FilterType.entries[data.readInt()]
+            inst.filter.cutoff = data.readInt()
+            inst.filter.resonance = data.readInt()
+            inst.amp.limiter = LimiterType.entries[data.readInt()]
+            inst.modulation.env1.type = EnvelopeType.entries[data.readInt()]
+            inst.modulation.env1.attack = data.readInt()
+            inst.modulation.env1.hold = data.readInt()
+            inst.modulation.env1.decay = data.readInt()
+            inst.modulation.env1.sustain = data.readInt()
+            inst.modulation.env1.release = data.readInt()
+            inst.modulation.env1.dest = data.readInt()
+            inst.modulation.env1.amount = data.readInt()
+            inst.modulation.env2.type = EnvelopeType.entries[data.readInt()]
+            inst.modulation.env2.attack = data.readInt()
+            inst.modulation.env2.hold = data.readInt()
+            inst.modulation.env2.decay = data.readInt()
+            inst.modulation.env2.sustain = data.readInt()
+            inst.modulation.env2.release = data.readInt()
+            inst.modulation.env2.dest = data.readInt()
+            inst.modulation.env2.amount = data.readInt()
+            inst.modulation.lfo1.shape = LfoShape.entries[data.readInt()]
+            inst.modulation.lfo1.speed = data.readInt()
+            inst.modulation.lfo1.amount = data.readInt()
+            inst.modulation.lfo1.dest = data.readInt()
+            inst.modulation.lfo1.retrigger = data.readBoolean()
+            inst.modulation.lfo2.shape = LfoShape.entries[data.readInt()]
+            inst.modulation.lfo2.speed = data.readInt()
+            inst.modulation.lfo2.amount = data.readInt()
+            inst.modulation.lfo2.dest = data.readInt()
+            inst.modulation.lfo2.retrigger = data.readBoolean()
+            inst.sampler.rootMidi = data.readInt().also { require(it in 0..127) }
+            val zoneCount = data.readInt().also { require(it in 0..256) }
+            inst.sampler.zones = List(zoneCount) { SampleZone(data.readUTF(), data.readInt().also { require(it in 0..127) }) }
+        }
         return inst
     }
 }

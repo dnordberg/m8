@@ -9,7 +9,6 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.m8droid.audio.M8AudioPlayer
-import com.m8droid.audio.NativeSynth
 import com.m8droid.audio.SampleCache
 import com.m8droid.data.ServerConfig
 import com.m8droid.data.ServerSettings
@@ -67,14 +66,21 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     val displayTick: StateFlow<Int> = _displayTick
 
     private val emulator = M8Emulator()
-    private val synth = M8Synth() // kept for visualization API compat
+    // One engine owns instrument/sample configuration, FX, PCM, and meters.
+    private val synth = M8Synth()
     private val sdRoot = File(application.filesDir, "m8sd").apply { mkdirs() }
     private val projectDir = File(sdRoot, "Projects").apply { mkdirs() }
     private val recentSongStore = RecentSongStore(File(application.filesDir, "m8sd/recent_songs.tsv"))
     private val sampleCache = SampleCache(sdRoot)
+    private val bankInstall = runCatching {
+        com.m8droid.emulator.SoundBank.install(sdRoot) { path -> application.assets.open(path).use { it.readBytes() } }
+    }
+    private val soundBank = bankInstall.getOrElse { com.m8droid.emulator.SoundBank(emptyList()) }.also { bank ->
+        // Decode factory recordings once before the audio loop, never on a first-note deadline.
+        bank.samples.forEach { sampleCache.load(it.path) }
+    }
     private val localAudioPlayer = M8AudioPlayer()
     private val fxEngine = M8FxEngine()
-    private var nativeSynthReady = false
 
     // Academy snapshot bridge
     val emulatorEvents = EmulatorEventRepository()
@@ -150,15 +156,12 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         emulator.midiActive = true
     }
 
-    /** Route an incoming MIDI note to the native synth on the matching M8 track. */
+    /** Route an incoming MIDI note to the Kotlin synth on the matching M8 track. */
     private fun handleMidiNoteOn(channel: Int, note: Int, velocity: Int) {
         val track = channel.coerceIn(0, 7)
         midiHeldNotes[track] = note
-        val notes = ByteArray(8) { if (it == track) note.toByte() else 0 }
-        val vols = ByteArray(8) { if (it == track) velocity.toByte() else 0 }
         try {
-            if (nativeSynthReady) NativeSynth.triggerRow(notes, vols)
-            else synth.triggerRow(Array(8) { t ->
+            synth.triggerRow(Array(8) { t ->
                 if (t == track) intArrayOf(note, t, velocity, 0, 0)
                 else intArrayOf(0, t, 0, 0, 0)
             })
@@ -169,11 +172,8 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         val track = channel.coerceIn(0, 7)
         if (midiHeldNotes[track] != note) return
         midiHeldNotes[track] = -1
-        val notes = ByteArray(8) { if (it == track) M8Synth.NOTE_OFF.toByte() else 0 }
-        val vols = ByteArray(8)
         try {
-            if (nativeSynthReady) NativeSynth.triggerRow(notes, vols)
-            else synth.triggerRow(Array(8) { t ->
+            synth.triggerRow(Array(8) { t ->
                 if (t == track) intArrayOf(M8Synth.NOTE_OFF, t, 0, 0, 0)
                 else intArrayOf(0, t, 0, 0, 0)
             })
@@ -240,6 +240,8 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     fun stopPlayback() {
         emulator.playing = false
         emulator.playRow = 0
+        // Also stop an audition when the sequencer was already idle.
+        stopAudioRequested = true
     }
 
     fun setTempo(bpm: Int) {
@@ -278,6 +280,7 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     // BPM-synced row timing
     @Volatile private var samplesUntilNextRow = 0
     @Volatile private var wasPlaying = false
+    @Volatile private var stopAudioRequested = false
 
     // Previous songRow value for detecting song-loop wraparound
     @Volatile private var previousSongRow = 0
@@ -308,17 +311,10 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
                 // Reads from synth fields written by the audio thread; wrapped
                 // in try/catch since these are best-effort visualization values.
                 try {
-                    if (nativeSynthReady) {
-                        val levels = NativeSynth.getMasterLevels()
-                        emulator.liveMasterLevelL = levels[0]
-                        emulator.liveMasterLevelR = levels[1]
-                        emulator.liveTrackLevels = NativeSynth.getTrackLevels()
-                    } else {
-                        emulator.liveWaveformData = synth.getWaveformData()
-                        emulator.liveTrackLevels = synth.trackLevels.clone()
-                        emulator.liveMasterLevelL = synth.masterLevelL
-                        emulator.liveMasterLevelR = synth.masterLevelR
-                    }
+                    emulator.liveWaveformData = synth.getWaveformData()
+                    emulator.liveTrackLevels = synth.trackLevels.clone()
+                    emulator.liveMasterLevelL = synth.masterLevelL
+                    emulator.liveMasterLevelR = synth.masterLevelR
                 } catch (_: Exception) {
                     // Non-critical: visualization data may be briefly inconsistent
                 }
@@ -362,16 +358,6 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // Initialize native Rust synth engine
-        try {
-            NativeSynth.init()
-            nativeSynthReady = true
-            Log.i(TAG, "Native Rust synth engine initialized")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to init native synth, falling back to Kotlin: ${e.message}")
-            nativeSynthReady = false
-        }
-
         // Start audio player
         localAudioPlayer.start()
 
@@ -402,6 +388,13 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
             while (!Thread.currentThread().isInterrupted) {
                 try {
                     val isPlaying = emulator.playing
+                    if (stopAudioRequested) {
+                        stopAudioRequested = false
+                        synth.allNotesOff()
+                        releaseAllMidiOut()
+                        fxEngine.reset()
+                        wasPlaying = false
+                    }
 
                     if (isPlaying) {
                         if (!wasPlaying) {
@@ -433,8 +426,7 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
                             advanceSequencer()
                         }
 
-                        val pcm = if (nativeSynthReady) NativeSynth.generateChunk()
-                                  else synth.generateChunk()
+                        val pcm = synth.generateChunk()
                         localAudioPlayer.write(pcm)
                         samplesUntilNextRow -= M8Synth.CHUNK_SAMPLES
                         samplesUntilNextFxTick -= M8Synth.CHUNK_SAMPLES
@@ -445,15 +437,16 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
                     } else {
                         if (wasPlaying) {
                             wasPlaying = false
-                            if (nativeSynthReady) NativeSynth.allNotesOff()
-                            else synth.allNotesOff()
+                            synth.allNotesOff()
+                            releaseAllMidiOut()
                             fxEngine.reset()
                             samplesUntilNextRow = 0
                             samplesUntilNextFxTick = 0
                             fxTickInRow = 0
                         }
-                        // Write silence — just zeros
-                        localAudioPlayer.write(ByteArray(M8Synth.CHUNK_SAMPLES * 2 * 2))
+                        // Keep rendering while stopped so row/note auditions and MIDI
+                        // notes reach AudioTrack. The synth returns silence when idle.
+                        localAudioPlayer.write(synth.generateChunk())
                     }
                     // Reset error count on successful iteration
                     audioErrorCount = 0
@@ -521,13 +514,7 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun releaseRuntimeTrack(track: Int) {
-        if (nativeSynthReady) {
-            val notes = ByteArray(8) { if (it == track) M8Synth.NOTE_OFF.toByte() else 0 }
-            val vols = ByteArray(8)
-            NativeSynth.triggerRow(notes, vols)
-        } else {
-            synth.releaseTrack(track)
-        }
+        synth.releaseTrack(track)
         if (midiOutHeld[track] >= 0) {
             midiEngine.sendNoteOff(track, midiOutHeld[track])
             midiOutHeld[track] = -1
@@ -539,16 +526,10 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         val inst = instruments.getOrNull(instrument)
         if (inst != null) configureTrackInstrument(track, inst)
         val safeVolume = volume.coerceIn(0, 0xFF)
-        if (nativeSynthReady) {
-            val notes = ByteArray(8) { if (it == track) note.toByte() else 0 }
-            val vols = ByteArray(8) { if (it == track) safeVolume.toByte() else 0 }
-            NativeSynth.triggerRow(notes, vols)
-        } else {
-            synth.triggerRow(Array(8) { t ->
-                if (t == track) intArrayOf(note, instrument, safeVolume, 0, 0)
-                else intArrayOf(0, t, 0, 0, 0)
-            })
-        }
+        synth.triggerRow(Array(8) { t ->
+            if (t == track) intArrayOf(note, instrument, safeVolume, 0, 0)
+            else intArrayOf(0, t, 0, 0, 0)
+        })
         if (midiOutHeld[track] >= 0) midiEngine.sendNoteOff(track, midiOutHeld[track])
         midiEngine.sendNoteOn(track, note, safeVolume)
         midiOutHeld[track] = note
@@ -631,14 +612,7 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         }
         lastTriggeredRowData = Array(8) { track -> rowData[track].copyOf() }
 
-        if (nativeSynthReady) {
-            // Pack notes and volumes into byte arrays for JNI
-            val notes = ByteArray(8) { rowData[it][0].toByte() }
-            val vols = ByteArray(8) { rowData[it][2].toByte() }
-            NativeSynth.triggerRow(notes, vols)
-        } else {
-            synth.triggerRow(rowData)
-        }
+        synth.triggerRow(rowData)
 
         // Mirror the row to any connected MIDI-out device.
         broadcastMidiRow(rowData)
@@ -664,6 +638,9 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun configureTrackInstrument(track: Int, inst: M8Instrument) {
         synth.configureVoice(track, inst)
+        synth.loadSampleZones(track, inst.sampler.zones.mapNotNull { zone ->
+            sampleCache.load(zone.path)?.let { zone.rootMidi to it }
+        })
         if (inst.type == InstrumentType.SAMPLER && inst.sampler.samplePath.isNotBlank()) {
             synth.loadSample(track, sampleCache.load(inst.sampler.samplePath))
         } else {
@@ -773,12 +750,8 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
         emulatorRenderJob = null
 
         // Silence all voices after the render loop has stopped using them.
-        if (nativeSynthReady) {
-            NativeSynth.allNotesOff()
-            NativeSynth.destroy()
-            nativeSynthReady = false
-        }
         synth.allNotesOff()
+        stopAudioRequested = false
     }
 
     // 3-button combo detection for tutorial toggle: OPT+EDIT+SHIFT
@@ -1361,13 +1334,7 @@ class M8ViewModel(application: Application) : AndroidViewModel(application) {
             val instIdx = rowData[t][1]
             if (instIdx in instruments.indices) configureTrackInstrument(t, instruments[instIdx])
         }
-        if (nativeSynthReady) {
-            val notes = ByteArray(8) { rowData[it][0].toByte() }
-            val vols = ByteArray(8) { rowData[it][2].toByte() }
-            NativeSynth.triggerRow(notes, vols)
-        } else {
-            synth.triggerRow(rowData)
-        }
+        synth.triggerRow(rowData)
         broadcastMidiRow(rowData)
         return rowData
     }

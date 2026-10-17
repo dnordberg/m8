@@ -1,0 +1,785 @@
+Big Rusty Drums User Guide
+
+Version 1.000
+Big Rusty Drums by Karoryfer Samples is a virtual drum kit based on samples of
+a kit made by Zygmunt Szpaderski in Poland decades ago. It works in the Plogue
+Sforzando sampler version 1.933 or higher, which is free and can be downloaded
+from https://www.plogue.com/products/Sforzando/
+Any questions or comments? Contact us at samples@karoryfer.com
+
+Table of Contents
+Introduction.................................................................................................................................................................... 3
+Kit Pieces and Articulations..................................................................................................................................... 4
+Installation and Registration................................................................................................................................... 6
+Special Articulations................................................................................................................................................... 7
+Stirs and Flutters..................................................................................................................................................... 7
+Digs............................................................................................................................................................................... 7
+Performance Noises............................................................................................................................................... 7
+Clicks............................................................................................................................................................................ 8
+Sticking Selection.................................................................................................................................................... 8
+Cymbal Articulations............................................................................................................................................. 9
+Instrument Bank........................................................................................................................................................... 9
+Controls.......................................................................................................................................................................... 10
+Volume, Pan and Tune........................................................................................................................................ 10
+Deaden and Dryness........................................................................................................................................... 11
+Hi-hat Position....................................................................................................................................................... 11
+Stir and Flutter Time........................................................................................................................................... 12
+Effects........................................................................................................................................................................ 12
+Configuration............................................................................................................................................................... 13
+Snapshots................................................................................................................................................................ 13
+Effects and Settings Tabs................................................................................................................................... 13
+Keymap Editing..................................................................................................................................................... 13
+Use With E-kit Controllers..................................................................................................................................... 14
+Hi-hat Direction.................................................................................................................................................... 14
+GUI Controls........................................................................................................................................................... 14
+Keymap..................................................................................................................................................................... 14
+Credits and Acknowledgments............................................................................................................................. 14
+Appendix....................................................................................................................................................................... 16
+Default Keymap.......................................................................................................................................................... 16
+MIDI CC Assignments............................................................................................................................................... 19
+
+Introduction
+They're big, they're kind of rusty, and they come from the scary side of the Iron Curtain.
+Zygmunt Szpaderski was probably Poland's most important drum maker from the 1950s until
+the 1990s, making thousands of drum kits in his little one-man workshop. No official records
+or serial numbers exist, but our best guess is that this one's from the early 1980s. Big drums
+were in at the time, and this kit is big – 24x18 kick, 14x8 snare, 18x16 floor tom, and
+absolutely ridiculous 15x15 and 14x14 rack toms. We also set up an Estonian-made RMIF
+22x16 kick as an extra floor tom – it matched the Szpaderski kit well, also having a birch shell,
+and unusually for a kick triple-flange rims like a regular tom would, instead of simple hoops
+and clawhooks. We recorded mostly good, modern cymbals, though we used the kit's original
+old rusty stands for those. The drums also had all their original heads, though the snare's
+wires had broken and we had to use a replacement. The only other non-original parts were
+some of the plastic feet on the stands and the RMIF kick's heads and wrap.
+
+Kit Pieces and Articulations
+Big Rusty Drums includes the following kit pieces:
+
+24"x18” kick - Szpaderski
+
+pedal: kick (dampened), kick (undampened), pedal click noise, pedal return noise
+sticks: rim click, shell click, tomholder click
+
+14”x8” wooden snare - Szpaderski
+
+sticks: sidestick, center hit, edge hit, rimshot, rim click, shell click
+sticks with 13” RMIF concert tom on top of the snare: center hit, sidestick, rimshot
+sticks with tambourine on top of the snare: center hit, rimshot
+brushes: center hit, dig, stir, flutter, release noise
+mallets: center hit
+
+22"x16” tom – RMIF kick set up horizontally
+sticks: center hit, rim click, shell click
+brushes: center hit
+mallets: center hit
+
+18"x16” tom - Szpaderski
+
+sticks: center hit, rim click, shell click
+brushes: center hit, dig, stir, flutter, release noise
+mallets: center hit
+
+15"x15” tom - Szpaderski
+
+sticks: center hit, rim click, shell click
+brushes: center hit
+mallets: center hit
+
+14"x14” tom - Szpaderski
+
+sticks: center hit, rim click, shell click
+brushes: center hit
+mallets: center hit
+
+14” hi-hat – Sabian HHX Evolution
+
+sticks: tip hit (six degrees of openness), shank hits(four degrees of openness), shaft
+click
+brushes: hits with six degrees of openness
+pedal: foot chik, foot splash, chik return noise, pedal click noise, pedal return noise
+
+22” ride – Sabian Big & Ugly King
+sticks: bow, bell, edge
+brushes: bow
+mallets: edge
+edge choke
+
+17” crash – Sabian AAX V-Crash
+sticks: edge
+brushes: bow
+mallets: edge
+edge choke
+
+18” China crash – Sabian HHX Evolution
+sticks: edge
+brushes: bow
+mallets: edge
+edge choke
+
+19” sizzle ride – unknown origin
+sticks: bow, bell, edge
+brushes: bow
+mallets: edge
+edge choke
+
+17” sizzle crash – unknown origin
+sticks: bow, bell, edge
+brushes: bow
+mallets: edge
+edge choke
+
+Three-cymbal stack – 21” Trowa ride, 16” Trowa crash, and half a 14”
+Polmuz hi-hat
+sticks: middle layer, edge layer
+
+Installation and Registration
+If you do not have Sforzando installed, install that first – version 1.933 or newer is required.
+After downloading and unzipping the Big Rusty Drums content into a folder, launch Sforzando,
+either in standalone mode or as a plugin. It is important that all the files stay in the same
+folder – changing the folder structure would require editing the SFZ files. Drag the Big Rusty
+Drums.bank.xml file onto the Sforzando interface – if this does not work in your DAW, try
+doing it with Sforzando in standalone mode. After providing administrator credentials, the
+instrument will be registered. On registration, the full kit instrument will also load, which can
+take several minutes on some systems – please be patient.
+The SFZ files and WAV files can be used without registration, but registration causes Big Rusty
+Drums to appear in Sforzando's instrument list, which allows the instruments to be loaded
+with the GUI.
+
+Special Articulations
+While most of Big Rusty Drums work like any other drum kit - hit a note, and get the sound of
+a kit piece being hit – many of the kit pieces have additional articulations. Most of them also
+work like hits, but the stirs and flutters on the snare and 18” floor tom are very different.
+
+Stirs and Flutters
+The snare and 18” tom have some additional brushed articulations recorded – stirs and
+flutters.
+The stirs are where things get more unusual, and they are the main reason we made this kit.
+Hitting one of the stir notes results in a stir sound which rises gradually, then falls. The Stir
+Time and Stir Tail parameters control the duration of this, meaning the stirs can be set up to fit
+a track's feel and tempo.
+There are three stir articulations. The long stir is the most basic, and is mainly designed for
+stirs which make one circle per measure. The short stir s shorter, louder and has the brush
+moving across the head faster, making it useful for accents. There is also a flutter, which has
+the same duration as the short stir, and which involves moving the brush back and forth
+rapidly.
+All these articulations mute each other. This means long stirs can be accented with short stirs
+or flutters without all the sounds playing simultaneously. There is also a special stir mute key,
+which makes no sound but mutes any stir or flutter currently playing on either drum. It can be
+used to shorten stirs if needed.
+
+Digs
+Digs basically work like brush hits, except the brush stays in contact with the head throughout.
+At the start, the wire tips are already touching the head, and the brush is then pressed into the
+head, without being picked up afterwards. They are useful for accenting stirs.
+
+Performance Noises
+Another feature not found in most drum kits is the performance noises. The snare and 18”
+floor tom also include the sound of a brush being picked up from the head – a subtle little
+noise useful after a section with stirs, or just as some incidental noise a drummer makes
+during a quiet section. The hi-hat has a return sound recorded with the hi-hat installed, plus
+pedal click and pedal return noises with no hi-hat in place. The kick pedal also has pedal click
+and pedal return noises recorded without the drum.
+Though the pedals were functional and greased well enough to work, they still didn't quite
+operate as smoothly as well-maintained modern hardware, and made more noise. We took the
+opportunity to capture this.
+
+Clicks
+Every drum has rim clicks and shell clicks recorded as well. These are techniques rarely used
+outside of marching band music, but we recorded them anyway, because we thought they
+sounded neat. There are also clicks recorded on the massive tomholder, and clicks on the hefty
+hi-hat shaft.
+
+Sticking Selection
+Most of the kit was recorded with sticks, brushes and mallets, except for the kick drum which
+was obviously recorded with its kick pedal. The sticking can be selected separately for each kit
+piece category, allowing the snare to be played with a brush while toms and cymbals are
+played with a stick, for example, as many drummers will do in real life.
+The exceptions to this are as follows: the hi-hat only has sticks and brushes available. We
+actually recorded it with mallets as well, but it didn't sound good enough for those samples to
+be worth editing. The cymbal stack and all the various rim and shell clicks were recorded with
+sticks only.
+The snare drum was also recorded with a 13” concert tom laid on top of it, with center hits,
+sidesticks and rimshots recorded; and with a tambourine laid on top, with center hits and
+rimshots. These are selected with the same MIDI CC control as the snare sticking. No matter
+what is selected, the brush stirs, flutter and dig articulations are available, and the sidestick
+key (MIDI note 37 in the default keymap) is the regular sidestick played with a stick. When the
+snare with the tom on top is selected, the sidestick recorded in this configuration is on MIDI
+note 39 in the default keymap, so there are actually two different sidesticks available.
+When brushes or mallets are selected for the snare, notes 38, 39 and 40 all trigger center hits.
+When tambourine on top is selected, notes 38 and 39 both trigger center hits.
+
+Cymbal Articulations
+The cymbal stack has two different strike locations recorded – the middle layer and the
+bottom layer. These always use sticks, no matter what sticking is selected, because the stack
+just didn't sound good with brushes or mallets.
+The crash and China crash cymbals have two articulations: edge hits and chokes. The choke
+mutes any hit on this cymbal currently playing, and it is up to the user to trigger the choke at
+the correct velocity for the desired volume. That usually means higher-velocity chokes soon
+after a hit, and low-velocity chokes when the cymbal's been ringing longer. Lower-velocity
+chokes will also be less obvious and sound more like a gradual fadeout.
+The other cymbals – the ride, sizzle ride and sizzle crash – have bow, bell and edge strike
+locations recorded with the sticks. The bow is more of a ride sound, while the edge is a crash
+sound, and the bell is obviously a bell. They also have chokes, which work the same way as
+described above. With brushes, there are only bow recordings, and with mallets only edge
+recordings. When brushes or mallets are selected for the cymbals, these will be triggered by
+any of the bow, bell or edge keys for each cymbal.
+
+Instrument Bank
+The Big Rusty Drums bank for Sforzando consists of two kit instruments - full and basic - and
+six bus instruments. The full kit contains all kit pieces, stickings and articulations. The basic
+kit has the dampened kick, snare, hi-hat, crash and ride cymbals, and 18", 15" and 14" toms,
+and no brush or mallet samples.
+The kick bus instrument contains both the dampened and undampened kick. The snare bus
+instrument contains only the snare (including stirs, digs, and release noise), the hi-hat bus
+only the hi-hat, the tom bus all four toms (again including stirs, digs, and release noise for the
+18” tom), the cymbal bus all five cymbals and the cymbal stack, and finally the noises bus
+contains the mechanical noises and clicks. As Sforzando only has one stereo output, the bus
+instruments are useful for sending various kit pieces to different mixer channels for separate
+processing. Consult your DAW's documentation for sending the same MIDI data to multiple
+bus instruments at once.
+The note and MIDI CC assignments are consistent across the bank.
+
+Controls
+
+The Controls tab contains graphical controls for the parameters. All parameters are also
+accessible as MIDI CC.
+
+Volume, Pan and Tune
+The functionality of the Volume, Tune and Pan controls is fairly standard. The Tune controls'
+range is from one octave down at 0% to one octave up at 100%, except for the clicks which are
+one octave down at 0% and natural pitch at 50%, but two octaves up at 100%. The hi-hat,
+cymbals and mechanical noises were miked with a mono close mic and a pair of stereo
+overheads, and thus have two volume controls each. The snare has an additional bottom mic.
+This mic was also recorded for the kick and toms, and its volume is controlled by the Dirt
+knobs. The tuning of the Dirt is affected by the snare tuning, not the kick and tom tuning.
+
+The kick, snare and toms also have a Punch control, which is the close mic (top mic for the
+snare) transposed an octave up. This is useful for adding, well, punch, obviously, and can
+especially come in handy when tuning the drums down.
+Instead of a separate Punch control for each tom, the toms have two – the Low Punch affects
+the lower toms more and doesn't affect the 14” tom at all, and the High Punch affects the high
+toms more and has no effect on the 22” tom. The snare also has Snap, which is the bottom mic
+transposed an octave up, and Epic, which is the overheads an octave down.
+
+Deaden and Dryness
+The Deaden controls for the kicks, snare, toms apply envelopes which shorten the sound. They
+have no effect at 0%, and at 100% leave only a short percussive noise. Again, this is obviously
+not realistic, but we decided to allow it, as it can be musical in an organic yet unrealistic way.
+Intermediate values are useful for emulating drums which have been muted with towels, tape
+etc. Digs are affected by this, but stirs, flutters and rim/shell clicks are not.
+The Dryness controls for the hi-hat and cymbals are similar to Deaden, but less extreme. At
+100%, the sound fades out completely approximately by the midpoint of the sample. Dryness
+can be useful for controlling sound buildup in dense patterns, increasing ride stick definition,
+or just emulating cracked cymbals which have lost much of their natural sustain.
+
+Hi-hat Position
+The hi-hat pedal position can be selected from a drop-down menu, which will also display the
+current hi-hat pedal position if using an external controller.
+
+Stir and Flutter Time
+The stirs and flutters have Length and Tail controls, whose purpose is to adjust the stir timng
+to the feel needed for a particular track and tempo. Length is, roughly speaking, the attack
+time of the stirs' envelope, and Tail is the decay time. There is also a Release control, which
+affects the crossfade time when a stir or flutter is muted, whether by another stir/flutter or by
+the mute key.
+
+At very low values of Length or Tail these stop sounding realistically like stirs, but we included
+the possibility to use those values because they can be useful for emulating shakers or for
+special effects.
+The Stir Shape selection offers a choice of three curves for the stir and flutter attack and decay.
+Smooth is a basic flat envelope, and the other two will have a less immediate attack and a
+more distinct peak in the middle of the stir. Generally, the more curved envelopes sound more
+similar to how a drummer would play stirs in faster tracks.
+
+Effects
+There are also two global effects controls. Low Cut cuts low frequencies from everything
+except the kick close mic and kick punch, which cleans up the bottom end. Crush adds gain to
+the built-in limiter, resulting in a louder, more squashed sound.
+
+Configuration
+Snapshots
+Specific control settings can be saved using Sforzando's Snapshot function – basically, these
+are presets. This saves a snapshot of the instrument currently loaded into one instance of
+Sforzando and its MIDI CC settings, which means a complete kit of bus instruments would
+consist of a separate snapshot for each bus instrument.
+A few factory snapshots for the full kit are included.
+
+Effects and Settings Tabs
+The Effects tab and Settings tab contain default Sforzando functions. Effects can be used to add
+more reverb (together with the Send control at the top of the Sforzando interface), and
+Settings can be used for monitoring adjusting RAM usage and polyphony, though in general,
+the default settings appear to work well for these drums.
+Increasing the maximum engine RAM may be needed in projects which use many instances of
+Sforzando and other ARIA engine products which combine to use a large amount of RAM.
+
+Keymap Editing
+The default keymap (see appendix) is based on General MIDI, but as these drums have a lot of
+things General MIDI didn't anticipate, it mostly goes off on its own beyond the basics.
+Editng the keymap for the Sforzando instrument requires using a text editor to make changes
+to the keymap file. The Programs/keymap folder contains the keymap.sfz file, plus MIDI CC
+ranges for the hi-hat. To change the user keymap, edit the keyamp.sfz file in this folder using a
+text editor. Avoid putting multiple sounds on the same MIDI note, unless they are not to be
+used anyway (see below).
+
+Use With E-kit Controllers
+Electronic drum kit controllers have some additional considerations, and we've provided e-kit
+versions of configuration files for both the instruments in the bank and the graphics to better
+suit e-kit users.
+
+Hi-hat Direction
+By default, the hi-hat is fully open with CC4 at 127, and fully closed with CC4 at 0. However,
+most electronic drum kits will have pedals which use a MIDI CC value of 0 for fully open, and
+127 for fully closed. To reverse the hi-hat, copy the files from the Programs/ekit folder into the
+Programs folder, overwriting those files there. This will make the hi-hat work backwards.
+
+GUI Controls
+The hi-hat's degree of openness labeling also needs to match the correct order in the user
+interface. To fix this, copy the files from the GUI/ekit folder into the GUI folder, overwriting the
+files there. This will make the hi-hat openness appear correctly with the reversed direction,
+and will also change how the toms and cymbals are displayed in the GUI. For keyboard use, the
+toms and cymbals appear in the same order they do on the keyboard with the default note
+mapping. In the e-kit version, they appear in the same order as their natural pan position from
+the drummer's perspective – that means the smallest toms (which, in the case of this kit, are
+still quite large) are on the left, and the hugest on the right. The crash cymbal is on the left,
+ride on the right, and others inbetween.
+The Programs/default folder contains a backup copy of the default SFZ files as well as the
+default keymap, and the GUI/default folder contains a backup copy of the default XML files.
+
+Keymap
+Keymap editing works as described above, but most e-kits won't have enough pads and zones
+to cover all the sounds present in this kit. Some decisions must be made about how priorities.
+Sounds which will not fit should not be commented out or deleted from these files, as that
+would cause errors with missing variables. They can be moved to a placeholder note which
+the controller is not capable of sending. Multiple sounds can be put on the same placeholder
+note, as it will never be triggered anyway.
+
+Credits and Acknowledgments
+Thanks to the Hańba guys for hauling drums in the middle of the night on their way back from
+gigs not once but twice, and to Paul Chapman for loaning us the cymbals. Plogue Art et
+Technologie Inc. for support and Sforzando. Peter Jones for the hi-hat muting SFZ and testing.
+And everybody we borrowed microphones from.
+
+Appendix
+Default Keymap
+The default keymap mostly follows the General MIDI specification up to the crash cymbal, then
+changes. As General MIDI does not have any place for stirs and other brush techniques or
+performance noises, we tried to arrange the sounds in a user-friendly way. The various hi-hat
+sounds are all on F#, G# and A# notes. Each cymbal's various articulations are kept together
+as much as possible. After the cymbals come the stirs and flutters, then the percussion. The
+performance noises are placed below the kick notes.
+The note numbers are what's actually configured. The note names in the below table should
+work for most DAWs, but some DAWs may differ by an octave – so a C will still be a C, but a C3
+might be C2 or C4 instead.
+24
+25
+26
+30
+31
+32
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+45
+46
+47
+49
+50
+51
+52
+53
+
+C2
+kick pedal click
+C#2 kick pedal return
+D2
+snare brush pickup
+F#2 hi-hat pedal click
+G2
+18” tom brush pickup
+G#2 hi-hat pedal return
+A#2 hi-hat cymbal return
+B2
+kick undampened
+C3
+kick dampened
+C#3 snare sidestick
+D3
+snare center hit
+D#3 snare edge hit
+(+tom sidestick, +tambourine center hit, brush center hit, mallet center hit)
+E3
+snare rimshot
+(brush center hit, mallet center hit)
+F3
+22” tom hit
+F#3 hi-hat tightly closed tip hit
+G3
+18” tom hit
+G#3 hi-hat foot chik
+A3
+15” tom hit
+A#3 hi-hat tip hit with variable openness
+(6 degrees for either stick or brush)
+B3
+14” tom hit
+C#4 crash edge hit
+(brush bow hit)
+D4
+crash edge choke
+D#4 ride bow hit
+(mallet edge hit)
+E4
+ride edge hit
+(brush bow hit)
+F4
+ride bell hit
+(brush bow hit, mallet edge hit)
+
+54
+55
+56
+57
+58
+59
+60
+61
+62
+63
+64
+65
+67
+69
+71
+72
+73
+74
+75
+76
+77
+78
+79
+80
+81
+83
+84
+85
+86
+87
+88
+89
+90
+91
+92
+93
+94
+95
+96
+
+F#4 hi-hat tightly closed shank hit
+(brush tip hit)
+G4
+ride edge choke
+G#4 hi-hat footsplash
+A4
+China crash edge hit
+(brush bow hit)
+A#4 hi-hat shank hit with variable openness
+(stick hit uses shank for closed, loosely closed and quarter open, tip for half open and
+fully open; brush hit is always a tip hit)
+B4
+China crash edge choke
+C5
+sizzle ride bow hit
+(mallet edge hit)
+C#5 sizzle ride edge hit
+(brush bow hit)
+D5
+sizzle ride bell hit
+(brush bow hit, mallet edge hit)
+D#5 sizzle ride edge choke
+E5
+sizzle crash bow hit
+(mallet edge hit)
+F5
+sizzle crash edge hit
+(brush bow hit)
+G5
+sizzle crash bell hit
+(brush bow hit, mallet edge hit)
+A5
+sizzle crash edge choke
+B5
+three-cymbal stack middle layer hit
+C6
+three-cymbal stack outer layer hit
+C#6 snare long stir
+D6
+snare short stir
+D#6 snare flutter
+E6
+snare dig
+F6
+stir or flutter mute
+F#6 18” tom long stir
+G6
+18” tom short stir
+G#6 18” tom flutter
+A6
+18” tom dig
+B6
+kick shell click
+C7
+kick rim click
+C#7 tomholder click
+D7
+snare rim click
+D#7 hi-hat shaft click
+E7
+snare shell click
+F7
+22” tom rim click
+F#7 22” tom shell click
+G7
+18” tom rim click
+G#7 18” tom shell click
+A7
+15” tom rim click
+A#7 15” tom shell click
+B7
+14” tom rim click
+C8
+14” tom shell click
+
+MIDI CC Assignments
+4
+
+15
+16
+17
+18
+19
+
+hi-hat pedal position
+0-25
+closed
+26-51
+loosely closed
+52-76
+quarter open
+77-102
+half open
+103-127
+fully open
+hi-hat close volume
+hi-hat overhead volume
+hi-hat pan
+hi-hat tuning
+hi-hat dryness
+
+20
+21
+22
+23
+
+stir length
+stir tail
+stir crossfade
+stir shape
+0-41
+smooth
+42-84
+regular
+85-127
+peaky
+
+25
+
+snare sticking
+0-31
+sticks
+32-47
+sticks with concert tom on top of snare
+48-63
+sticks with tambourine on top of snare
+64-95
+brushes
+96-127
+mallets
+tom sticking
+0-63
+sticks
+64-95
+brushes
+96-127
+mallets
+hi-hat sticking
+0-63
+sticks
+64-127
+brushes
+cymbal sticking
+0-63
+sticks
+64-95
+brushes
+96-127
+mallets
+
+26
+
+27
+28
+
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+45
+46
+47
+48
+49
+
+22” tom close volume
+22” tom overhead volume
+22” tom pan
+22” tom tune
+18” tom close volume
+18” tom overhead volume
+18” tom pan
+18” tom tune
+15” tom close volume
+15” tom overhead volume
+15” tom pan
+15” tom tune
+14” tom close volume
+14” tom overhead volume
+14” tom pan
+14” tom tune
+low tom punch
+high tom punch
+tom dirt
+tom deaden
+
+70
+71
+72
+74
+75
+76
+77
+
+kick close volume
+kick overhead volume
+kick dirt
+kick punch
+kick tune
+kick deaden
+low cut
+
+80
+81
+82
+83
+84
+85
+88
+89
+90
+
+snare bottom volume
+snare top volume
+snare overhead volume
+snare snap
+snare punch
+snare epic
+snare pan
+snare tune
+snare deaden
+
+92
+93
+94
+95
+96
+97
+98
+
+mechanical noise close volume
+mechanical noise overhead volume
+mechanical noise tune
+click close volume
+click overhead volume
+click snare bottom volume
+click tune
+
+100
+101
+102
+104
+105
+106
+108
+109
+110
+112
+113
+114
+116
+117
+118
+120
+121
+124
+125
+126
+
+crash close volume
+crash overhead volume
+crash pan
+ride close volume
+ride overhead volume
+ride pan
+China crash close volume
+China crash overhead volume
+China crash pan
+sizzle ride close volume
+sizzle ride overhead volume
+sizzle ride pan
+sizzle crash close volume
+sizzle crash overhead volume
+sizzle crash pan
+cymbal tuning
+cymbal dryness
+cymbal stack close volume
+cymbal stack overhead volume
+cymbal stack pan
+
+401
+402
+
+limiter threshold
+limiter level
+
+Copyright 2019 Karoryfer Lecolds
+
+

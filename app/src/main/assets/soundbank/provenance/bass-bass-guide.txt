@@ -1,0 +1,200 @@
+Black And Blue Basses User Guide
+
+Karoryfer Samples' entry in the 2023 KVR Developer Challenge, Black And Blue Basses is a
+virtual bass guitar instrument using samples of two 5-string bass guitars: a dark black
+Washburn AB-95 and a baby blue Thunderbird-shaped parts bass. The black one is played
+with the fingers and recorded using the neck pickup; the blue one is pick and bridge pickup.
+This is free and open-source, with a CC 0 license.
+The virtual instrument requires Plogue Sforzando version 1.977or higher, which is free and
+can be downloaded from https://plogue.com/downloads.html
+Any questions or comments? Contact us at samples@karoryfer.com
+
+Table of Contents
+Installation And Registration................................................................................................................................... 3
+Instrument Bank........................................................................................................................................................... 3
+Articulations And Sampling Depth.................................................................................................................. 3
+Range........................................................................................................................................................................... 3
+Controls............................................................................................................................................................................ 4
+Performance Controls........................................................................................................................................... 4
+Unison Controls....................................................................................................................................................... 4
+Vibrato Controls...................................................................................................................................................... 5
+Filter Controls.......................................................................................................................................................... 5
+Instrument-Specific Controls............................................................................................................................. 6
+Sampler Features.......................................................................................................................................................... 6
+Snapshots................................................................................................................................................................... 6
+Effects And Settings Tab....................................................................................................................................... 6
+Credits And Acknowledgments............................................................................................................................... 7
+Appendix.......................................................................................................................................................................... 8
+Keyswitch Assignments........................................................................................................................................ 8
+MIDI CC Assignments............................................................................................................................................ 8
+
+Installation And Registration
+If you do not have Sforzando installed, install that first – version 1.977 or newer is required.
+After downloading and unzipping the Black And Blue Basses content into a folder, launch
+Sforzando, either in standalone mode or as a plugin. It is important that all the files stay in the
+same folder – changing the folder structure would require editing the SFZ files. Drag the Black
+And Blue Basses.bank.xml file onto the Sforzando interface – if this does not work in your
+DAW, try doing it with Sforzando in standalone mode. After providing administrator
+credentials, the instrument will be registered. The SFZ files and WAV files can be used without
+registration, but registration causes Black And Blue Basses to appear in Sforzando's
+instrument list, which allows the instruments to be loaded with the GUI.
+If all that seems confusing, a quick video guide to the registration process is available at
+https://www.youtube.com/watch?v=6ROs8qx5k8c
+
+Instrument Bank
+The instrument bank includes eleven instrument patches.
+•
+•
+•
+•
+•
+
+Darkblack keyswitch normal – all articulations, selectable via keyswitch.
+Darkblack keyswitch warm – plucks and ghost notes without the top velocity layers.
+Babyblue normal – picked notes.
+Babyblue warm – picked notes without the top velocity layer.
+Darkblack single articulation patches.
+
+Articulations And Sampling Depth
+•
+•
+•
+•
+
+•
+
+Darkblack plucks have four dynamic layers and four round robins, with releases that have four round
+robins.
+Darkblack ghost notes have two dynamic layers and four round robins.
+Darkblack staccato and behind the bridge have four round robins.
+Darkblack behind the bridge samples exist in two versions: one sampled with the string fretted, and split
+roughly equally between the five strings, and the other sampled using the open strings only, which
+means only five pitches are actually sampled, and they are stretched across the keyboard to fill in the
+missing notes.
+Babyblue notes have two velocity layers, with eight round robins in the top layer and four round robins
+in the bottom layer.
+
+Range
+Both basses were tuned BEADG (standard 5-string tuning). The darkblack bass has 21 frets so
+its highest note is an E, while the blue one has 20 frets and goes up to Eb. The babyblue bass
+also has samples going down to E, an octave below a standard low E, in two versions.
+
+Controls
+
+Performance Controls
+Mono is a simple mono/poly switch.
+Preroll makes the instrument more responsive but less realistic by not using some of the
+approximately 25 miliseconds of pre-note noise that's included in each sample.
+Swell increases the attack and release time of the notes, while also raising the volume (to
+compensate for the fact that the loudest part of the note will be turned down). This is useful
+for making pads and other soft swells.
+
+Unison Controls
+Unison is the volume for two additional voices, created via transposition trick. These voices
+have a highpass filter, so they do not muddy up the sound too much.
+Width controls the stereo placement of the two additional voices.
+
+Vibrato Controls
+Though it is possible to perform different types of vibrato on a bass guitar, the vibrato of Black
+And Blue Basses is violin-style – fairly narrow, and moves the pitch both above and below the
+normal pitch of the note. Vibrato also has speed, depth, delay and humanize controls.
+The fade control brings vibrato in gradually. The delay control causes vibrato to start later
+than the note start, and the humanize control makes the vibrato rate slightly unsteady. With
+unison on, the humanization affects each of the unison voices differently. The humanize
+control is not enough to achieve natural, expressive vibrato - for that, modulating the vibrato
+depths is essential.
+In addition to vibrato, the vibrato LFOs can do tremolo, which modulates the volume rather
+than the pitch. This isn't possible on bass guitar without external effects.
+
+Filter Controls
+This is a synth-style filter with cutoff, resonance, and adjustable velocity tracking. Wobble
+modulates the filter's cutoff using the vibrato LFO. Envelope also modulates the filter. There's
+some interesting trickery going on under the hood to make the keytracking musical.
+
+Instrument-Specific Controls
+The darkblack bass also has a Release control, which sets the release noise volume for plucks.
+The other articulations do not have release noises.
+The babyblue bass has a Low Str button, which controls which samples are used for notes
+below the low B. With it on, digitally pitch-shifted samples of the B string are used. With the
+button off, samples of the B string physically tuned down a fifth to E are used.
+
+Sampler Features
+The below are standard features of Sforzando, and are explained in more detail in the
+Sforzando manual. This is just a short summary of how these features apply to Black And Blue
+Basses.
+
+Snapshots
+Specific control settings can be saved using Sforzando's Snapshot function – basically, these
+are presets. This saves a snapshot of the instrument currently loaded into one instance of
+Sforzando and its MIDI CC settings.
+
+Effects And Settings Tab
+The Effects tab and Settings tab contain default Sforzando functions. Effects can be used to add
+more reverb (together with the Send control at the top of the Sforzando interface). Settings
+can be used for monitoring adjusting RAM usage and polyphony.
+Increasing the maximum engine RAM will be needed if keeping the samples on a hard drive, or
+in projects which use multiple instances of Sforzando and other ARIA engine products which
+combine to use a large amount of RAM. The basic instrument and single articulation
+instruments consume less RAM.
+
+Credits And Acknowledgments
+Recorded, edited, programmed and even photographed by Drogomir Smolken.
+
+Appendix
+Keyswitch Assignments
+31
+30
+29
+28
+27
+
+Pluck
+Ghost note
+Staccato
+Behind the bridge
+Behind the bridge open
+
+MIDI CC Assignments
+21
+23
+24
+25
+90
+91
+92
+93
+94
+95
+100
+101
+105
+107
+112
+113
+114
+115
+116
+117
+
+Vibrato Depth
+Low String Selection (babyblue only)
+Swell
+Preroll
+Filter Cutoff
+Filter Resonance
+Filter Veltrack
+Filter Envelope
+Filter Attack
+Filter Decay
+Unison Vol
+Unison Width
+Mono Switch
+Release (darkblack only)
+Vibrato Speed
+Wobble Depth
+Tremolo Depth
+Vibrato Delay
+Vibrato Fade
+Humanize
+
+

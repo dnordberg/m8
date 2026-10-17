@@ -261,6 +261,8 @@ data class SamplerParams(
     var length: Int = 0xFF,          // Sample length
     var degrade: Int = 0x00,
     var detune: Int = 0x80,          // 0x80 = center (no detune)
+    var rootMidi: Int = 60,
+    var zones: List<SampleZone> = emptyList(),
 ) {
     companion object {
         val PLAY_MODE_NAMES = arrayOf("FWD", "REV", "FWDLOOP", "REVLOOP", "FWD PP", "REV PP", "OSC")

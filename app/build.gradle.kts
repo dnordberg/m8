@@ -68,6 +68,9 @@ android {
 
     @Suppress("UnstableApiUsage")
     testOptions {
+        // Offline PCM render tests drive the real synth; Android framework stubs such
+        // as Log.d must return defaults instead of throwing during long renders.
+        unitTests.isReturnDefaultValues = true
         unitTests.all {
             it.useJUnitPlatform()
         }

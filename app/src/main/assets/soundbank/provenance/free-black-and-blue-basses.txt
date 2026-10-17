@@ -1,0 +1,6 @@
+Free: Black And Blue Basses
+Download from GitHub
+Our entry in the
+2023 KVR Developer Challenge
+. Black And Blue Basses is a sample library of two 5-string bass guitars: a black hollowbody played with the fingers, and a blue solidbody played with a pick. Over 2000 samples adding up to more than a gigabyte.
+Open source, released under CC-0 license. Requires Plogue Sforzando 1.977 or newer.

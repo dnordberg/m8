@@ -28,11 +28,13 @@ object ProjectHealth {
 
     fun checkSamples(instruments: Array<M8Instrument>, sdRoot: File): Warnings {
         val root = sdRoot.canonicalFile
-        val missing = instruments.mapIndexedNotNull { index, instrument ->
-            val samplePath = instrument.sampler.samplePath.trim()
-            if (instrument.type != InstrumentType.SAMPLER || samplePath.isBlank()) return@mapIndexedNotNull null
-            val resolved = resolveSample(root, samplePath)
-            if (resolved?.isFile == true) null else MissingSample(index, instrument.name.ifBlank { "---" }, samplePath)
+        val missing = instruments.flatMapIndexed { index, instrument ->
+            if (instrument.type != InstrumentType.SAMPLER) return@flatMapIndexed emptyList()
+            (listOf(instrument.sampler.samplePath) + instrument.sampler.zones.map { it.path })
+                .map { it.trim() }.filter { it.isNotBlank() }.distinct().mapNotNull { samplePath ->
+                    val resolved = resolveSample(root, samplePath)
+                    if (resolved?.isFile == true) null else MissingSample(index, instrument.name.ifBlank { "---" }, samplePath)
+                }
         }
         return Warnings(missing)
     }

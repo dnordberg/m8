@@ -2,26 +2,24 @@ package com.m8droid.emulator
 
 import java.io.File
 
-/** Seeds the built-in demo projects into the app-native Projects folder. */
+/** Add-only factory seeding: never replace a saved project, even a modified factory demo. */
 object BuiltInDemoProjects {
-    private const val NEW_DEMO_FILE = "New Demo.m8droid"
-    private const val OLD_DEMO_FILE = "Old Demo.m8droid"
-
     fun ensureSeeded(projectDir: File): List<File> {
         projectDir.mkdirs()
-        val defaults = M8Instrument.createDefaults()
-        val newDemo = File(projectDir, NEW_DEMO_FILE).also { file ->
-            if (!file.exists()) {
-                val song = M8Song().apply { loadDemoSong() }
-                file.writeBytes(M8ProjectSnapshot.encode(song, defaults))
-            }
+        val current = M8ProjectSnapshot.encode(M8Song().apply { loadDemoSong() }, MeridianDemo.instruments())
+        val newDemo = File(projectDir, "New Demo.m8droid")
+        val priorNewDemo = newDemo.exists()
+        if (!priorNewDemo) newDemo.writeBytes(current)
+        val oldDemo = File(projectDir, "Old Demo.m8droid")
+        if (!oldDemo.exists()) {
+            oldDemo.writeBytes(M8ProjectSnapshot.encode(M8Song().apply { loadOldDemoSong() }, M8Instrument.createDefaults()))
         }
-        val oldDemo = File(projectDir, OLD_DEMO_FILE).also { file ->
-            if (!file.exists()) {
-                val song = M8Song().apply { loadOldDemoSong() }
-                file.writeBytes(M8ProjectSnapshot.encode(song, defaults))
-            }
+        // Upgraders keep New Demo byte-for-byte. The same new composition is available
+        // through the existing Projects loader under its own name, without changing recents.
+        val namedDemo = File(projectDir, "Meridian Light.m8droid")
+        if (priorNewDemo && !newDemo.readBytes().contentEquals(current) && !namedDemo.exists()) {
+            namedDemo.writeBytes(current)
         }
-        return listOf(newDemo, oldDemo)
+        return listOf(newDemo, oldDemo) + if (namedDemo.exists()) listOf(namedDemo) else emptyList()
     }
 }

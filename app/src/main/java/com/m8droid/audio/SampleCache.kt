@@ -29,6 +29,6 @@ class SampleCache(private val sdRoot: File) {
             .removePrefix("/")
             .takeIf { it.isNotBlank() } ?: return null
         val file = File(canonicalRoot, normalized).canonicalFile
-        return if (file.path.startsWith(canonicalRoot.path) && file.isFile) file else null
+        return if (file.path.startsWith(canonicalRoot.path + File.separator) && file.isFile) file else null
     }
 }

@@ -245,6 +245,12 @@ class M8Synth {
     private val voicePresets = PRESETS.copyOf()
     private val trackSamples = arrayOfNulls<WavDecoder.DecodedWav>(8)
     private val trackSamplers = Array(8) { SamplerParams() }
+    private val sampleZones = Array<List<Pair<Int, WavDecoder.DecodedWav>>>(8) { emptyList() }
+    private val selectedZones = arrayOfNulls<Pair<Int, WavDecoder.DecodedWav>>(8)
+
+    fun loadSampleZones(track: Int, zones: List<Pair<Int, WavDecoder.DecodedWav>>) {
+        if (track in 0..7) sampleZones[track] = zones
+    }
     private val trackMacroSynths = Array(8) { MacroSynthParams() }
     private val trackHyperSynths = Array(8) { HyperSynthParams() }
     private val trackModulations = Array(8) { ModulationParams() }
@@ -407,7 +413,10 @@ class M8Synth {
             val vol = rowData[t][2]
             when {
                 note == NOTE_OFF -> voices[t].release()
-                note in 1..127 -> voices[t].trigger(noteToFreq(note), if (vol > 0) vol / 255.0 else 0.8)
+                note in 1..127 -> {
+                    selectedZones[t] = sampleZones[t].minByOrNull { kotlin.math.abs(it.first - note) }
+                    voices[t].trigger(noteToFreq(note), if (vol > 0) vol / 255.0 else 0.8)
+                }
             }
         }
     }
@@ -656,9 +665,34 @@ class M8Synth {
             10 -> { // TRIPLE SQUARE
                 (polyPulse(ph, phInc, 0.45) + polyPulse((ph * 1.003 + 0.23) % 1.0, phInc, 0.5) + polyPulse((ph * 0.997 + 0.41) % 1.0, phInc, 0.55)) / 3.0
             }
-            in 34..37, 42, 43 -> { // drum/noise-like models
-                val bit = ((sin((ph * (97.0 + timbre * 400.0)) * TWO_PI) * 43758.5453) % 1.0)
-                (bit * 2.0 - 1.0) * (0.5 + color * 0.5)
+            in 34..37 -> { // Original drum voices: swept body, snare, metal hat, clap bursts.
+                val v = voices[track]
+                val time = v.fenvTime
+                val bit = (v.lfsr xor (v.lfsr shr 1)) and 1
+                v.lfsr = (v.lfsr shr 1) or (bit shl 14)
+                val white = v.lfsr.toDouble() / 16384.0 - 1.0
+                v.noiseVal += 0.12 * (white - v.noiseVal)
+                val high = white - v.noiseVal
+                when (m.model) {
+                    34 -> {
+                        val fundamental = v.freq.coerceIn(35.0, 100.0)
+                        val cycles = fundamental * time + (90.0 + timbre * 100.0) * 0.018 * (1.0 - exp(-time / 0.018))
+                        sin(TWO_PI * cycles) * 0.95 + high * exp(-time * 350.0) * 0.12
+                    }
+                    35 -> sin(TWO_PI * 180.0 * time) * exp(-time * 35.0) * 0.45 + high * (0.45 + color * 0.25)
+                    36 -> {
+                        val metal = sin(TWO_PI * 4210.0 * time) * sin(TWO_PI * 6137.0 * time)
+                        high * 0.65 + metal * 0.25
+                    }
+                    else -> {
+                        val burst = if (time < 0.035) exp(-(time % 0.011) * 260.0) else exp(-(time - 0.035) * 24.0)
+                        high * burst * 0.85
+                    }
+                }
+            }
+            42, 43 -> {
+                val bit = sin((ph * (97.0 + timbre * 400.0)) * TWO_PI) * 43758.5453
+                ((bit - floor(bit)) * 2.0 - 1.0) * (0.5 + color * 0.5)
             }
             else -> polySaw(ph, phInc) * (1.0 - timbre * 0.5) + sin((ph * (1.0 + color * 3.0)) * TWO_PI) * timbre * 0.5
         }
@@ -682,7 +716,7 @@ class M8Synth {
     }
 
     private fun readSample(track: Int, voice: Voice): Double {
-        val sample = trackSamples.getOrNull(track) ?: run {
+        val sample = selectedZones[track]?.second ?: trackSamples.getOrNull(track) ?: run {
             voice.release()
             return 0.0
         }
@@ -723,7 +757,7 @@ class M8Synth {
         }
 
         val baseStep = sample.sampleRate.toDouble() / SR
-        val noteRatio = (voice.freq / noteToFreq(60)).coerceIn(0.125, 8.0)
+        val noteRatio = (voice.freq / noteToFreq(selectedZones[track]?.first ?: sampler.rootMidi)).coerceIn(0.125, 8.0)
         val detuneRatio = 2.0.pow(((sampler.detune - 0x80) / 128.0) / 12.0)
         voice.samplePos += baseStep * noteRatio * detuneRatio
 

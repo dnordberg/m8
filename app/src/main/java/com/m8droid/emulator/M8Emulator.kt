@@ -56,7 +56,7 @@ class M8Emulator {
 
     // --- Data model ---
     val song = M8Song()
-    val instruments = M8Instrument.createDefaults()
+    val instruments = MeridianDemo.instruments()
 
     // --- Tracker state ---
     var screen = SCREEN_SONG

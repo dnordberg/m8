@@ -1,0 +1,127 @@
+Free samples from Karoryfer
+We've been making free sample libraries for years before our first commercial release came out, and we keep making them. Click on the name of each for a more detailed description and demos, or just click Download if you already know what you want.
+Osiris Piano
+: Collaboration with Versilian Studios, 2026 KVR Developer Challenge entry, and perhaps most importantly, a quiet piano.
+Download
+Big Little Bass
+: A big bass guitar sampled like a little one.
+Download
+Black And Blue Basses
+: Two 5-string bass guitars.
+Download
+Big Rusty Drums
+: 1980s drum kit made in Poland. Big and rusty, indeed.
+Download
+Unruly Drums
+: A drum kit with three snares in various sizes and a kick which also has snare wires.
+Download
+Swirly Drums
+: Brushed drums and percussion.
+Download
+Frankensnare
+: Collection of snare drums from tiny to oversized.
+Download
+Sneakybass
+: Very quiet double bass pizzicato.
+Download
+Black And Green Guitars
+: Two hollowbody electric guitars.
+Download
+Horse Pulse
+: Bass tagelharpa played pizzicato. A bonus freebie created while working on our Three Tagelharpas.
+Download
+Virtuosity Drums
+: Made in collaboration with Versilian Studios, a jazzy drum kit and General MIDI percussion.
+Download
+The Hat With The Phat
+:
+Two ride cymbals adding up to a giant hi-hat.
+Download
+Caveman Cosmonaut
+:
+Analog Polish keys from the 80s, sampled and given modern controls.
+Download
+Squidpipes
+:
+Bagpipes made using a squid instead of a squig. Of course.
+Download
+Gogodze Phu Vol II
+:
+A variable fidelity drum kit - lo-fi, hi-fi or anywhere inbetween.
+Download
+Gogodze Phu Vol I
+:
+A percussion collection with five bobobo drums from Ghana and a cajon recorded in Poland.
+Download
+Marie Ork
+:
+A voice bank for Plogue Alter/Ego. Capable of growling, singing, and many strange sounds.
+Download
+Bear Sax
+:
+A baritone saxophone made in 1926 by Conn.
+Download
+War Tuba
+:
+Over 1000 samples of folk-punk tuba.
+Download
+Meatbass
+:
+Our most popular freebie, this double bass is more folk/pop than classical.
+Download
+Karoryfer x bigcat cello
+:
+A flexible cello. Also with NI Kontakt version.
+Download
+String Cyborgs
+:
+Part violin family, part machine. Subtractive synthesizers using looped samples of bowed strings instead of synthesis.
+Download
+Weresax
+:
+Tenor sax samples.
+Download
+Scarypiano
+:
+Piano samples passed through scary effects.
+Download
+Shinyguitar
+:
+Shiny black archtop guitar.
+Download
+Earlier libraries with no graphical user interface
+Pastabass
+: Squier Bass VI samples recorded by Space Coyote -
+Download
+Growlybass
+: A bass guitar with lots of character -
+Download
+Swagbass
+: A very hip-hop bass guitar -
+Download
+Fashionbass
+: A fashionable looking bass guitar -
+Download
+Emilyguitar
+: A cute guitar -
+Download
+Ergo EUB
+: An electric upright bass including very low detuned samples -
+Download
+Cowsynth
+: A subtractive synthesizer made from replica medieval bagpipes -
+Download
+Zamenhof Stickmusterstuch Error
+: A double library of glitches -
+Download
+272 Merry Orks
+: Female death metal vocals -
+Download
+D. Smolken's first double bass library
+-
+Download
+All our free sample libraries are under a Creative Commons Zero license. Older downloads may include a less permissive license, but we changed that and now they are all CC0. Only Marie Ork has a different license, as she uses a different technology which uses monolithic voice bank files which cannot be open sourced.
+The Nathan Sheeran samples we've hosted in the past are now
+available on his own site
+.
+Most of the above libraries are also open source and can be reused in the creation of other libraries or forked on GitHub.

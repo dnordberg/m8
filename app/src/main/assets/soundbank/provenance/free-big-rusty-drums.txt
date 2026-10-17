@@ -1,0 +1,63 @@
+Free: Big Rusty Drums
+Download from GitHub
+Drums that are not nice and easy, but nice and rough! Samples of drums made by Zygmunt Szpaderski in a one-man workshop in Poland. They're big, and they've gotten kind of rusty over the decades. We matched them with an even larger floor tom made from an Estonian-made RMIF kick drum, and some nice modern cymbals. While we paid the equivalent of $111.68 for the Szpaderski kit with hardware, stands and cymbals, the Sabian ride cost more than four times as much, and we don't care - they are a good match sonically.
+Samples with sticks, brushes and mallets, snare also recorded with a tambourine on top of it and a small tom on top of it, rim clicks and shell clicks, stirs on both the snare and floor tom, a stack of cheap cymbals, mechanical noises... this kit has a lot of features, many of which you can't get elsewhere. Where else are you gonna get samples of overgrown Soviet Bloc drums with this kind of detail?
+Over 4400 samples adding up to 2.3 GB.
+Here comes the big list of kit pieces and articulations:
+24"x18” kick - Szpaderski
+pedal: kick (dampened), kick (undampened), pedal click noise, pedal return noise
+sticks: rim click, shell click, tomholder click
+14”x8” wooden snare - Szpaderski
+sticks: sidestick, center hit, edge hit, rimshot, rim click, shell click
+sticks with 13” RMIF concert tom on top of the snare: center hit, sidestick, rimshot
+sticks with tambourine on top of the snare: center hit, rimshot
+brushes: center hit, dig, stir, flutter, release noise
+mallets: center hit
+22"x16” tom – RMIF kick set up horizontally
+sticks: center hit, rim click, shell click
+brushes: center hit
+mallets: center hit
+18"x16” tom - Szpaderski
+sticks: center hit, rim click, shell click
+brushes: center hit, dig, stir, flutter, release noise
+mallets: center hit
+15"x15” tom - Szpaderski
+sticks: center hit, rim click, shell click
+brushes: center hit
+mallets: center hit
+14"x14” tom - Szpaderski
+sticks: center hit, rim click, shell click
+brushes: center hit
+mallets: center hit
+14” hi-hat – Sabian HHX Evolution
+sticks: tip hit (six degrees of openness), shank hits(four degrees of openness), shaft click
+brushes: hits with six degrees of openness
+pedal: foot chik, foot splash, chik return noise, pedal click noise, pedal return noise
+22” ride – Sabian Big & Ugly King
+sticks: bow, bell, edge
+brushes: bow
+mallets: edge
+edge choke
+17” crash – Sabian AAX V-Crash
+sticks: edge
+brushes: bow
+mallets: edge
+edge choke
+18” China crash – Sabian HHX Evolution
+sticks: edge
+brushes: bow
+mallets: edge
+edge choke
+19” sizzle ride – unknown origin
+sticks: bow, bell, edge
+brushes: bow
+mallets: edge
+edge choke
+17” sizzle crash – unknown origin
+sticks: bow, bell, edge
+brushes: bow
+mallets: edge
+edge choke
+Three-cymbal stack – 21” Trowa ride, 16” Trowa crash, and half a 14” Polmuz hi-hat
+sticks: middle layer, edge layer
+Walkthrough video below.
