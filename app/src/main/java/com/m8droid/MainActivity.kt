@@ -35,6 +35,8 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import com.m8droid.data.ButtonLayout
 import com.m8droid.input.KeyMapper
+import com.m8droid.input.StickyKeyLatch
+import com.m8droid.protocol.M8Commands
 import com.m8droid.academy.AcademyState
 import com.m8droid.academy.AcademyViewModel
 import com.m8droid.academy.AppMode
@@ -257,6 +259,7 @@ private fun M8App(
     val activeQuest by academyVm.activeQuest.collectAsState()
     val lastEval by academyVm.lastEvaluation.collectAsState()
     val serverSettings by viewModel.serverSettings.collectAsState()
+    val stickyKeyState by viewModel.stickyKeyState.collectAsState()
     val isSongDirty by viewModel.isSongDirty.collectAsState()
     val savedProjects by viewModel.savedProjects.collectAsState()
     val recentSongs by viewModel.recentSongs.collectAsState()
@@ -416,6 +419,21 @@ private fun M8App(
                             when (serverSettings.buttonLayout) {
                                 ButtonLayout.BEST -> M8BestLayout(onKeyStateChanged = onKeys, screenContent = screen, externalKeyMask = keyState)
                                 ButtonLayout.FULL_DEVICE -> M8FullDeviceLayout(onKeyStateChanged = onKeys, screenContent = screen, externalKeyMask = keyState)
+                            }
+
+                            // OPT / EDIT / SHIFT latch into the key mask that every
+                            // dispatch carries, so they layer on top of direct
+                            // tap-to-edit rather than replacing it: tapping a field
+                            // still selects it and opens the contextual editor.
+                            if (M8MainLayout.showsStickyModifierBar) {
+                                StickyModifierBar(
+                                    stickyMask = stickyKeyState,
+                                    onToggle = { viewModel.toggleStickyTouchKey(it) },
+                                    onClear = { viewModel.clearStickyTouchKeys() },
+                                    modifier = Modifier
+                                        .align(Alignment.TopStart)
+                                        .padding(8.dp),
+                                )
                             }
 
                             if (showTrackerQuickActions) {
@@ -910,5 +928,73 @@ private fun EditFieldStrip(
                 }
             }
         }
+    }
+}
+
+/**
+ * Touch modifier pills for the on-screen device. A latched key is OR'd into the
+ * key mask by the view model, so it affects the next key dispatch exactly like a
+ * held hardware key. Tapping a tracker field still selects and opens its editor;
+ * these only add the OPT/EDIT/SHIFT qualifiers on top.
+ */
+@Composable
+private fun StickyModifierBar(
+    stickyMask: Int,
+    onToggle: (Int) -> Unit,
+    onClear: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        color = Color(0xCC05080C),
+        shape = MaterialTheme.shapes.small,
+        tonalElevation = 4.dp,
+        shadowElevation = 4.dp,
+    ) {
+        Row(
+            modifier = Modifier
+                .border(1.dp, Color(0xFF304458), MaterialTheme.shapes.small)
+                .padding(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            StickyModifierButton("OPT", M8Commands.KEY_OPTION, stickyMask, onToggle)
+            StickyModifierButton("EDIT", M8Commands.KEY_EDIT, stickyMask, onToggle)
+            StickyModifierButton("SHIFT", M8Commands.KEY_SHIFT, stickyMask, onToggle)
+            if (stickyMask and StickyKeyLatch.MODIFIER_MASK != 0) {
+                Button(
+                    onClick = onClear,
+                    modifier = Modifier.height(30.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF2A1A1A),
+                        contentColor = Color(0xFFFFB0B0),
+                    ),
+                ) {
+                    Text("CLR", fontSize = 11.sp)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StickyModifierButton(
+    label: String,
+    key: Int,
+    stickyMask: Int,
+    onToggle: (Int) -> Unit,
+) {
+    val active = stickyMask and key != 0
+    Button(
+        onClick = { onToggle(key) },
+        modifier = Modifier.height(30.dp),
+        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = if (active) Color(0xFF2E5F9A) else Color(0xFF172332),
+            contentColor = if (active) Color.White else Color(0xFFB8CDE0),
+        ),
+    ) {
+        Text(label, fontSize = 11.sp)
     }
 }

@@ -34,7 +34,9 @@ object M8MainLayout {
     const val centersDisplayAndControls: Boolean = false
     const val controlsAnchor: String = "Top"
     const val quickActionTopFraction: Float = 0.42f
-    const val showsStickyModifierBar: Boolean = false
+    // Restored: the pills latch OPT/EDIT/SHIFT into the key mask and sit on top
+    // of direct tap-to-edit instead of replacing it.
+    const val showsStickyModifierBar: Boolean = true
     // The control section is no longer capped: it takes its share of the height
     // and the buttons expand to fill it, width and height.
     const val displayWeight: Float = 1.2f

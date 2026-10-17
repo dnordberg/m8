@@ -19,7 +19,8 @@ class ModalOverlayLayoutTest {
         assertTrue(M8MainLayout.centersDisplayAndControls.not())
         assertEquals("Top", M8MainLayout.controlsAnchor)
         assertTrue(M8MainLayout.quickActionTopFraction in 0.35f..0.50f)
-        assertTrue(M8MainLayout.showsStickyModifierBar.not())
+        // The OPT/EDIT/SHIFT pills are back and layer on top of tap-to-edit.
+        assertTrue(M8MainLayout.showsStickyModifierBar)
         // The control section is no longer size-capped: it takes its share of
         // the height and the buttons expand to fill it.
         assertTrue(M8MainLayout.controlsWeight > 0f)
